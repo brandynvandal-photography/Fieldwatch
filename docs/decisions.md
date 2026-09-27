@@ -21,6 +21,10 @@ Same UX (pick festival, pick channels), different sources:
 - **Attendee relay**: MultipeerConnectivity mesh so one phone with signal (or on the node's Wi-Fi) carries a warning across the campground.
 - **Live audio**: only feeds a stream owner has agreed to. Empty for now.
 
+## A web build alongside the app
+
+`web/` is the same product in a browser: pick a festival, get live NWS alerts and the hourly forecast, the 12-hour radar loop, and whatever a backend adds. It exists because the iPhone app needs a Mac, a developer account and an install, and because the data paths deserve a way to be seen working without hardware. It talks to NWS and the radar archive directly when there is no backend, the same fallback the app has, and to the backend when one is configured. It is not the offline story: a browser tab has no push, no relay, no receiver pairing, and only what it cached.
+
 ## Phone-only, hardware on the volunteer side
 
 Users need nothing but the app. The hardware (RTL-SDR + Pi, ~$100) lives in a volunteer's car. Pairing is joining the node's Wi-Fi; Bonjour discovery does the rest. Wi-Fi reach is ~50–100 m from the car; the relay mesh extends it.

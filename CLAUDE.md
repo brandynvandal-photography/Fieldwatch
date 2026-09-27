@@ -11,6 +11,7 @@ This repo was scaffolded in a chat session on a phone, then worked over in a Cla
 | `ios/` | SwiftUI app, iOS 17+, XcodeGen spec | written and reviewed, not compiled |
 | `backend/` | Node 20 + Express + SQLite. NWS poller, APNs push, incidents, festival data | runs; `npm test` covers every route with a mocked NWS |
 | `node/` | Raspberry Pi receiver: trunk-recorder + on-device Whisper + local API + uploader | runs; `python3 test_uploader.py`; never run against a real SDR |
+| `web/` | The app in a browser: real festivals, live NWS alerts and forecast, the radar loop from the archive, no backend needed | runs; `npm test` drives it in headless Chromium against fixture responses |
 | `prototype/index.html` | Tap-through HTML prototype of every screen. Source of truth for UX | done |
 | `docs/decisions.md` | Why the product is shaped this way, including the legal lines | read this first |
 | `docs/roadmap.md` | Open items in priority order | |
@@ -30,17 +31,21 @@ cd ios && xcodegen generate && open Fieldwatch.xcodeproj
 # node (on a Pi; on a dev machine you can run uploader.py directly)
 cd node && cp node.env.example node.env && python3 uploader.py
 python3 test_uploader.py      # stdlib only; whisper is stubbed, the backend is a fake server
+
+# web
+cd web && npm start           # http://localhost:8090; any static host works
+npm install && npm test       # headless Chromium against fixture NWS and radar responses
 ```
 
 `backend/.env` is read by `src/env.js` (Node 20.12+, `process.loadEnvFile`); variables already in the environment win. `npm start` runs `src/server.js`, which is only the listener; the Express app lives in `src/app.js` so tests can import it without binding a port.
 
 ## Architecture in one paragraph
 
-The phone downloads a **festival pack** (`FestivalPack`: festival, alerts, posts, hourly forecast, incidents) once and works from disk after that. While online it polls the backend for alerts/posts/incidents and NWS directly for the hourly forecast, and falls back to NWS directly for alerts if the backend is down. The backend polls NWS for every festival in its window (3 days before start to 1 day after end), stores alerts, and pushes new ones over APNs with the full alert JSON in the payload so the detail screen opens offline. Phones relay warning-level alerts to each other over MultipeerConnectivity (`RelayService`). A **receiver node** on site records county public-safety radio, transcribes, keeps only hazard traffic, serves it on its own Wi-Fi (`_fieldwatch-node._tcp` over Bonjour) and uploads to the backend. Pairing a phone with the node is joining its Wi-Fi; `NodeDiscovery` does the rest. Both the backend and the node are plain http on a local network, so `project.yml` sets `NSAllowsLocalNetworking`. **Radar** (`backend/src/radar.js`) fetches one NEXRAD composite image per 10 minutes for the last 12 hours from the Iowa Environmental Mesonet WMS-T archive, for a fixed Web Mercator square around each in-window festival, caches the frames on disk (they never change) and serves a manifest plus the PNGs; the phone (`RadarStore`, `RadarView`) keeps the frames on disk and draws them as an `MKOverlay` on MapKit, so the last loop plays offline.
+The phone downloads a **festival pack** (`FestivalPack`: festival, alerts, posts, hourly forecast, incidents) once and works from disk after that. While online it polls the backend for alerts/posts/incidents and NWS directly for the hourly forecast, and falls back to NWS directly for alerts if the backend is down. The backend polls NWS for every festival in its window (3 days before start to 1 day after end), stores alerts, and pushes new ones over APNs with the full alert JSON in the payload so the detail screen opens offline. Phones relay warning-level alerts to each other over MultipeerConnectivity (`RelayService`). A **receiver node** on site records county public-safety radio, transcribes, keeps only hazard traffic, serves it on its own Wi-Fi (`_fieldwatch-node._tcp` over Bonjour) and uploads to the backend. Pairing a phone with the node is joining its Wi-Fi; `NodeDiscovery` does the rest. Both the backend and the node are plain http on a local network, so `project.yml` sets `NSAllowsLocalNetworking`. **The web build** (`web/index.html`) is the same app for a browser: it reads `festivals.json`, asks NWS and the radar archive directly (or a backend when one is configured, with NWS as the fallback) and caches everything in the browser. **Radar** (`backend/src/radar.js`) fetches one NEXRAD composite image per 10 minutes for the last 12 hours from the Iowa Environmental Mesonet WMS-T archive, for a fixed Web Mercator square around each in-window festival, caches the frames on disk (they never change) and serves a manifest plus the PNGs; the phone (`RadarStore`, `RadarView`) keeps the frames on disk and draws them as an `MKOverlay` on MapKit, so the last loop plays offline.
 
 ## Shared data shapes
 
-`SafetyAlert`, `Incident` and `RadarLoop` are defined in `ios/Fieldwatch/Models/Models.swift` and produced by `backend/src/nws.js`, `backend/src/app.js` (`incidentToAlert`), `backend/src/radar.js` (`radarLoop`) and `node/uploader.py`. Keep them in sync by hand; there's no codegen. Dates are ISO 8601; the Swift decoder accepts with or without fractional seconds, the backend emits without (`util.js: iso()`).
+`SafetyAlert`, `Incident` and `RadarLoop` are defined in `ios/Fieldwatch/Models/Models.swift` and produced by `backend/src/nws.js`, `backend/src/app.js` (`incidentToAlert`), `backend/src/radar.js` (`radarLoop`) and `node/uploader.py`. `web/index.html` consumes all three and re-implements the NWS normalizer and the radar square; change them in step. Keep them in sync by hand; there's no codegen. Dates are ISO 8601; the Swift decoder accepts with or without fractional seconds, the backend emits without (`util.js: iso()`).
 
 Hazard categories live in two places on purpose (node must classify offline): `backend/src/incidents.js` and the `CATEGORIES` list in `node/uploader.py`. Change both, and add a line to `backend/test/fixtures/hazard-samples.json`; both test suites run every sample through their own classifier, so a drift fails one of them.
 
@@ -51,7 +56,7 @@ Hazard categories live in two places on purpose (node must classify offline): `b
 - Do not integrate Broadcastify. They are not licensing new scanner-style mobile apps.
 - Only hazard traffic is stored. Non-matching calls are deleted, audio included. Redaction (`redact()`) runs before storage.
 - Attendee reports always go through the moderation queue. Never auto-publish them.
-- No festival name, coordinates or date goes into `backend/data/festivals.json` without a source. Coordinates must be the grounds, not the town.
+- No festival name, coordinates or date goes into `backend/data/festivals.json` without a `source` URL. Coordinates must be the grounds, not the town.
 
 ## Conventions
 
@@ -64,8 +69,8 @@ Hazard categories live in two places on purpose (node must classify offline): `b
 ## Things to verify early
 
 1. `NWSClient.userAgent` and `NWS_USER_AGENT` need a real contact email or NWS will block us. Nobody has hit the real API from this code yet: the cloud session's network policy blocked api.weather.gov, so the normalizer is only proven against a fixture.
-2. Festival coordinates in `backend/data/festivals.json` were typed from memory; drop a pin on each.
-3. The Hulaween entry's name was inferred from a date/location listing; confirm on the festival's site.
+2. Festival names, venues and dates in `backend/data/festivals.json` were confirmed against each festival's own site on 2026-09-27 (`source`, `verifiedOn`). Coordinates are venue centroids typed from memory; drop a pin on each before relying on polygon-based NWS alerts.
+3. `web/festivals.json` is a copy of that file; a backend test fails if they differ.
 4. `project.yml` bundle id prefix and `FieldwatchBackendURL`. The `aps-environment` entitlement needs a paid team; on a free team, delete the `entitlements:` block to build to a device (the simulator doesn't care).
 5. APNs needs a paid developer account; until then the in-app banner covers the demo. The server starts fine without the keys.
 6. Radar has never been fetched from the real archive by this code either (same network policy). The WMS parameters (`n0q-t.cgi`, layer `nexrad-n0q-wmst`, `EPSG:3857`, `TIME=`) follow the IEM documentation; the first real run should confirm a frame decodes and lines up with the map, and that a 10-minute lag is enough for the newest timestamp to exist.

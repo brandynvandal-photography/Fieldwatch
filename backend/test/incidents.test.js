@@ -37,3 +37,13 @@ test('summarize keeps the first sentence and caps at 160 characters', () => {
   assert.equal(long.length, 160);
   assert.ok(long.endsWith('...'));
 });
+
+test('web/festivals.json is the same list the backend seeds, and every festival names its source', () => {
+  const backend = readFileSync(new URL('../data/festivals.json', import.meta.url), 'utf8');
+  const web = readFileSync(new URL('../../web/festivals.json', import.meta.url), 'utf8');
+  assert.equal(web, backend, 'copy backend/data/festivals.json to web/festivals.json');
+  for (const f of JSON.parse(backend)) {
+    assert.match(f.source || '', /^https:\/\//, `${f.id} has no source`);
+    assert.ok(Math.abs(f.latitude) <= 90 && Math.abs(f.longitude) <= 180 && Date.parse(f.startDate) < Date.parse(f.endDate), f.id);
+  }
+});

@@ -1,0 +1,13 @@
+{
+  "name": "fieldwatch-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "python3 -m http.server 8090",
+    "test": "node --test 'test/*.test.mjs'"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}
