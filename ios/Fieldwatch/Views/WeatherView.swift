@@ -5,6 +5,20 @@ struct WeatherView: View {
 
     var body: some View {
         List {
+            Section {
+                NavigationLink(value: Route.radar) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "dot.radiowaves.left.and.right")
+                            .font(.title3).foregroundStyle(Color.accentColor).frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Radar").font(.headline)
+                            Text(radarSubtitle).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+
             if app.activeAlerts.isEmpty {
                 Section {
                     VStack(alignment: .leading, spacing: 4) {
@@ -55,6 +69,12 @@ struct WeatherView: View {
     }
 
     private var county: String { app.selectedFestival?.county ?? "this area" }
+
+    private var radarSubtitle: String {
+        guard let loop = app.radar, let newest = loop.newest else { return "Downloads with the pack when you have signal" }
+        let to = newest.time.formatted(date: .omitted, time: .shortened)
+        return app.isOnline ? "Last \(loop.hours) hours, to \(to)" : "Last \(loop.hours) hours, to \(to), saved before signal dropped"
+    }
 
     private var updatedText: String {
         guard let updated = app.lastUpdated else { return "Not updated yet." }

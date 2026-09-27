@@ -1,6 +1,7 @@
 import { q } from './db.js';
 import { hourly } from './nws.js';
 import { INCIDENT_WINDOW_MS } from './incidents.js';
+import { radarLoop } from './radar.js';
 import { iso } from './util.js';
 
 // Forecasts change slowly; don't hit NWS for every download.
@@ -28,6 +29,7 @@ export async function buildPack(f) {
     posts: q.posts(f.id),
     hourly: await forecastFor(f),
     incidents: q.publishedIncidents(f.id, Date.now() - INCIDENT_WINDOW_MS),
+    radar: radarLoop(f),
     generatedAt: iso(),
   };
 }

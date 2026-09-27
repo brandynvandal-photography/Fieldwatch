@@ -8,6 +8,7 @@ import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { pollFestival, polledRecently } from './poller.js';
 import { pushAlert } from './push.js';
+import { RADAR_DIR, radarLoop, refreshRadarSoon } from './radar.js';
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
 import { iso } from './util.js';
 
@@ -27,6 +28,8 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 });
 app.use('/audio', express.static(AUDIO_DIR, { maxAge: '1d', immutable: true }));
+mkdirSync(RADAR_DIR, { recursive: true });
+app.use('/radar', express.static(RADAR_DIR, { maxAge: '7d', immutable: true }));   // frames never change
 
 // Express 4 doesn't catch rejected promises from async handlers; this does.
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -81,8 +84,15 @@ app.get('/festivals/:id', loadFestival, (req, res) => res.json(req.festival));
 
 app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
   if (!polledRecently(req.festival.id)) { try { await pollFestival(req.festival); } catch {} }
+  refreshRadarSoon(req.festival);
   res.json(await buildPack(req.festival));
 }));
+
+/** The radar loop: what's on disk right now, with a refresh kicked off in the background if it's due. */
+app.get('/festivals/:id/radar', loadFestival, (req, res) => {
+  refreshRadarSoon(req.festival);
+  res.json(radarLoop(req.festival));
+});
 
 app.get('/festivals/:id/alerts', loadFestival, wrap(async (req, res) => {
   if (!polledRecently(req.festival.id)) { try { await pollFestival(req.festival); } catch {} }

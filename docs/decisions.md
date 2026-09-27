@@ -15,6 +15,7 @@ The original idea was a phone that acts as a staff radio: passively pick up fest
 Same UX (pick festival, pick channels), different sources:
 
 - **Weather**: NWS API alerts by coordinates + hourly forecast. Free, no key, official. Pushed while online; cached pack while offline. WEA carrier alerts still arrive on their own.
+- **Radar**: a 12-hour loop of NEXRAD base reflectivity over a 320 km square around the grounds. Source is the Iowa Environmental Mesonet's WMS-T archive of the NWS composite: free, no key, any 5-minute timestamp. radar.weather.gov only keeps about an hour and RainViewer two, with terms written for their own apps. The backend fetches each frame once and serves it to every phone, so the archive sees one polite client instead of a festival's worth, and the phone keeps the last loop on disk so it still plays when signal drops. Attribution to NOAA and the IEM stays on the screen.
 - **Festival official**: a dashboard for partner festivals to push alerts. The legitimate "hear what staff hear".
 - **Incidents**: county public-safety radio (unencrypted, public) captured by a volunteer-run receiver node on site, transcribed on-device, filtered to hazards only, redacted, served locally and uploaded. Plus moderated attendee reports.
 - **Attendee relay**: MultipeerConnectivity mesh so one phone with signal (or on the node's Wi-Fi) carries a warning across the campground.

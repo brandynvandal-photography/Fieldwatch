@@ -176,6 +176,20 @@ button.row:active{background:var(--surface-2)}
 .empty{text-align:center;padding:36px 20px;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px;font-weight:600}
 .link{color:var(--accent);font-weight:500}
+.radar{position:relative;height:300px;border-radius:18px;overflow:hidden;margin-bottom:12px;background:#1d2733;background-image:repeating-linear-gradient(0deg,transparent 0 39px,rgba(255,255,255,.07) 39px 40px),repeating-linear-gradient(90deg,transparent 0 39px,rgba(255,255,255,.07) 39px 40px)}
+.radar .blob{position:absolute;border-radius:50%;filter:blur(12px);opacity:.8;animation:drift 16s linear infinite}
+.radar .blob.a{width:160px;height:120px;left:-60px;top:70px;background:radial-gradient(ellipse,#c8102e 0%,#f2a900 32%,#ffe600 48%,#2fb04a 68%,transparent 76%)}
+.radar .blob.b{width:120px;height:90px;left:30px;top:180px;background:radial-gradient(ellipse,#f2a900 0%,#ffe600 30%,#2fb04a 58%,transparent 74%);animation-delay:-6s}
+.radar .blob.c{width:100px;height:80px;left:-90px;top:10px;background:radial-gradient(ellipse,#2fb04a 0%,transparent 70%);animation-delay:-11s}
+.radar.paused .blob{animation-play-state:paused}
+@keyframes drift{from{transform:translateX(0)}to{transform:translateX(420px)}}
+.radar .pin{position:absolute;left:50%;top:50%;width:14px;height:14px;margin:-7px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px #0a84ff,0 0 0 8px rgba(10,132,255,.25)}
+.radar .rtime,.radar .rleg{position:absolute;background:rgba(255,255,255,.92);color:#111;border-radius:999px;font-variant-numeric:tabular-nums}
+.radar .rtime{left:12px;top:12px;font-weight:600;font-size:14px;padding:6px 12px}
+.radar .rleg{right:12px;bottom:12px;font-size:12px;padding:5px 10px;display:flex;align-items:center;gap:6px}
+.radar .rleg i{display:block;width:60px;height:8px;border-radius:999px;background:linear-gradient(90deg,#2fb04a,#ffe600,#f2a900,#c8102e,#a020a0)}
+.rctl{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.rctl input[type=range]{flex:1;accent-color:#0a84ff}
 </style>
 </head>
 <body>
@@ -267,6 +281,20 @@ const INC_ICON = {threat:'shield', evacuation:'walk', weather:'storm', flood:'fl
 const worst = f => alertsFor(f).some(a => a.level === 'warn') ? 'warn' : alertsFor(f).length ? 'watch' : 'ok';
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
 
+function radarTime(i){
+  const ago = (71 - i) * 10;
+  const t = new Date(Date.now() - ago * 60000).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
+  return t + (ago === 0 ? ', now' : ago < 60 ? ', ' + ago + ' min ago' : ', ' + (Math.round(ago / 6) / 10) + ' h ago');
+}
+function radarScrub(v){
+  document.getElementById('radar').classList.add('paused');
+  document.getElementById('radar-time').textContent = radarTime(+v);
+  const b = document.getElementById('radar-play'); b.classList.remove('on'); b.innerHTML = I.play; b.setAttribute('aria-label', 'Play');
+}
+function radarToggle(){
+  const paused = document.getElementById('radar').classList.toggle('paused');
+  const b = document.getElementById('radar-play'); b.classList.toggle('on', !paused); b.innerHTML = paused ? I.play : I.stop; b.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+}
 function go(name, param, opts){
   opts = opts || {};
   if(!opts.replace) S.stack.push({name:S.screen, param:S.param});
@@ -380,12 +408,31 @@ screens.weather = () => {
   return topbar(backBtn(), '', '') + `
     <h1 class="large">Weather</h1>
     <p class="sub">${esc(f.county)}</p>
+    <div class="group"><button class="row" onclick="go('radar')"><div class="main"><div class="t">Radar</div><div class="s">${S.online ? 'Last 12 hours, live' : 'Last 12 hours, saved before signal dropped'}</div></div>${I.chev}</button></div>
     ${al.length ? `<p class="h">Active alerts</p><div class="group">${al.map(a => `<button class="row" onclick="go('alert','${a.id}')"><span class="dot ${a.level}"></span><div class="main"><div class="t">${esc(a.title)}</div><div class="s">Until ${esc(a.until)}</div></div>${I.chev}</button>`).join('')}</div>`
                 : `<div class="card"><h3>No active alerts</h3><p>Nothing in effect for ${esc(f.county)} right now.</p></div>`}
     <p class="h">Tonight</p>
     <div class="hourly">${f.hourly.map(h => `<div class="hr"><div class="tm">${h[0]}</div>${I[h[1]]}<div class="tp">${h[2]}°</div></div>`).join('')}</div>
     <div class="tiles">${f.hazards.map(h => `<div class="tile"><div class="k">${h[0]}</div><div class="v">${h[1]}</div><div class="n">${h[2]}</div></div>`).join('')}</div>
     <p class="note">National Weather Service. ${S.online ? 'Updated just now.' : 'Last updated 2 h ago, before signal dropped.'}</p>`;
+};
+
+screens.radar = () => {
+  const f = fest();
+  return topbar(backBtn(), '', '') + `
+    <h1 class="large">Radar</h1>
+    <p class="sub">${esc(f.county)}, last 12 hours</p>
+    <div class="radar" id="radar">
+      <div class="blob a"></div><div class="blob b"></div><div class="blob c"></div>
+      <div class="pin" title="${esc(f.name)}"></div>
+      <div class="rtime" id="radar-time">${radarTime(71)}</div>
+      <div class="rleg"><i></i>light to heavy</div>
+    </div>
+    <div class="rctl">
+      <button class="play on" id="radar-play" onclick="radarToggle()" aria-label="Pause">${I.stop}</button>
+      <input type="range" min="0" max="71" value="71" oninput="radarScrub(this.value)" aria-label="Scrub through the last 12 hours">
+    </div>
+    <p class="note">Last 12 hours, every 10 minutes. ${S.online ? 'Newest frame 8 minutes ago.' : 'Newest frame 2 h ago, before signal dropped.'} NOAA NEXRAD via Iowa Environmental Mesonet.</p>`;
 };
 
 screens.official = () => {

@@ -25,6 +25,8 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | GET | `/festivals/:id` | One festival |
 | GET | `/festivals/:id/pack` | Offline pack: festival, active alerts, posts, hourly forecast |
 | GET | `/festivals/:id/alerts` | Active NWS alerts, polled on demand if stale |
+| GET | `/festivals/:id/radar` | Radar loop manifest: bounds, and one immutable URL per frame (see Radar) |
+| GET | `/radar/:festivalId/:frame.png` | One radar frame, cached for a week |
 | GET | `/festivals/:id/posts` | Staff updates |
 | POST | `/festivals/:id/posts` | Staff update (admin key); pushes to subscribers |
 | PUT | `/festivals/:id` | Add or edit a festival (admin key) |
@@ -61,6 +63,12 @@ The phone also polls `/alerts` when it's open, and falls back to NWS directly if
 Any host that runs Node and keeps a disk works (Fly.io, Railway, a small VPS). Mount a volume for `DB_PATH` and `AUDIO_DIR`. Run one instance; the poller isn't built to coordinate across several. Behind a proxy, set `TRUST_PROXY` to the hop count so the report rate limit sees phones, not the load balancer.
 
 Push is optional: leave the `APNS_*` lines commented out until there's a key, and the server starts without it (alerts are stored and served, just not pushed).
+
+## Radar
+
+`radar.js` keeps a 12-hour loop of NEXRAD base reflectivity per festival: one 512 px PNG per `RADAR_STEP_MINUTES` for a 320 km Web Mercator square around the grounds, fetched from the Iowa Environmental Mesonet WMS-T archive (`RADAR_WMS`, no key) and stored under `RADAR_DIR/<festivalId>/<timestamp>.png`. A frame never changes once it exists, so only the newest is ever fetched, the oldest is pruned as the window moves, and every phone gets the same files from this server instead of hitting the archive. Festivals in their window refresh every `RADAR_REFRESH_SECONDS`; a request for `/radar` or `/pack` kicks off a refresh in the background if one is due and answers with what is on disk. A frame the archive won't produce is retried three times and then left out.
+
+The manifest (also inside the pack as `radar`) mirrors `RadarLoop` in Swift: `bounds` in degrees, `frames` oldest first with relative URLs, `attribution` that the app must display. Newest frame is at least ten minutes old; that is how long the composite takes to land.
 
 ## Incidents
 

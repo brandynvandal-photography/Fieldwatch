@@ -11,6 +11,7 @@ final class AppState {
     var posts: [OfficialPost] = []
     var hourly: [HourlyPeriod] = []
     var incidents: [Incident] = []
+    var radar: RadarLoop?
     var lastUpdated: Date?
     var savedPackIDs: [String] = []
     var relayEnabled = true
@@ -23,6 +24,7 @@ final class AppState {
     let node = NodeDiscovery()
     let relay = RelayService()
     let packs = PackStore()
+    let radarStore = RadarStore()
     let backend = BackendClient()
     let nws = NWSClient()
 
@@ -95,12 +97,13 @@ final class AppState {
 
     func clearSelection() {
         selectedFestival = nil
-        alerts = []; posts = []; hourly = []; incidents = []; lastUpdated = nil
+        alerts = []; posts = []; hourly = []; incidents = []; radar = nil; lastUpdated = nil
         UserDefaults.standard.removeObject(forKey: "selectedFestival")
     }
 
     func removePack(_ id: String) {
         packs.remove(id)
+        radarStore.remove(festivalID: id)
         savedPackIDs = packs.savedIDs()
         if selectedFestival?.id == id { clearSelection() }
     }
@@ -128,6 +131,15 @@ final class AppState {
         if let h = try? await nws.hourlyForecast(latitude: f.latitude, longitude: f.longitude) { hourly = h }
         if let p = try? await backend.posts(for: f.id) { posts = p }
         if let list = try? await backend.incidents(for: f.id) { mergeIncidents(list, festival: f) }
+        if let loop = try? await backend.radar(for: f.id) {
+            radar = loop
+            let store = radarStore
+            // Frames are immutable and small; fetching them now is what makes the loop play offline later.
+            Task.detached(priority: .utility) {
+                await store.prefetch(loop, festivalID: f.id)
+                store.prune(keeping: loop, festivalID: f.id)
+            }
+        }
         lastUpdated = Date()
         persist()
     }
@@ -180,6 +192,7 @@ final class AppState {
         posts = pack.posts
         hourly = pack.hourly
         incidents = pack.incidents
+        radar = pack.radar
         lastUpdated = pack.generatedAt
     }
 
@@ -198,7 +211,7 @@ final class AppState {
 
     private func persist() {
         guard let f = selectedFestival else { return }
-        let pack = FestivalPack(festival: f, alerts: alerts, posts: posts, hourly: hourly, incidents: incidents, generatedAt: lastUpdated ?? Date())
+        let pack = FestivalPack(festival: f, alerts: alerts, posts: posts, hourly: hourly, incidents: incidents, radar: radar, generatedAt: lastUpdated ?? Date())
         try? packs.save(pack)
     }
 }

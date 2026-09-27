@@ -9,7 +9,17 @@ struct BackendClient {
     }()
 
     func festivals() async throws -> [Festival] { try await get("festivals") }
-    func pack(for id: String) async throws -> FestivalPack { try await get("festivals/\(id)/pack") }
+    func pack(for id: String) async throws -> FestivalPack {
+        var pack: FestivalPack = try await get("festivals/\(id)/pack")
+        for i in pack.incidents.indices { pack.incidents[i].origin = baseURL }
+        pack.radar?.origin = baseURL
+        return pack
+    }
+    func radar(for id: String) async throws -> RadarLoop {
+        var loop: RadarLoop = try await get("festivals/\(id)/radar")
+        loop.origin = baseURL
+        return loop
+    }
     func alerts(for id: String) async throws -> [SafetyAlert] { try await get("festivals/\(id)/alerts") }
     func posts(for id: String) async throws -> [OfficialPost] { try await get("festivals/\(id)/posts") }
     func incidents(for id: String) async throws -> [Incident] {

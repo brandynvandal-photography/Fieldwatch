@@ -18,7 +18,7 @@ struct FieldwatchApp: App {
 /// Every screen the app can push. Alerts carry their own value so a tapped
 /// notification or banner can deep-link straight to the detail screen.
 enum Route: Hashable {
-    case weather, official, incidents, relay, audio, settings
+    case weather, radar, official, incidents, relay, audio, settings
     case alert(SafetyAlert)
 }
 
@@ -45,6 +45,7 @@ struct RootView: View {
     private func destination(_ route: Route) -> some View {
         switch route {
         case .weather: WeatherView()
+        case .radar: RadarView()
         case .official: OfficialView()
         case .incidents: IncidentsView()
         case .relay: RelayView()

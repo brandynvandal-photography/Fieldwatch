@@ -21,13 +21,17 @@ This code has been reviewed but never compiled. Expect the first build to turn u
 
 - `App/` entry point, routing enum, and the APNs delegate
 - `Models/` festival, alert, pack, and forecast types shared with the backend
-- `Services/` NWS client, backend client, on-disk pack store, network monitor, Bluetooth relay (MultipeerConnectivity)
+- `Services/` NWS client, backend client, on-disk pack store, radar frame store, network monitor, Bluetooth relay (MultipeerConnectivity)
 - `State/AppState.swift` the single source of truth; every view reads from it
 - `Views/` one file per screen, matching the prototype
 
 ## Running without the backend
 
 The app still works: pick a festival from the cached list (empty on first run until the backend answers), and `NWSClient` pulls alerts and the hourly forecast straight from api.weather.gov. Set a real contact in `NWSClient.userAgent`; NWS blocks anonymous clients.
+
+## Radar
+
+`RadarView` plays the backend's 12-hour loop over MapKit. SwiftUI's `Map` has no raster overlays, so the map is an `MKMapView` in a `UIViewRepresentable` with one `MKOverlay` covering the square the backend rendered and a renderer that draws the current frame into it. `RadarStore` keeps every frame under Application Support/Radar so the loop plays offline; frames are immutable, so nothing is ever re-downloaded, and frames that fall out of the loop are pruned after each refresh.
 
 ## Testing the relay
 

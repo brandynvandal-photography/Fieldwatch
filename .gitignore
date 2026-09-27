@@ -3,6 +3,7 @@ node_modules/
 *.db-wal
 *.db-shm
 audio/
+radar/
 backend/.env
 node/node.env
 node/recordings/

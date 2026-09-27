@@ -8,7 +8,9 @@ import { alertFeature, points, hourly } from './fixtures/nws.js';
 // Everything below must be set before the app is imported: db.js opens DB_PATH at import time.
 const audioDir = mkdtempSync(join(tmpdir(), 'fieldwatch-audio-'));
 process.env.DB_PATH = ':memory:';
+process.env.RADAR_FETCH_PAUSE_MS = '0';
 process.env.AUDIO_DIR = audioDir;
+process.env.RADAR_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-radar-'));
 process.env.ADMIN_KEY = 'test-admin';
 process.env.NODE_KEY = 'test-node';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
@@ -28,12 +30,14 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.includes('/alerts/active')) return jsonResponse({ type: 'FeatureCollection', features: nwsState.features });
   if (url.includes('/points/')) return jsonResponse(points);
   if (url.includes('/forecast/hourly')) return jsonResponse(hourly);
+  if (url.includes('n0q-t.cgi')) return new Response(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'), { status: 200, headers: { 'content-type': 'image/png' } });
   return jsonResponse({ detail: 'not found' }, 404);
 };
 
 const { app } = await import('../src/app.js');
 const { q } = await import('../src/db.js');
 const { pollFestival } = await import('../src/poller.js');
+const { refreshRadar } = await import('../src/radar.js');
 
 const festivals = JSON.parse(readFileSync(new URL('../data/festivals.json', import.meta.url), 'utf8'));
 for (const f of festivals) q.upsertFestival(f);
@@ -85,6 +89,8 @@ test('pack carries festival, normalized NWS alerts, forecast, posts and incident
   assert.equal(pack.hourly[1].precipChance, 40);
   assert.deepEqual(pack.posts, []);
   assert.deepEqual(pack.incidents, []);
+  assert.equal(pack.radar.festivalId, FEST);
+  assert.ok(Array.isArray(pack.radar.frames));
   assert.match(pack.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'no fractional seconds');
 });
 
@@ -220,6 +226,24 @@ test('festival upsert validates coordinates and dates', async () => {
   assert.deepEqual(put.json.feeds, []);
   assert.equal(put.json.isPartner, false);
   assert.equal((await api('GET', '/festivals/dusk-ridge-2026')).json.county, 'Licking County');
+});
+
+test('radar: manifest, immutable frames, and the pack carry the loop', async () => {
+  const f = q.festival(FEST);
+  await refreshRadar(f);
+  const { status, json: loop } = await api('GET', `/festivals/${FEST}/radar`);
+  assert.equal(status, 200);
+  assert.equal(loop.frames.length, 72);
+  assert.equal(loop.hours, 12);
+  assert.ok(loop.bounds.north > loop.bounds.south && loop.bounds.east > loop.bounds.west);
+  const frame = await api('GET', loop.frames.at(-1).url);
+  assert.equal(frame.status, 200);
+  assert.equal(frame.headers.get('content-type'), 'image/png');
+  assert.match(frame.headers.get('cache-control'), /immutable/);
+  assert.equal((await api('GET', `/radar/${FEST}/nope.png`)).status, 404);
+  const pack = (await api('GET', `/festivals/${FEST}/pack`)).json;
+  assert.equal(pack.radar.frames.length, 72);
+  assert.equal(pack.radar.frames.at(-1).url, loop.frames.at(-1).url);
 });
 
 test('errors come back as JSON', async () => {

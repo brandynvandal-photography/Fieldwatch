@@ -83,6 +83,40 @@ struct HourlyPeriod: Codable, Identifiable, Hashable {
     let precipChance: Int?
 }
 
+/// Twelve hours of NEXRAD base reflectivity around the grounds, the way the backend serves it:
+/// one fixed Web Mercator square, and a list of immutable frame images over it. Mirrors
+/// `radarLoop()` in `backend/src/radar.js`.
+struct RadarLoop: Codable, Hashable {
+    struct Bounds: Codable, Hashable {
+        let north: Double
+        let south: Double
+        let east: Double
+        let west: Double
+    }
+
+    struct Frame: Codable, Identifiable, Hashable {
+        var id: Date { time }
+        let time: Date
+        let url: String
+    }
+
+    let generatedAt: Date
+    let hours: Int
+    let stepMinutes: Int
+    let bounds: Bounds
+    let attribution: String
+    let frames: [Frame]
+    /// Where this copy was fetched from, so the relative frame URLs can be resolved. Set by the app.
+    var origin: URL?
+
+    var newest: Frame? { frames.last }
+
+    func url(for frame: Frame) -> URL? {
+        if let absolute = URL(string: frame.url), absolute.scheme != nil { return absolute }
+        return origin?.appending(path: frame.url.hasPrefix("/") ? String(frame.url.dropFirst()) : frame.url)
+    }
+}
+
 /// One safety-relevant radio call or attendee report. Same shape whether it came
 /// from the backend or from a receiver node on the festival's own Wi-Fi.
 struct Incident: Codable, Identifiable, Hashable {
@@ -161,13 +195,14 @@ struct FestivalPack: Codable {
     var posts: [OfficialPost]
     var hourly: [HourlyPeriod]
     var incidents: [Incident]
+    var radar: RadarLoop?
     var generatedAt: Date
 
-    init(festival: Festival, alerts: [SafetyAlert], posts: [OfficialPost], hourly: [HourlyPeriod], incidents: [Incident], generatedAt: Date) {
-        self.festival = festival; self.alerts = alerts; self.posts = posts; self.hourly = hourly; self.incidents = incidents; self.generatedAt = generatedAt
+    init(festival: Festival, alerts: [SafetyAlert], posts: [OfficialPost], hourly: [HourlyPeriod], incidents: [Incident], radar: RadarLoop? = nil, generatedAt: Date) {
+        self.festival = festival; self.alerts = alerts; self.posts = posts; self.hourly = hourly; self.incidents = incidents; self.radar = radar; self.generatedAt = generatedAt
     }
 
-    private enum CodingKeys: String, CodingKey { case festival, alerts, posts, hourly, incidents, generatedAt }
+    private enum CodingKeys: String, CodingKey { case festival, alerts, posts, hourly, incidents, radar, generatedAt }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -176,6 +211,7 @@ struct FestivalPack: Codable {
         posts = try c.decodeIfPresent([OfficialPost].self, forKey: .posts) ?? []
         hourly = try c.decodeIfPresent([HourlyPeriod].self, forKey: .hourly) ?? []
         incidents = try c.decodeIfPresent([Incident].self, forKey: .incidents) ?? []
+        radar = try c.decodeIfPresent(RadarLoop.self, forKey: .radar)
         generatedAt = try c.decode(Date.self, forKey: .generatedAt)
     }
 }
