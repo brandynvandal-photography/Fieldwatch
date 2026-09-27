@@ -9,7 +9,7 @@ cd web && npm start          # python3 -m http.server 8090
 open http://localhost:8090
 ```
 
-Any static host works (GitHub Pages, Netlify, an S3 bucket): the folder is `index.html` plus `festivals.json`. `festivals.json` is a copy of `backend/data/festivals.json`; a backend test fails if the two drift.
+Any static host works (GitHub Pages, Netlify, an S3 bucket): the folder is `index.html` plus `festivals.json`. `.github/workflows/pages.yml` at the project root deploys it to GitHub Pages on every push to `main` once Fieldwatch is in a public repository of its own; it turns Pages on by itself on the first run. `festivals.json` is a copy of `backend/data/festivals.json`; a backend test fails if the two drift.
 
 ## Where the data comes from
 

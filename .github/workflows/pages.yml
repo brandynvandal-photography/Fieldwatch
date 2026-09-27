@@ -1,0 +1,43 @@
+# Publishes the web build (web/index.html and web/festivals.json) to GitHub Pages.
+#
+# Written for Fieldwatch living in a repository of its own, where this file sits at
+# .github/workflows/pages.yml. While the project is parked under fieldwatch/ inside another
+# repository, GitHub does not see it here, which is intended: Actions on that private
+# repository refused to start jobs, and Pages needs a public repository on the free plan.
+# Push the project to a public repository and the first push to main deploys the site at
+# https://<owner>.github.io/<repository>/ (enablement: true turns Pages on).
+name: pages
+on:
+  push:
+    branches: [main]
+    paths: [web/index.html, web/festivals.json, .github/workflows/pages.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage the two files the site needs
+        run: |
+          mkdir -p site
+          cp web/index.html web/festivals.json site/
+          touch site/.nojekyll
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
