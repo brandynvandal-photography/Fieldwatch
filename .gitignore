@@ -1,0 +1,14 @@
+node_modules/
+*.db
+*.db-wal
+*.db-shm
+audio/
+backend/.env
+node/node.env
+node/recordings/
+node/public/
+node/.venv/
+ios/Fieldwatch.xcodeproj/
+ios/*.xcworkspace/
+.DS_Store
+__pycache__/

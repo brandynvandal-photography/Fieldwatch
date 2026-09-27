@@ -1,0 +1,15 @@
+[Unit]
+Description=Fieldwatch receiver node (transcribe, filter, serve, upload)
+After=network.target docker.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/fieldwatch-node
+Environment=NODE_ENV_FILE=/home/pi/fieldwatch-node/node.env
+ExecStart=/home/pi/fieldwatch-node/.venv/bin/python /home/pi/fieldwatch-node/uploader.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

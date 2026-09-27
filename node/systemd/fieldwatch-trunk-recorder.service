@@ -1,0 +1,20 @@
+[Unit]
+Description=trunk-recorder for the Fieldwatch node
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/fieldwatch-node
+ExecStartPre=-/usr/bin/docker rm -f fieldwatch-tr
+ExecStart=/usr/bin/docker run --rm --name fieldwatch-tr --device /dev/bus/usb \
+  -v /home/pi/fieldwatch-node/trunk-recorder:/app/config \
+  -v /home/pi/fieldwatch-node/recordings:/app/recordings \
+  robotastic/trunk-recorder:latest --config=/app/config/config.json
+ExecStop=/usr/bin/docker stop fieldwatch-tr
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

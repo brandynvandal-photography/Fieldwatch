@@ -1,0 +1,70 @@
+# Fieldwatch
+
+Festival safety-alert app. iPhone-only for users, no accounts, offline-first. Pick a festival, get channels: Weather, Festival official, Incidents, Attendee relay, Live audio (where a feed exists). "Fieldwatch" is a working name.
+
+This repo was scaffolded in a chat session on a phone, then worked over in a Claude Code cloud session that had no Xcode. **The Swift has still never been compiled.** It has been read line by line for compile errors (see `docs/roadmap.md`, item 1, for what was fixed and what to expect), but the first job on a Mac is still: generate the Xcode project, build, and fix whatever the compiler finds. The backend and node run and have test suites.
+
+## Layout
+
+| Path | What | Status |
+|---|---|---|
+| `ios/` | SwiftUI app, iOS 17+, XcodeGen spec | written and reviewed, not compiled |
+| `backend/` | Node 20 + Express + SQLite. NWS poller, APNs push, incidents, festival data | runs; `npm test` covers every route with a mocked NWS |
+| `node/` | Raspberry Pi receiver: trunk-recorder + on-device Whisper + local API + uploader | runs; `python3 test_uploader.py`; never run against a real SDR |
+| `prototype/index.html` | Tap-through HTML prototype of every screen. Source of truth for UX | done |
+| `docs/decisions.md` | Why the product is shaped this way, including the legal lines | read this first |
+| `docs/roadmap.md` | Open items in priority order | |
+
+## Commands
+
+```
+# backend
+cd backend && npm install && cp .env.example .env && npm run seed && npm start
+curl localhost:3000/festivals
+npm test                      # node:test, no network: api.weather.gov is a fixture
+
+# ios (needs macOS + Xcode 15+)
+brew install xcodegen
+cd ios && xcodegen generate && open Fieldwatch.xcodeproj
+
+# node (on a Pi; on a dev machine you can run uploader.py directly)
+cd node && cp node.env.example node.env && python3 uploader.py
+python3 test_uploader.py      # stdlib only; whisper is stubbed, the backend is a fake server
+```
+
+`backend/.env` is read by `src/env.js` (Node 20.12+, `process.loadEnvFile`); variables already in the environment win. `npm start` runs `src/server.js`, which is only the listener; the Express app lives in `src/app.js` so tests can import it without binding a port.
+
+## Architecture in one paragraph
+
+The phone downloads a **festival pack** (`FestivalPack`: festival, alerts, posts, hourly forecast, incidents) once and works from disk after that. While online it polls the backend for alerts/posts/incidents and NWS directly for the hourly forecast, and falls back to NWS directly for alerts if the backend is down. The backend polls NWS for every festival in its window (3 days before start to 1 day after end), stores alerts, and pushes new ones over APNs with the full alert JSON in the payload so the detail screen opens offline. Phones relay warning-level alerts to each other over MultipeerConnectivity (`RelayService`). A **receiver node** on site records county public-safety radio, transcribes, keeps only hazard traffic, serves it on its own Wi-Fi (`_fieldwatch-node._tcp` over Bonjour) and uploads to the backend. Pairing a phone with the node is joining its Wi-Fi; `NodeDiscovery` does the rest. Both the backend and the node are plain http on a local network, so `project.yml` sets `NSAllowsLocalNetworking`.
+
+## Shared data shapes
+
+`SafetyAlert` and `Incident` are defined in `ios/Fieldwatch/Models/Models.swift` and produced by `backend/src/nws.js`, `backend/src/app.js` (`incidentToAlert`) and `node/uploader.py`. Keep them in sync by hand; there's no codegen. Dates are ISO 8601; the Swift decoder accepts with or without fractional seconds, the backend emits without (`util.js: iso()`).
+
+Hazard categories live in two places on purpose (node must classify offline): `backend/src/incidents.js` and the `CATEGORIES` list in `node/uploader.py`. Change both, and add a line to `backend/test/fixtures/hazard-samples.json`; both test suites run every sample through their own classifier, so a drift fails one of them.
+
+## Rules that are not up for debate
+
+- No accounts, no login, no analytics that identify a person. Phones register only an APNs token + festival id.
+- The receiver node records **county public-safety radio only**. Never the festival's operations channels without the promoter's written OK. See `docs/decisions.md`.
+- Do not integrate Broadcastify. They are not licensing new scanner-style mobile apps.
+- Only hazard traffic is stored. Non-matching calls are deleted, audio included. Redaction (`redact()`) runs before storage.
+- Attendee reports always go through the moderation queue. Never auto-publish them.
+- No festival name, coordinates or date goes into `backend/data/festivals.json` without a source. Coordinates must be the grounds, not the town.
+
+## Conventions
+
+- Swift: iOS 17, `@Observable`, one `AppState` as source of truth, views read from it, `Route` enum for navigation. No third-party packages so far. Anything an `@Observable` class mutates off the main thread, or declares `lazy`, is marked `@ObservationIgnored`.
+- Backend: ESM, no build step, prepared statements in `db.js` only, all env in `.env.example`, async routes wrapped so a rejected promise becomes a JSON 500 instead of a crash. Tests are `node:test` in `backend/test/`.
+- Node: one file, stdlib plus faster-whisper. Anything that must be testable without hardware is a function (`process_call`, `upload_once`), and the loops just call them.
+- Copy in the UI is sentence case, plain, short. The prototype has the reference wording for every screen.
+- Emergency alerts from carriers (WEA) are not something we replace; the UI tells users to keep them on.
+
+## Things to verify early
+
+1. `NWSClient.userAgent` and `NWS_USER_AGENT` need a real contact email or NWS will block us. Nobody has hit the real API from this code yet: the cloud session's network policy blocked api.weather.gov, so the normalizer is only proven against a fixture.
+2. Festival coordinates in `backend/data/festivals.json` were typed from memory; drop a pin on each.
+3. The Hulaween entry's name was inferred from a date/location listing; confirm on the festival's site.
+4. `project.yml` bundle id prefix and `FieldwatchBackendURL`. The `aps-environment` entitlement needs a paid team; on a free team, delete the `entitlements:` block to build to a device (the simulator doesn't care).
+5. APNs needs a paid developer account; until then the in-app banner covers the demo. The server starts fine without the keys.

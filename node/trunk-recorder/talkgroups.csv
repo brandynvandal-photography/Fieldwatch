@@ -1,0 +1,5 @@
+Decimal,Mode,Alpha Tag,Description,Tag,Category
+1001,D,SO Dispatch,Sheriff dispatch,Law Dispatch,Public Safety
+1002,D,SO Tac 1,Sheriff tactical,Law Tac,Public Safety
+2001,D,Fire Dispatch,County fire and EMS dispatch,Fire Dispatch,Public Safety
+2002,D,EMS Ops,EMS operations,EMS-Tac,Public Safety

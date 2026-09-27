@@ -1,0 +1,30 @@
+{
+  "ver": 2,
+  "sources": [
+    {
+      "center": 770000000,
+      "rate": 2048000,
+      "gain": 40,
+      "driver": "osmosdr",
+      "device": "rtl=0",
+      "digitalRecorders": 4,
+      "analogRecorders": 0
+    }
+  ],
+  "systems": [
+    {
+      "shortName": "county",
+      "type": "p25",
+      "modulation": "qpsk",
+      "control_channels": [ 770506250, 770756250 ],
+      "talkgroupsFile": "/app/config/talkgroups.csv",
+      "recordUnknown": false,
+      "compressWav": false,
+      "callLog": true
+    }
+  ],
+  "captureDir": "/app/recordings",
+  "logLevel": "info",
+  "frequencyFormat": "mhz",
+  "controlWarnRate": 10
+}

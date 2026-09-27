@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Fieldwatch</title>
+<style>
+:root{
+  --bg:#EEF1F5; --surface:#FFFFFF; --surface-2:#F3F5F8; --ink:#141A22; --muted:#6B7684; --line:#E6EAEF;
+  --accent:#4F4BE0; --ok:#2C9A66; --watch:#E9A62C; --warn:#DC4A3D; --on-watch:#2A1A00;
+  --shadow:0 10px 30px rgba(20,26,34,.16);
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#101826; --surface:#182233; --surface-2:#202C40; --ink:#EEF1F5; --muted:#97A3B5; --line:#26334A;
+    --accent:#8F8BFF; --ok:#31AE74; --watch:#F0B13C; --warn:#EE5A4D; --shadow:0 10px 30px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#101826; --surface:#182233; --surface-2:#202C40; --ink:#EEF1F5; --muted:#97A3B5; --line:#26334A;
+  --accent:#8F8BFF; --ok:#31AE74; --watch:#F0B13C; --warn:#EE5A4D; --shadow:0 10px 30px rgba(0,0,0,.5);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{height:100%}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:17px; line-height:1.35; -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input{font:inherit;color:inherit;-webkit-appearance:none;appearance:none}
+input::-webkit-search-decoration,input::-webkit-search-cancel-button{-webkit-appearance:none}
+.screen{min-height:100%;max-width:520px;margin:0 auto;padding:0 16px 40px}
+@media (prefers-reduced-motion:no-preference){
+  .screen.in{animation:slide .24s cubic-bezier(.2,.7,.2,1)}
+  .screen.in.rev{animation-name:slideRev}
+  @keyframes slide{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:none}}
+  @keyframes slideRev{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+}
+.topbar{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:5; background:var(--bg);
+  display:flex; align-items:center; justify-content:space-between; height:52px; margin:0 -16px; padding:0 8px;
+}
+.topbar .side{min-width:72px;display:flex;align-items:center}
+.topbar .side.r{justify-content:flex-end}
+.topbar .mid{flex:1;text-align:center;font-weight:600;font-size:17px}
+.tb{display:inline-flex;align-items:center;gap:2px;padding:8px;border-radius:10px;color:var(--accent);font-weight:500}
+.tb:active{background:var(--surface-2)}
+.tb svg{width:22px;height:22px}
+.large{font-size:32px;font-weight:700;letter-spacing:-.02em;line-height:1.1;margin:6px 0 4px}
+.sub{color:var(--muted);font-size:15px;margin-bottom:18px}
+.search{
+  display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:12px;padding:10px 12px;margin-bottom:22px;
+}
+.search svg{width:18px;height:18px;color:var(--muted);flex:none}
+.search input{flex:1;border:0;background:none;outline:none;font-size:17px;min-width:0}
+.search input::placeholder{color:var(--muted)}
+.h{font-size:13px;color:var(--muted);margin:0 0 8px 4px}
+.group{background:var(--surface);border-radius:14px;overflow:hidden;margin-bottom:22px}
+.row{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:left;padding:12px 16px;min-height:58px;position:relative;
+}
+.row+.row::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
+button.row:active{background:var(--surface-2)}
+.row .main{flex:1;min-width:0}
+.row .t{font-weight:600;font-size:17px;line-height:1.25}
+.row .s{color:var(--muted);font-size:14px;margin-top:2px}
+.row .tr{text-align:right;color:var(--muted);font-size:14px;flex:none}
+.row .tr b{display:block;color:var(--ink);font-weight:600;font-size:15px}
+.chev{width:18px;height:18px;color:var(--muted);flex:none;opacity:.7}
+.badge{
+  min-width:22px;height:22px;border-radius:11px;background:var(--warn);color:#fff;font-size:13px;font-weight:600;
+  display:inline-flex;align-items:center;justify-content:center;padding:0 7px;flex:none;
+}
+.dot{width:12px;height:12px;border-radius:50%;flex:none}
+.dot.warn{background:var(--warn)} .dot.watch{background:var(--watch)} .dot.ok{background:var(--ok)}
+.pill{
+  display:inline-flex;align-items:center;gap:7px;padding:6px 12px 6px 10px;border-radius:999px;background:var(--surface);
+  font-size:14px;font-weight:600;margin-bottom:18px;
+}
+.pill i{width:9px;height:9px;border-radius:50%;background:var(--ok);display:inline-block}
+.pill.off i{background:var(--muted)}
+.status{border-radius:20px;padding:22px 20px;margin-bottom:22px;color:#fff;position:relative;overflow:hidden}
+.status.ok{background:var(--ok)}
+.status.watch{background:var(--watch);color:var(--on-watch)}
+.status.warn{background:var(--warn)}
+.status h2{font-size:26px;font-weight:700;letter-spacing:-.015em;line-height:1.15}
+.status p{margin-top:6px;font-size:15px;opacity:.88}
+.status .tap{margin-top:14px;font-size:14px;font-weight:600;opacity:.95}
+@media (prefers-reduced-motion:no-preference){
+  .status.warn::after{content:"";position:absolute;inset:0;border-radius:20px;border:2px solid #fff;opacity:0;animation:pulse 1.6s ease-out infinite}
+  @keyframes pulse{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.04)}}
+}
+.card{background:var(--surface);border-radius:14px;padding:16px;margin-bottom:22px}
+.card h3{font-size:17px;font-weight:600;margin-bottom:4px}
+.card p{color:var(--muted);font-size:15px}
+.btn{
+  display:flex;align-items:center;justify-content:center;width:100%;padding:14px;border-radius:14px;background:var(--accent);
+  color:#fff;font-weight:600;font-size:17px;margin-bottom:12px;
+}
+.btn.quiet{background:var(--surface);color:var(--accent)}
+.btn:active{opacity:.85}
+.hourly{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;margin:0 -16px 14px;padding-left:16px;padding-right:16px;scrollbar-width:none}
+.hourly::-webkit-scrollbar{display:none}
+.hr{flex:none;width:68px;background:var(--surface);border-radius:14px;padding:12px 6px;text-align:center}
+.hr .tm{font-size:13px;color:var(--muted)}
+.hr svg{width:26px;height:26px;margin:8px 0}
+.hr .tp{font-weight:600;font-size:16px}
+.tiles{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:22px}
+.tile{background:var(--surface);border-radius:14px;padding:12px}
+.tile .k{font-size:13px;color:var(--muted)}
+.tile .v{font-size:22px;font-weight:700;letter-spacing:-.01em;margin:2px 0}
+.tile .n{font-size:12px;color:var(--muted)}
+.post{padding:14px 16px;position:relative}
+.post+.post::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
+.post .t{font-weight:600}
+.post .b{font-size:15px;color:var(--muted);margin-top:2px}
+.post .at{font-size:13px;color:var(--muted);margin-top:6px}
+.switch{width:51px;height:31px;border-radius:16px;background:var(--line);position:relative;flex:none;transition:background .2s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.25);transition:transform .2s}
+.switch.on{background:var(--ok)}
+.switch.on::after{transform:translateX(20px)}
+.big{font-size:56px;font-weight:700;letter-spacing:-.03em;line-height:1}
+.alerthead{border-radius:20px;padding:22px 20px;color:#fff;margin-bottom:22px}
+.alerthead.watch{background:var(--watch);color:var(--on-watch)}
+.alerthead.warn{background:var(--warn)}
+.alerthead .lv{font-size:14px;font-weight:600;opacity:.9}
+.alerthead h2{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1;margin-top:6px}
+.alerthead p{margin-top:8px;font-size:15px;opacity:.9}
+.body{font-size:17px;line-height:1.5;margin-bottom:22px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:12px 16px;position:relative;font-size:15px}
+.kv+.kv::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
+.kv span:first-child{color:var(--muted)}
+.kv span:last-child{text-align:right;font-weight:500}
+.play{width:40px;height:40px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;flex:none;color:var(--accent)}
+.play svg{width:18px;height:18px}
+.play.on{background:var(--accent);color:#fff}
+.bars{display:inline-flex;gap:2px;align-items:flex-end;height:14px;margin-left:8px;vertical-align:middle}
+.bars i{width:3px;background:var(--accent);height:6px;border-radius:2px}
+@media (prefers-reduced-motion:no-preference){
+  .bars i{animation:bar .8s ease-in-out infinite alternate}
+  .bars i:nth-child(2){animation-delay:.15s}.bars i:nth-child(3){animation-delay:.3s}.bars i:nth-child(4){animation-delay:.45s}
+  @keyframes bar{from{height:4px}to{height:14px}}
+}
+.prog{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:18px 0 14px}
+.prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .6s ease}
+.step{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:16px;color:var(--muted)}
+.step.done{color:var(--ink)}
+.step .ck{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;flex:none}
+.step.done .ck{background:var(--ok);border-color:var(--ok);color:#fff}
+.step .ck svg{width:12px;height:12px;opacity:0}
+.step.done .ck svg{opacity:1}
+.note{font-size:13px;color:var(--muted);margin:-10px 4px 22px}
+.banner{
+  position:fixed;top:calc(env(safe-area-inset-top,0px) + 8px);left:10px;right:10px;z-index:50;max-width:500px;margin:0 auto;
+  background:var(--surface);border-radius:20px;box-shadow:var(--shadow);padding:12px 14px;display:flex;gap:12px;align-items:flex-start;
+  transform:translateY(-140%);transition:transform .35s cubic-bezier(.2,.8,.2,1);text-align:left;width:auto;
+}
+.banner.show{transform:none}
+.banner .ic{width:38px;height:38px;border-radius:9px;background:var(--accent);flex:none;display:flex;align-items:center;justify-content:center;color:#fff}
+.banner .ic svg{width:22px;height:22px}
+.banner .m{flex:1;min-width:0}
+.banner .app{display:flex;justify-content:space-between;font-size:13px;color:var(--muted)}
+.banner .t{display:block;font-weight:600;font-size:15px;margin-top:1px}
+.banner .b{font-size:14px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.toast{
+  position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,20px);opacity:0;
+  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.empty{text-align:center;padding:36px 20px;color:var(--muted)}
+.empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px;font-weight:600}
+.link{color:var(--accent);font-weight:500}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<button id="banner" class="banner" aria-live="polite"></button>
+<div id="toast" class="toast" role="status"></div>
+<script>
+const I = {
+  back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  chev:'<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
+  gear:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+  check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 7"/></svg>',
+  play:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 5v14l12-7z"/></svg>',
+  stop:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  bell:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
+  sun:'<svg viewBox="0 0 24 24" fill="none" stroke="#E9A62C" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+  cloud:'<svg viewBox="0 0 24 24" fill="none" stroke="#7F8FA6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .5-9 7 7 0 0 0-13.4 2A4 4 0 0 0 6 19z"/></svg>',
+  storm:'<svg viewBox="0 0 24 24" fill="none" stroke="#7F8FA6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 17a4.5 4.5 0 0 0 .5-9 7 7 0 0 0-13.4 2A4 4 0 0 0 6 17z"/><path d="M13 12l-2 4h3l-2 4" stroke="#E9A62C"/></svg>',
+  shield:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M12 8v4M12 15h.01"/></svg>',
+  walk:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="4" r="1.5"/><path d="M10 21l2-6 3 2v4M8 12l3-3 2 1 2 3 2 1M11 9l-1 5"/></svg>',
+  flood:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2M3 15c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2M3 20c2 0 2-2 4-2s2 2 4 2 2-2 4-2 2 2 4 2"/></svg>',
+  fire:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c1 3 4 5 4 9a4 4 0 0 1-8 0c0-1.5.5-2.5 1-3 .5 1.5 1.5 2 2 2 0-3-1-5 1-8z"/></svg>',
+  person:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7" r="3.5"/><path d="M3 21c0-4 3-6 7-6M17 12a2 2 0 1 1 2 2c-1 0-1 1-1 2M18 19h.01"/></svg>',
+  cross:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M12 10v6M9 13h6M9 6V4h6v2"/></svg>',
+  crowd:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7" cy="8" r="2.5"/><circle cx="17" cy="8" r="2.5"/><circle cx="12" cy="6" r="2.5"/><path d="M2 20c0-3 2-5 5-5M22 20c0-3-2-5-5-5M7 21c0-4 2-6 5-6s5 2 5 6"/></svg>',
+  road:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21L9 3M20 21L15 3M12 6v2M12 11v2M12 16v2"/></svg>'
+};
+
+const FESTS = [
+  {id:'dusk', name:'Dusk Ridge', where:'Lake Perris, CA', dates:'Oct 2–4', when:'next', mi:18, size:'41 MB', partner:true, county:'Riverside County',
+   feeds:[{n:'Riverside County Fire', s:'Dispatch and EMS'},{n:'Cal Fire Riverside', s:'Wildland'}],
+   alerts:[{id:'dusk-1', level:'watch', title:'Wind Advisory', until:'8:00 PM Saturday', area:'Riverside County valleys', source:'National Weather Service, San Diego', at:'Issued 2:14 PM today', relayed:3,
+     text:'Southwest winds 20 to 30 mph with gusts up to 45 mph are expected Saturday afternoon and evening. Gusty winds could blow around unsecured objects. Tree limbs could be blown down and a few power outages may result.\n\nSecure tents, shade structures and loose items before 2 PM Saturday.'}],
+   posts:[{t:'Medical tent has moved', b:'The main medical tent is now beside the water station at the east gate.', at:'11:20 AM'},
+          {t:'Free water refills open', b:'All four refill stations are open 24 hours through Sunday.', at:'9:05 AM'},
+          {t:'Gates open Friday at 10 AM', b:'Early arrival camping opens Thursday at 4 PM.', at:'Yesterday'}],
+   site:[['Medical','East gate, beside the water station'],['Water refills','Four stations, open 24 hours'],['Harm reduction','Chill zone, north of Stage 2'],['Exits','Main gate and the south service road']],
+   hourly:[['4 PM','sun',91],['5 PM','sun',89],['6 PM','cloud',86],['7 PM','cloud',82],['8 PM','storm',77],['9 PM','storm',74],['10 PM','cloud',72],['11 PM','cloud',70]],
+   hazards:[['Heat index','96°','Peak at 3 PM'],['Lightning','None','Within 30 mi'],['Wind gusts','45 mph','After 2 PM Sat']],
+   incidents:[
+     {id:'dusk-i1', category:'traffic', level:'advisory', title:'Road or gate closure', summary:'Ramona Expressway closed at the north gate for a two-vehicle collision, expect an hour.', at:'3:12 PM', source:'County dispatch, via on-site receiver', audio:true},
+     {id:'dusk-i2', category:'medical', level:'advisory', title:'Medical emergency', summary:'Multiple heat patients at the Stage 2 medical tent, requesting a second ambulance.', at:'1:48 PM', source:'County dispatch, via on-site receiver', audio:true},
+     {id:'dusk-i3', category:'flood', level:'advisory', title:'Flooding reported', summary:'Path behind the car camping rows is under water, ankle deep, near row H.', at:'Yesterday 11:20 PM', source:'Attendee report', location:'Car camping row H', audio:false}]},
+  {id:'salt', name:'Saltflat', where:'Black Rock Desert, NV', dates:'Oct 9–11', when:'later', mi:410, size:'58 MB', partner:false, county:'Pershing County',
+   feeds:[], alerts:[],
+   site:[['Medical','Center camp, red flag'],['Water refills','Bring your own, none on site'],['Harm reduction','Ask at center camp'],['Exits','Gate road only']],
+   hourly:[['4 PM','sun',78],['5 PM','sun',76],['6 PM','sun',72],['7 PM','cloud',66],['8 PM','cloud',60],['9 PM','cloud',55],['10 PM','sun',50],['11 PM','sun',46]],
+   hazards:[['Heat index','80°','Dry heat'],['Lightning','None','Within 30 mi'],['Wind gusts','30 mph','Dust likely']]},
+  {id:'river', name:'Riverbend', where:'Chattahoochee Hills, GA', dates:'Oct 16–18', when:'later', mi:2130, size:'36 MB', partner:true, county:'Fulton County',
+   feeds:[{n:'Fulton County Fire and EMS', s:'Dispatch'}],
+   alerts:[{id:'river-1', level:'watch', title:'Heat Advisory', until:'7:00 PM Friday', area:'Fulton County', source:'National Weather Service, Peachtree City', at:'Issued 4:00 AM today', relayed:0,
+     text:'Heat index values up to 104 expected. Hot temperatures and high humidity may cause heat illnesses. Drink plenty of fluids, stay in the shade and check on friends.'}],
+   posts:[{t:'Shade tents added near Stage 1', b:'Two new shade structures are up on the hill side of the field.', at:'2:40 PM'}],
+   site:[['Medical','Behind Stage 1'],['Water refills','Three stations'],['Harm reduction','Next to the info booth'],['Exits','Rico Road gate']],
+   hourly:[['4 PM','sun',94],['5 PM','sun',93],['6 PM','cloud',90],['7 PM','storm',85],['8 PM','storm',80],['9 PM','cloud',77],['10 PM','cloud',75],['11 PM','cloud',74]],
+   hazards:[['Heat index','104°','Peak at 4 PM'],['Lightning','12 mi','Moving closer'],['Wind gusts','20 mph','Evening']],
+   incidents:[{id:'river-i1', category:'weather', level:'warning', title:'Weather hazard', summary:'Lightning within eight miles, weather hold on all stages effective now.', at:'6:02 PM', source:'County dispatch, via on-site receiver', audio:true}]},
+  {id:'high', name:'High Desert Frequency', where:'Joshua Tree, CA', dates:'Oct 23–25', when:'later', mi:120, size:'44 MB', partner:false, county:'San Bernardino County',
+   feeds:[{n:'San Bernardino County Fire', s:'Dispatch'}], alerts:[],
+   site:[['Medical','Main lawn, white tent'],['Water refills','Two stations'],['Harm reduction','By the art field'],['Exits','Highway 62 gate']],
+   hourly:[['4 PM','sun',84],['5 PM','sun',82],['6 PM','sun',78],['7 PM','cloud',72],['8 PM','cloud',66],['9 PM','cloud',62],['10 PM','sun',58],['11 PM','sun',55]],
+   hazards:[['Heat index','86°','Peak at 2 PM'],['Lightning','None','Within 30 mi'],['Wind gusts','25 mph','Overnight']]},
+  {id:'north', name:'Northlands', where:'Sultan, WA', dates:'Oct 30 – Nov 1', when:'later', mi:1560, size:'39 MB', partner:true, county:'Snohomish County',
+   feeds:[], alerts:[],
+   posts:[{t:'Rain gear recommended', b:'Showers likely all weekend. Covered stages stay open in rain.', at:'Yesterday'}],
+   site:[['Medical','Lodge, ground floor'],['Water refills','Lodge and both stages'],['Harm reduction','Lodge, upstairs'],['Exits','Main lot and the river trail']],
+   hourly:[['4 PM','cloud',54],['5 PM','cloud',53],['6 PM','storm',51],['7 PM','storm',50],['8 PM','cloud',49],['9 PM','cloud',48],['10 PM','cloud',47],['11 PM','cloud',46]],
+   hazards:[['Heat index','54°','Cool'],['Lightning','None','Within 30 mi'],['Wind gusts','35 mph','Saturday night']]}
+];
+
+const S = {screen:'picker', param:null, stack:[], fest:null, online:true, packs:{}, loc:true, notif:true, relay:true, listening:null, seen:{}, demoCount:0, receiver:false, playingInc:null};
+
+function load(){
+  try{
+    const raw = localStorage.getItem('fieldwatch');
+    if(raw){ const d = JSON.parse(raw); Object.assign(S, {fest:d.fest||null, packs:d.packs||{}, loc:d.loc!==false, notif:d.notif!==false, relay:d.relay!==false}); }
+  }catch(e){}
+  S.demoAlerts = {};
+  S.demoIncidents = {};
+}
+function save(){
+  try{ localStorage.setItem('fieldwatch', JSON.stringify({fest:S.fest, packs:S.packs, loc:S.loc, notif:S.notif, relay:S.relay})); }catch(e){}
+}
+const fest = () => FESTS.find(f => f.id === S.fest);
+const alertsFor = f => (f.alerts || []).concat(S.demoAlerts[f.id] || []);
+const incidentsFor = f => (S.demoIncidents[f.id] || []).concat(f.incidents || []);
+const INC_ICON = {threat:'shield', evacuation:'walk', weather:'storm', flood:'flood', fire:'fire', missing:'person', medical:'cross', crowd:'crowd', traffic:'road'};
+const worst = f => alertsFor(f).some(a => a.level === 'warn') ? 'warn' : alertsFor(f).length ? 'watch' : 'ok';
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+function go(name, param, opts){
+  opts = opts || {};
+  if(!opts.replace) S.stack.push({name:S.screen, param:S.param});
+  if(opts.reset) S.stack = [];
+  S.screen = name; S.param = param || null;
+  render(false); window.scrollTo(0,0);
+}
+function back(){
+  const p = S.stack.pop();
+  if(!p){ S.screen = S.fest ? 'channels' : 'picker'; S.param = null; }
+  else { S.screen = p.name; S.param = p.param; }
+  render(true); window.scrollTo(0,0);
+}
+
+function topbar(left, mid, right){
+  return `<div class="topbar"><div class="side">${left||''}</div><div class="mid">${mid||''}</div><div class="side r">${right||''}</div></div>`;
+}
+const backBtn = () => `<button class="tb" onclick="back()" aria-label="Back">${I.back}</button>`;
+const gearBtn = () => `<button class="tb" onclick="go('settings')" aria-label="Settings">${I.gear}</button>`;
+const sw = (on, action) => `<button class="switch ${on?'on':''}" role="switch" aria-checked="${on}" onclick="act('${action}')"></button>`;
+
+const screens = {};
+
+screens.picker = () => {
+  const row = f => `<button class="row" data-name="${esc(f.name.toLowerCase()+' '+f.where.toLowerCase())}" onclick="act('pick','${f.id}')">
+    <div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.where)}</div></div>
+    <div class="tr"><b>${esc(f.dates)}</b>${f.mi.toLocaleString()} mi</div>${I.chev}</button>`;
+  const next = FESTS.filter(f => f.when === 'next'), later = FESTS.filter(f => f.when !== 'next');
+  return topbar('', '', gearBtn()) + `
+    <h1 class="large">Which festival?</h1>
+    <p class="sub">Pick one and it's ready to work offline.</p>
+    <label class="search">${I.search}<input id="q" type="search" placeholder="Search festivals" autocomplete="off" oninput="filter(this.value)"></label>
+    <div id="list">
+      <div class="sec"><p class="h">Next weekend</p><div class="group">${next.map(row).join('')}</div></div>
+      <div class="sec"><p class="h">Coming up</p><div class="group">${later.map(row).join('')}</div></div>
+      <div id="none" class="empty" hidden><b>No festival by that name</b>Try the town or the state.</div>
+    </div>`;
+};
+function filter(q){
+  q = q.trim().toLowerCase(); let any = false;
+  document.querySelectorAll('#list .sec').forEach(sec => {
+    let n = 0;
+    sec.querySelectorAll('.row').forEach(r => { const hit = !q || r.dataset.name.includes(q); r.hidden = !hit; if(hit) n++; });
+    sec.hidden = n === 0; any = any || n > 0;
+  });
+  document.getElementById('none').hidden = any;
+}
+
+screens.download = () => {
+  const f = fest();
+  const steps = [['Site map', '31 MB'], ['Three-day forecast', '2 MB'], ['Medical, water and exits', '1 MB'], ['Alert history', '7 MB']];
+  return topbar(`<button class="tb" onclick="go('picker',null,{replace:true})">${I.back}</button>`, '', '') + `
+    <h1 class="large">${esc(f.name)}</h1>
+    <p class="sub">${esc(f.where)}, ${esc(f.dates)}</p>
+    <div class="card">
+      <h3 id="dl-title">Getting it ready for offline</h3>
+      <p id="dl-sub">Everything below stays on your phone.</p>
+      <div class="prog"><i id="dl-bar"></i></div>
+      ${steps.map((s,i) => `<div class="step" id="st${i}"><span class="ck">${I.check}</span><span style="flex:1">${s[0]}</span><span style="font-size:14px">${s[1]}</span></div>`).join('')}
+    </div>`;
+};
+function runDownload(){
+  const f = fest(); let i = 0;
+  const tick = () => {
+    if(S.screen !== 'download') return;
+    const bar = document.getElementById('dl-bar'); if(!bar) return;
+    bar.style.width = ((i+1)/4*100) + '%';
+    const st = document.getElementById('st'+i); if(st) st.classList.add('done');
+    i++;
+    if(i < 4) setTimeout(tick, 550);
+    else {
+      document.getElementById('dl-title').textContent = 'Ready';
+      document.getElementById('dl-sub').textContent = f.size + ' saved. Works with no signal.';
+      S.packs[f.id] = f.size; save();
+      setTimeout(() => go('channels', null, {replace:true, reset:true}), 700);
+    }
+  };
+  setTimeout(tick, 400);
+}
+
+screens.channels = () => {
+  const f = fest(); const al = alertsFor(f); const lv = worst(f);
+  const head = lv === 'warn' ? al.find(a => a.level === 'warn').title
+             : lv === 'watch' ? (al.length === 1 ? al[0].title : al.length + ' advisories in effect') : 'All clear';
+  const sub = lv === 'ok' ? 'No weather alerts for ' + f.county + '.' : (lv === 'warn' ? 'Take shelter now. Stages and tents are not safe shelter.' : 'Until ' + al[0].until + '. Tap for details.');
+  const unseenW = S.seen[f.id+'w'] ? 0 : al.length;
+  const unseenO = S.seen[f.id+'o'] ? 0 : (f.posts || []).length;
+  const nearby = S.relay ? 4 + (f.id.length % 5) : 0;
+  const onlineSub = S.online ? 'Live' : 'Offline';
+  return topbar(`<button class="tb" onclick="go('picker')">${I.back}<span>Change</span></button>`, '', gearBtn()) + `
+    <h1 class="large">${esc(f.name)}</h1>
+    <p class="sub">${esc(f.where)}, ${esc(f.dates)}</p>
+    <button class="pill ${S.online?'':'off'}" onclick="act('toggleOnline')"><i></i>${onlineSub}${S.online ? '' : ', updated 2 h ago'}</button>
+    <button class="status ${lv}" style="width:100%;text-align:left" onclick="${lv==='ok' ? "go('weather')" : "go('alert','"+(lv==='warn' ? al.find(a=>a.level==='warn').id : al[0].id)+"')"}">
+      <h2>${esc(head)}</h2><p>${esc(sub)}</p>
+      ${lv === 'ok' ? `<div class="tap">${S.online ? 'Checked just now' : 'Last checked 2 h ago, before signal dropped'}</div>` : ''}
+    </button>
+    <p class="h">Channels</p>
+    <div class="group">
+      <button class="row" onclick="go('weather')"><span class="dot ${lv}"></span><div class="main"><div class="t">Weather</div><div class="s">${al.length ? al.length + ' active alert' + (al.length>1?'s':'') : 'Forecast and hazards'}</div></div>${unseenW ? `<span class="badge">${unseenW}</span>` : ''}${I.chev}</button>
+      <button class="row" onclick="go('official')"><div class="main"><div class="t">Festival official</div><div class="s">${f.partner ? 'Updates from the festival' : 'Site info, not yet partnered'}</div></div>${unseenO ? `<span class="badge">${unseenO}</span>` : ''}${I.chev}</button>
+      <button class="row" onclick="go('incidents')"><div class="main"><div class="t">Incidents</div><div class="s">${S.receiver ? 'Receiver on site, live from county dispatch' : 'County dispatch and attendee reports'}</div></div>${(S.seen[f.id+'i'] ? 0 : incidentsFor(f).length) ? `<span class="badge">${incidentsFor(f).length}</span>` : ''}${I.chev}</button>
+      <button class="row" onclick="go('relay')"><div class="main"><div class="t">Attendee relay</div><div class="s">${S.relay ? 'Sharing alerts with ' + nearby + ' phones nearby' : 'Off'}</div></div>${I.chev}</button>
+      ${f.feeds.length ? `<button class="row" onclick="go('audio')"><div class="main"><div class="t">Live audio</div><div class="s">${S.online ? f.feeds.length + ' public feed' + (f.feeds.length>1?'s':'') + ' for ' + f.county : 'Needs a connection'}</div></div>${I.chev}</button>` : ''}
+    </div>
+    <p class="note">Emergency alerts from your carrier still arrive on their own, even when this app has no data.</p>`;
+};
+
+screens.weather = () => {
+  const f = fest(); S.seen[f.id+'w'] = true; const al = alertsFor(f);
+  return topbar(backBtn(), '', '') + `
+    <h1 class="large">Weather</h1>
+    <p class="sub">${esc(f.county)}</p>
+    ${al.length ? `<p class="h">Active alerts</p><div class="group">${al.map(a => `<button class="row" onclick="go('alert','${a.id}')"><span class="dot ${a.level}"></span><div class="main"><div class="t">${esc(a.title)}</div><div class="s">Until ${esc(a.until)}</div></div>${I.chev}</button>`).join('')}</div>`
+                : `<div class="card"><h3>No active alerts</h3><p>Nothing in effect for ${esc(f.county)} right now.</p></div>`}
+    <p class="h">Tonight</p>
+    <div class="hourly">${f.hourly.map(h => `<div class="hr"><div class="tm">${h[0]}</div>${I[h[1]]}<div class="tp">${h[2]}°</div></div>`).join('')}</div>
+    <div class="tiles">${f.hazards.map(h => `<div class="tile"><div class="k">${h[0]}</div><div class="v">${h[1]}</div><div class="n">${h[2]}</div></div>`).join('')}</div>
+    <p class="note">National Weather Service. ${S.online ? 'Updated just now.' : 'Last updated 2 h ago, before signal dropped.'}</p>`;
+};
+
+screens.official = () => {
+  const f = fest(); S.seen[f.id+'o'] = true;
+  return topbar(backBtn(), '', '') + `
+    <h1 class="large">Festival official</h1>
+    <p class="sub">${esc(f.name)}</p>
+    ${f.partner ? `<p class="h">Updates</p><div class="group">${f.posts.map(p => `<div class="post"><div class="t">${esc(p.t)}</div><div class="b">${esc(p.b)}</div><div class="at">${esc(p.at)}</div></div>`).join('')}</div>`
+                : `<div class="card"><h3>This festival hasn't joined yet</h3><p>When it does, staff updates and evacuation notices show up here. The site info below came with your download.</p></div>`}
+    <p class="h">On site</p>
+    <div class="group">${f.site.map(s => `<div class="row"><div class="main"><div class="t">${esc(s[0])}</div><div class="s">${esc(s[1])}</div></div></div>`).join('')}</div>`;
+};
+
+screens.incidents = () => {
+  const f = fest(); S.seen[f.id+'i'] = true; const list = incidentsFor(f);
+  return topbar(backBtn(), '', '') + `
+    <h1 class="large">Incidents</h1>
+    <p class="sub">Last 48 hours</p>
+    <div class="group"><div class="row"><span class="dot ${S.receiver ? 'ok' : ''}" style="${S.receiver ? '' : 'background:var(--muted)'}"></span>
+      <div class="main"><div class="t">${S.receiver ? 'Receiver on site' : 'No receiver nearby'}</div>
+      <div class="s">${S.receiver ? 'Connected to the volunteer receiver. Works with no signal.' : "Join the receiver's Wi-Fi to get county dispatch with no signal."}</div></div></div></div>
+    ${list.length ? `<div class="group">${list.map(i => { const on = S.playingInc === i.id; return `
+      <div class="row" style="align-items:flex-start">
+        <span style="width:28px;flex:none;color:${i.level === 'warning' ? 'var(--warn)' : 'var(--watch)'};margin-top:2px"><span style="display:block;width:22px;height:22px">${I[INC_ICON[i.category]] || I.bell}</span></span>
+        <div class="main" onclick="go('incident','${i.id}')"><div class="t">${esc(i.title)}</div><div class="s">${esc(i.summary)}</div><div class="s" style="font-size:13px;margin-top:4px">${esc(i.at)}${i.location ? ', ' + esc(i.location) : ''} · ${esc(i.source)}</div></div>
+        ${i.audio ? `<button class="play ${on ? 'on' : ''}" style="width:34px;height:34px" onclick="act('playInc','${i.id}')" aria-label="${on ? 'Stop' : 'Play'}">${on ? I.stop : I.play}</button>` : ''}
+      </div>`; }).join('')}</div>`
+             : `<div class="card"><h3>Nothing reported</h3><p>Nothing in the last 48 hours for this festival.</p></div>`}
+    <p class="note">Only safety-relevant traffic is kept: weather holds, flooding, closures, medical surges, security incidents. Names and numbers are removed.</p>
+    <button class="btn quiet" onclick="go('report')" ${S.online ? '' : 'disabled style="opacity:.5"'}>Report something you're seeing</button>
+    <p class="note" style="margin-top:0">${S.online ? 'Reports are checked by a person before they go out.' : 'Reporting needs a connection.'}</p>`;
+};
+
+screens.incident = id => {
+  const f = fest(); const i = incidentsFor(f).find(x => x.id === id);
+  if(!i) return topbar(backBtn(), '', '') + `<div class="empty"><b>Not found</b></div>`;
+  return topbar(backBtn(), '', '') + `
+    <div class="alerthead ${i.level === 'warning' ? 'warn' : 'watch'}"><div class="lv">${i.level === 'warning' ? 'Warning' : 'Advisory'}</div><h2>${esc(i.title)}</h2><p>${esc(i.at)}</p></div>
+    <div class="body">${esc(i.summary)}</div>
+    <div class="group">
+      <div class="kv"><span>Where</span><span>${esc(i.location || f.name)}</span></div>
+      <div class="kv"><span>Source</span><span>${esc(i.source)}</span></div>
+      <div class="kv"><span>Audio</span><span>${i.audio ? '12-second clip, names removed' : 'None'}</span></div>
+    </div>
+    <p class="note">Saved on your phone. You can open this with no signal.</p>`;
+};
+
+screens.report = () => topbar(backBtn(), 'Report', '') + `
+  <p class="h" style="margin-top:14px">What's happening</p>
+  <div class="group"><div class="row"><textarea id="rep-text" rows="3" placeholder="Flooded path behind Stage 2, knee deep" style="flex:1;border:0;background:none;font:inherit;color:inherit;resize:none;outline:none"></textarea></div></div>
+  <p class="h">Where</p>
+  <div class="group"><div class="row"><input id="rep-where" placeholder="Stage, camp, gate" style="flex:1;border:0;background:none;outline:none"></div></div>
+  <button class="btn" onclick="act('sendReport')">Send report</button>
+  <p class="note">Checked by a person before it goes out. Nothing about you is sent.</p>`;
+
+screens.relay = () => {
+  const f = fest(); const nearby = S.relay ? 4 + (f.id.length % 5) : 0;
+  const rel = alertsFor(f).filter(a => a.relayed);
+  return topbar(backBtn(), '', '') + `
+    <h1 class="large">Attendee relay</h1>
+    <p class="sub">Alerts hop phone to phone when there's no signal.</p>
+    <div class="group">
+      <div class="row"><div class="main"><div class="t">Relay alerts nearby</div><div class="s">Uses Bluetooth, about 1% battery an hour</div></div>${sw(S.relay,'toggleRelay')}</div>
+    </div>
+    <div class="card" style="text-align:center;padding:26px 16px"><div class="big">${nearby}</div><p style="margin-top:6px">${S.relay ? 'phones within reach' : 'Relay is off'}</p></div>
+    <p class="h">Received from nearby phones</p>
+    ${rel.length ? `<div class="group">${rel.map(a => `<button class="row" onclick="go('alert','${a.id}')"><span class="dot ${a.level}"></span><div class="main"><div class="t">${esc(a.title)}</div><div class="s">From ${a.relayed} phone${a.relayed>1?'s':''} nearby</div></div>${I.chev}</button>`).join('')}</div>`
+                : `<div class="card"><h3>Nothing relayed yet</h3><p>Anyone nearby who catches a bar of signal passes new alerts to you automatically.</p></div>`}`;
+};
+
+screens.audio = () => {
+  const f = fest();
+  return topbar(backBtn(), '', '') + `
+    <h1 class="large">Live audio</h1>
+    <p class="sub">Public safety feeds for ${esc(f.county)}</p>
+    ${S.online ? '' : `<div class="card"><h3>Needs a connection</h3><p>These feeds stream over the internet. They'll play again when signal comes back.</p></div>`}
+    <div class="group">${f.feeds.map((fd, i) => { const on = S.listening === i; return `
+      <div class="row"><button class="play ${on?'on':''}" ${S.online?'':'disabled style="opacity:.4"'} onclick="act('listen',${i})" aria-label="${on?'Stop':'Play'}">${on ? I.stop : I.play}</button>
+      <div class="main"><div class="t">${esc(fd.n)}${on ? `<span class="bars"><i></i><i></i><i></i><i></i></span>` : ''}</div><div class="s">${on ? 'Listening' : esc(fd.s)}</div></div></div>`; }).join('')}</div>
+    <p class="note">Feeds are run by volunteers and cover the county, not the festival. Some areas have none.</p>`;
+};
+
+screens.alert = id => {
+  const f = fest(); const a = alertsFor(f).find(x => x.id === id);
+  if(!a) return topbar(backBtn(), '', '') + `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`;
+  const lvl = a.level === 'warn' ? 'Warning' : 'Advisory';
+  return topbar(backBtn(), '', `<button class="tb" onclick="act('share','${a.id}')">Share</button>`) + `
+    <div class="alerthead ${a.level}"><div class="lv">${lvl}</div><h2>${esc(a.title)}</h2><p>Until ${esc(a.until)}</p></div>
+    <div class="body">${esc(a.text).replace(/\n\n/g,'<br><br>')}</div>
+    <div class="group">
+      <div class="kv"><span>Area</span><span>${esc(a.area)}</span></div>
+      <div class="kv"><span>Source</span><span>${esc(a.source)}</span></div>
+      <div class="kv"><span>Issued</span><span>${esc(a.at)}</span></div>
+      <div class="kv"><span>Received</span><span>${a.via || 'Directly, over data'}</span></div>
+    </div>
+    <p class="note">Saved on your phone. You can open this with no signal.</p>`;
+};
+
+screens.settings = () => {
+  const packs = Object.keys(S.packs);
+  return topbar(backBtn(), 'Settings', '') + `
+    <p class="h" style="margin-top:14px">Permissions</p>
+    <div class="group">
+      <div class="row"><div class="main"><div class="t">Location</div><div class="s">Sorts festivals by distance</div></div>${sw(S.loc,'toggleLoc')}</div>
+      <div class="row"><div class="main"><div class="t">Notifications</div><div class="s">Weather and festival alerts</div></div>${sw(S.notif,'toggleNotif')}</div>
+    </div>
+    <p class="h">On-site receiver</p>
+    <div class="group"><div class="row"><span class="dot ${S.receiver ? 'ok' : ''}" style="${S.receiver ? '' : 'background:var(--muted)'}"></span><div class="main"><div class="t">${S.receiver ? 'Connected to a receiver' : 'No receiver on this network'}</div></div></div></div>
+    <p class="note">A receiver is a small box a volunteer runs on site. Join its Wi-Fi by scanning the QR code on the box and this phone finds it automatically.</p>
+    <p class="h">Saved for offline</p>
+    <div class="group">${packs.length ? packs.map(id => { const f = FESTS.find(x => x.id === id); return `<div class="row"><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${f.size}</div></div><button class="link" onclick="act('remove','${id}')">Remove</button></div>`; }).join('')
+                              : `<div class="row"><div class="main"><div class="s">Nothing saved yet</div></div></div>`}</div>
+    <p class="h">Try it out</p>
+    <div class="group">
+      <button class="row" onclick="act('demoAlert')"><div class="main"><div class="t">Simulate a severe storm alert</div><div class="s">${S.fest ? 'Shows how an incoming warning looks' : 'Pick a festival first'}</div></div>${I.chev}</button>
+      <button class="row" onclick="act('demoIncident')"><div class="main"><div class="t">Simulate a dispatch incident</div><div class="s">A radio call picked up by the receiver</div></div>${I.chev}</button>
+      <button class="row" onclick="act('toggleReceiver')"><div class="main"><div class="t">${S.receiver ? 'Leave the receiver Wi-Fi' : 'Simulate joining a receiver'}</div><div class="s">${S.receiver ? 'Connected to the on-site receiver' : 'As if you scanned the QR code on the box'}</div></div>${I.chev}</button>
+      <button class="row" onclick="act('toggleOnline')"><div class="main"><div class="t">${S.online ? 'Simulate losing signal' : 'Bring signal back'}</div><div class="s">Currently ${S.online ? 'online' : 'offline'}</div></div>${I.chev}</button>
+      <button class="row" onclick="act('reset')"><div class="main"><div class="t">Reset the prototype</div></div>${I.chev}</button>
+    </div>
+    <p class="note">No account, no login. Nothing here leaves your phone.</p>`;
+};
+
+function act(name, p){
+  const f = fest();
+  switch(name){
+    case 'pick': S.fest = p; S.seen = {}; S.listening = null; save(); S.packs[p] ? go('channels', null, {reset:true}) : go('download'); break;
+    case 'toggleOnline': S.online = !S.online; S.listening = null; render(); toast(S.online ? 'Back online' : 'No signal. Saved data still works.'); break;
+    case 'toggleRelay': S.relay = !S.relay; save(); render(); break;
+    case 'toggleLoc': S.loc = !S.loc; save(); render(); break;
+    case 'toggleNotif': S.notif = !S.notif; save(); render(); break;
+    case 'listen': S.listening = S.listening === p ? null : p; render(); break;
+    case 'remove': delete S.packs[p]; if(S.fest === p) S.fest = null; save(); render(); toast('Removed'); break;
+    case 'reset': S.fest = null; S.packs = {}; S.demoAlerts = {}; S.online = true; S.seen = {}; save(); S.stack = []; go('picker', null, {replace:true}); toast('Reset'); break;
+    case 'share': share(p); break;
+    case 'playInc': S.playingInc = S.playingInc === p ? null : p; render(); break;
+    case 'toggleReceiver': S.receiver = !S.receiver; render(); toast(S.receiver ? 'Receiver found on this network' : 'Receiver disconnected'); break;
+    case 'sendReport': { const t = (document.getElementById('rep-text')||{}).value || ''; if(t.trim().length < 8){ toast('Say a little more'); return; } back(); toast('Sent for review'); break; }
+    case 'demoIncident': if(!f){ toast('Pick a festival first'); return; } demoIncident(f); break;
+    case 'demoAlert': if(!f){ toast('Pick a festival first'); return; } demoAlert(f); break;
+  }
+}
+
+function demoIncident(f){
+  S.demoCount++;
+  const i = {id:'demo-inc-'+S.demoCount, category:'evacuation', level:'warning', title:'Evacuation notice', summary:'Command to all units: clear the main stage field, high winds, move everyone to the vehicle lots now.', at:'Just now', source:S.receiver ? 'County dispatch, via on-site receiver' : 'County dispatch', audio:true};
+  S.demoIncidents[f.id] = [i].concat(S.demoIncidents[f.id] || []);
+  S.seen[f.id+'i'] = false;
+  if(S.screen !== 'settings') render();
+  showBanner({id:i.id, title:i.title, text:i.summary, incident:true});
+  if(navigator.vibrate){ try{ navigator.vibrate([80,60,80]); }catch(e){} }
+}
+function demoAlert(f){
+  S.demoCount++;
+  const a = {id:'demo-'+S.demoCount, level:'warn', title:'Severe Thunderstorm Warning', until:'7:30 PM tonight', area:f.county, source:'National Weather Service', at:'Issued 6:42 PM today',
+    relayed: S.online ? 0 : 5, via: S.online ? 'Directly, over data' : 'From 5 phones nearby',
+    text:'At 6:42 PM, a severe thunderstorm was located 9 miles southwest of the festival grounds, moving northeast at 25 mph.\n\nHazards: 60 mph wind gusts and quarter-size hail. Expect damage to tents, shade structures and stage rigging.\n\nGet inside a vehicle or a sturdy building. Stages, tents and shade structures are not safe shelter.'};
+  S.demoAlerts[f.id] = (S.demoAlerts[f.id] || []).concat(a);
+  S.seen[f.id+'w'] = false;
+  if(S.screen !== 'settings') render();
+  showBanner(a);
+  if(navigator.vibrate){ try{ navigator.vibrate([80,60,80]); }catch(e){} }
+}
+let bannerTimer;
+function showBanner(a){
+  const b = document.getElementById('banner');
+  b.innerHTML = `<span class="ic">${I.bell}</span><span class="m"><span class="app"><span>Fieldwatch</span><span>now</span></span><span class="t">${esc(a.title)}</span><span class="b">${esc(a.text.split('\n')[0])}</span></span>`;
+  b.onclick = () => { hideBanner(); go(a.incident ? 'incident' : 'alert', a.id); };
+  requestAnimationFrame(() => b.classList.add('show'));
+  clearTimeout(bannerTimer); bannerTimer = setTimeout(hideBanner, 7000);
+}
+function hideBanner(){ document.getElementById('banner').classList.remove('show'); }
+
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+async function share(id){
+  const a = alertsFor(fest()).find(x => x.id === id); if(!a) return;
+  const text = a.title + ' until ' + a.until + ' for ' + a.area + '. ' + a.text.split('\n')[0];
+  try{
+    if(navigator.share){ await navigator.share({title:a.title, text}); return; }
+    await navigator.clipboard.writeText(text); toast('Copied');
+  }catch(e){ if(e && e.name !== 'AbortError') toast('Couldn\'t share on this device'); }
+}
+
+function render(rev){
+  const app = document.getElementById('app');
+  const fn = screens[S.screen] || screens.picker;
+  app.innerHTML = `<div class="screen in ${rev?'rev':''}">${fn(S.param)}</div>`;
+  if(S.screen === 'download') runDownload();
+}
+
+load();
+if(S.fest && S.packs[S.fest]) S.screen = 'channels';
+render();
+</script>
+</body>
+</html>

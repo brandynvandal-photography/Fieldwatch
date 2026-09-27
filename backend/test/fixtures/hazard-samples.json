@@ -1,0 +1,14 @@
+[
+  { "text": "Units be advised, lightning within eight miles, weather hold on the main stage", "category": "weather", "level": "warning" },
+  { "text": "Shots fired near the north gate, multiple callers", "category": "threat", "level": "warning" },
+  { "text": "Command to all units, evacuate the campground, move everyone to the parking lots", "category": "evacuation", "level": "warning" },
+  { "text": "Crowd surge at the barricade front of house, barricade down", "category": "crowd", "level": "warning" },
+  { "text": "The tunnel is flooding again, standing water knee deep", "category": "flood", "level": "advisory" },
+  { "text": "Smoke showing from a tent in the east camp", "category": "fire", "level": "advisory" },
+  { "text": "Missing child, six years old, last seen near the ferris wheel", "category": "missing", "level": "advisory" },
+  { "text": "Medic 2, unresponsive male behind stage two, possible overdose", "category": "medical", "level": "advisory" },
+  { "text": "Route 129 closed at the bridge, gridlock back to the interstate", "category": "traffic", "level": "advisory" },
+  { "text": "Engine 4 clear, returning to quarters", "category": null, "level": null },
+  { "text": "Copy, unit 12 en route to the command post", "category": null, "level": null },
+  { "text": "", "category": null, "level": null }
+]
