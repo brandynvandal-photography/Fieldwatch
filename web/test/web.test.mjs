@@ -64,6 +64,7 @@ test('the picker lists the real festivals, dated and grouped by how soon they st
   const headings = await page.$$eval('p.h', els => els.map(e => e.textContent));
   assert.deepEqual(headings, ['Coming up', 'Later this season']);
   assert.match(await page.textContent('body'), /Oct 1 – Oct 4/, 'Aftershock ends on the 4th, not at the midnight stamp on the 5th');
+  assert.match(await page.textContent('button.row:has-text("Sick New World")'), /Oct 24(?! –)/, 'a one-day festival shows one date');
   assert.match(await page.textContent('p.note'), /checked 2026-09-27/);
   await shot(page, '1-picker');
   assert.deepEqual(seen.errors, []);

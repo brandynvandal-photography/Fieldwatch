@@ -239,7 +239,7 @@ function ago(iso){
   return (h < 48 ? h + ' h ago' : Math.round(h / 24) + ' days ago');
 }
 // End stamps sit at local midnight after the last day, so nudge back six hours before naming the day.
-const fmtRange = f => `${fmtDay(f.startDate)} – ${fmtDay(new Date(Date.parse(f.endDate) - 6 * 3600000))}`;
+const fmtRange = f => { const a = fmtDay(f.startDate), b = fmtDay(new Date(Date.parse(f.endDate) - 6 * 3600000)); return a === b ? a : `${a} – ${b}`; };
 
 // ---- weather data (mirrors backend/src/nws.js and NWSClient.swift) ----------------------------------
 async function getJSON(url, headers){
