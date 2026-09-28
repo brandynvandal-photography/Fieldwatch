@@ -60,9 +60,39 @@ The phone also polls `/alerts` when it's open, and falls back to NWS directly if
 
 ## Deploying
 
-Any host that runs Node and keeps a disk works (Fly.io, Railway, a small VPS). Mount a volume for `DB_PATH` and `AUDIO_DIR`. Run one instance; the poller isn't built to coordinate across several. Behind a proxy, set `TRUST_PROXY` to the hop count so the report rate limit sees phones, not the load balancer.
+One Node process with a disk. Run a single instance: the poller and the radar loop are not built to coordinate across several. The `Dockerfile` here is what hosts build from, and an empty database seeds itself from `data/festivals.json` on first boot, so there is no separate seed step.
 
-Push is optional: leave the `APNS_*` lines commented out until there's a key, and the server starts without it (alerts are stored and served, just not pushed).
+### Railway, from a phone
+
+1. railway.com, New Project, Deploy from GitHub repo, pick `Fieldwatch`.
+2. Service, Settings, Source: set Root Directory to `backend`. Railway finds the Dockerfile there.
+3. Add a Volume to the project and attach it to the service with mount path `/data`.
+4. Service, Variables, Raw Editor, paste (fill in your own keys and contact):
+
+   ```
+   DB_PATH=/data/fieldwatch.db
+   AUDIO_DIR=/data/audio
+   RADAR_DIR=/data/radar
+   ADMIN_KEY=a-long-random-string
+   NODE_KEY=another-long-random-string
+   NWS_USER_AGENT=Fieldwatch (your-contact@example.com)
+   TRUST_PROXY=1
+   CORS_ORIGIN=*
+   ```
+
+   Railway sets `PORT` itself. `NWS_USER_AGENT` is required by the weather service and must carry a way to contact you. `CORS_ORIGIN` can be narrowed to the web build's origin (for GitHub Pages, `https://<user>.github.io`) once you are done trying it from other places; the API sets no cookies, so `*` is safe.
+5. Settings, Networking, Generate Domain. Open `https://<that domain>/health` and you should see `{"ok":true,...}`.
+6. In the web build: Settings, Backend, paste that domain. Radar then comes from this server's 10-minute frames and the Incidents screen turns on.
+
+Deploys again on every push to `main` that touches `backend/`.
+
+### Elsewhere
+
+- Fly.io: `fly launch` inside `backend/`, `fly volumes create data`, mount it at `/data`, same variables. Needs the CLI, so a computer.
+- Render: works with the same Dockerfile and a disk at `/data`, but the free tier sleeps between requests and the poller sleeps with it. Use a paid instance.
+- A VPS: `npm ci --omit=dev`, the `.env` from `.env.example`, `node src/server.js` under systemd, nginx in front with `TRUST_PROXY=1`.
+
+Push is optional everywhere: leave the `APNS_*` lines out until there is a key, and the server starts without them (alerts are stored and served, just not pushed).
 
 ## Radar
 

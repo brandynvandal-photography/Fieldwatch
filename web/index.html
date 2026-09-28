@@ -88,7 +88,6 @@ a{color:var(--accent)}
 .tb{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:42px;min-width:42px;padding:0 14px;border-radius:999px;color:var(--ink);font-weight:600;font-size:15px}
 .tb.icon{width:42px;padding:0}
 .tb svg{width:20px;height:20px}
-.tb:active{transform:scale(.96)}
 .tb[disabled]{opacity:.45}
 .tb.spin svg{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -116,7 +115,6 @@ button.row:active{background:rgba(255,255,255,.35)}
 .card h3{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:22px;line-height:1.1;margin-bottom:6px}
 .card p{color:var(--muted);font-size:15px;line-height:1.45;max-width:32ch;margin:0 auto}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;padding:12px 22px;border-radius:999px;background:var(--grad);color:#fff;font-weight:700;font-size:17px;box-shadow:0 12px 30px rgba(155,123,255,.38);margin-bottom:12px;text-align:center}
-.btn:active{transform:scale(.98)}
 .btn.quiet{background:var(--glass);color:var(--ink);box-shadow:var(--shadow-2);border:1px solid var(--glass-border)}
 .search{display:flex;align-items:center;gap:10px;border-radius:999px;padding:12px 18px;margin-bottom:24px}
 .search svg{width:18px;height:18px;color:var(--muted);flex:none}
@@ -140,8 +138,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 /* Bubbles: a colour lit from behind, frosted in front. */
 .bubble{position:relative;display:block;width:100%;padding:0;text-align:center;isolation:isolate}
 .bubble .glow{position:absolute;left:10%;right:10%;top:4%;bottom:12%;border-radius:50%;background:radial-gradient(circle at 50% 40%,hsl(var(--hue) 96% 66% / .95),hsl(calc(var(--hue) + 45) 96% 70% / .55) 48%,transparent 74%);filter:blur(16px);z-index:-1}
-.bubble .glass{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:136px;padding:18px 12px;border-radius:32px;transition:transform .15s}
-.bubble:active .glass{transform:scale(.97)}
+.bubble .glass{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:136px;padding:18px 12px;border-radius:32px}
 .bubble .t{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:22px;line-height:1.08;letter-spacing:-.01em;text-wrap:balance}
 .bubble .d{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .bubble .ph{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:hsl(var(--hue) 70% 36%);margin-top:2px}
@@ -152,8 +149,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .orbrow{display:flex;justify-content:center;gap:14px;margin:22px 0 26px}
 .orb{display:flex;flex-direction:column;align-items:center;gap:9px;position:relative;isolation:isolate;padding:0;width:98px;text-align:center}
 .orb .glow{position:absolute;left:12px;right:12px;top:-4px;height:96px;border-radius:50%;background:radial-gradient(circle,hsl(var(--hue) 96% 66% / .95),transparent 70%);filter:blur(14px);z-index:-1}
-.orb .glass{width:86px;height:86px;border-radius:50%;display:grid;place-items:center;color:var(--ink);transition:transform .15s}
-.orb:active .glass{transform:scale(.95)}
+.orb .glass{width:86px;height:86px;border-radius:50%;display:grid;place-items:center;color:var(--ink)}
 .orb .glass svg{width:30px;height:30px}
 .orb .l{font-size:13px;font-weight:600}
 .orb .badge{position:absolute;top:-2px;right:8px}
@@ -246,7 +242,6 @@ button.row:active{background:rgba(255,255,255,.35)}
 .rctl{display:flex;align-items:center;gap:12px;margin:2px 0 0}
 .play{width:50px;height:50px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;flex:none;box-shadow:0 8px 22px rgba(155,123,255,.4)}
 .play svg{width:20px;height:20px}
-.play:active{transform:scale(.95)}
 .scrubwrap{flex:1;min-width:0}
 input[type=range].scrub{-webkit-appearance:none;appearance:none;width:100%;height:36px;background:transparent;margin:0}
 input[type=range].scrub::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:rgba(155,123,255,.28)}
@@ -261,6 +256,19 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,16px);opacity:0;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;max-width:calc(100% - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .link{color:var(--accent);font-weight:600;text-decoration:none}
+
+/* Touch feel: squish on press, spring back on release, and the light behind it flares. */
+.bubble>.glass,.orb>.glass,.sky>.glass,.mark>.glass,.btn,.tb,.play,button.row,button.alert{transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .16s,background-color .16s;will-change:transform}
+.bubble>.glow,.orb>.glow,.sky>.glow{transition:transform .22s cubic-bezier(.2,.8,.2,1),filter .22s,opacity .22s}
+.pressed>.glass,.btn.pressed,.tb.pressed,.play.pressed,button.row.pressed,button.alert.pressed{transform:scale(.94)}
+.pressed>.glow{transform:scale(1.14);filter:blur(12px);opacity:1}
+button.row.pressed,button.alert.pressed{background:rgba(255,255,255,.35)}
+@media (prefers-reduced-motion:no-preference){
+  .pop>.glass,.btn.pop,.tb.pop,.play.pop,button.row.pop,button.alert.pop{animation:pop .42s cubic-bezier(.2,.8,.2,1)}
+  .pop>.glow{animation:flare .55s ease-out}
+  @keyframes pop{0%{transform:scale(.94)}45%{transform:scale(1.045)}72%{transform:scale(.99)}100%{transform:scale(1)}}
+  @keyframes flare{0%{transform:scale(1.14);opacity:1;filter:blur(12px)}100%{transform:scale(1);opacity:.95;filter:blur(16px)}}
+}
 </style>
 </head>
 <body>
@@ -464,6 +472,28 @@ function fitStage(){
 }
 window.addEventListener('resize', fitStage);
 
+// ---- touch feel ----------------------------------------------------------------------------------------------
+const MOTION = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const PRESSABLE = '.bubble, .orb, .sky, .btn, .tb, .play, button.row, button.alert';
+const buzz = ms => { try { if (navigator.vibrate) navigator.vibrate(ms); } catch(e) {} };
+let pressedEl = null;
+document.addEventListener('pointerdown', e => {
+  const el = e.target.closest(PRESSABLE); if (!el || el.disabled) return;
+  pressedEl = el; el.classList.add('pressed'); buzz(8);
+}, { passive: true });
+function release(e){
+  const el = pressedEl; if (!el) return; pressedEl = null;
+  el.classList.remove('pressed');
+  if (e.type === 'pointerup' && MOTION) {
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    el.addEventListener('animationend', () => el.classList.remove('pop'), { once: true });
+  }
+}
+document.addEventListener('pointerup', release, { passive: true });
+document.addEventListener('pointercancel', release, { passive: true });
+/** Let the spring play before the screen changes. */
+const later = fn => setTimeout(fn, MOTION ? 160 : 0);
+
 // ---- navigation ------------------------------------------------------------------------------------------
 function go(name, param, opts){
   opts = opts || {};
@@ -481,7 +511,7 @@ function back(){
   else { S.screen = p.name; S.param = p.param; }
   render(true); window.scrollTo(0, 0);
 }
-function pick(id){ S.fest = id; save(); go('home', null, { reset: true }); refresh(fest()); }
+function pick(id){ later(() => { S.fest = id; save(); go('home', null, { reset: true }); refresh(fest()); }); }
 function changeFestival(){ S.fest = null; save(); go('picker', null, { reset: true }); }
 
 // ---- icons: one stroke family, 1.9px, rounded ------------------------------------------------------------
@@ -618,7 +648,7 @@ const topbar = (l, m, r) => `<div class="topbar"><div class="side">${l || ''}</d
 const backBtn = label => `<button class="tb glass ${label ? '' : 'icon'}" onclick="back()" aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ''}</button>`;
 const gearBtn = () => `<button class="tb glass icon" onclick="go('settings')" aria-label="Settings">${I.gear}</button>`;
 const refreshBtn = () => `<button class="tb glass icon ${S.busy ? 'spin' : ''}" onclick="refresh(fest())" aria-label="Refresh" ${S.busy ? 'disabled' : ''}>${I.refresh}</button>`;
-const orb = (label, icon, h, onclick, badge) => `<button class="orb" style="--hue:${h}" onclick="${onclick}"><i class="glow"></i><span class="glass">${icon}</span><span class="l">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
+const orb = (label, icon, h, onclick, badge) => `<button class="orb" style="--hue:${h}" onclick="later(function(){ ${onclick} })"><i class="glow"></i><span class="glass">${icon}</span><span class="l">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
 function statusLine(f){
   const d = data(f);
   if (S.busy && !d.at) return 'Checking the sky';
@@ -643,7 +673,7 @@ screens.welcome = () => topbar('', '', '') + `
     <button class="btn" onclick="start()">Find your festival</button>
     <p class="note">No account. Nothing tracked.</p>
   </div>`;
-function start(){ S.welcomed = true; save(); go('picker', null, { reset: true }); }
+function start(){ later(() => { S.welcomed = true; save(); go('picker', null, { reset: true }); }); }
 
 screens.picker = () => {
   const q = S.query.trim().toLowerCase();
@@ -682,7 +712,7 @@ screens.home = () => {
   const glow = lv === 'ok' ? 'var(--ok)' : lv === 'none' ? 'var(--muted)' : 'var(--violet)';
   const sky = lv === 'loading'
     ? `<div class="sky none" style="--c:var(--violet)" aria-busy="true"><i class="glow"></i><span class="glass"><div class="sk" style="width:38%;height:12px;margin:0 auto 12px"></div><div class="sk" style="width:72%;height:32px;margin:0 auto 10px"></div><div class="sk" style="width:60%;height:15px;margin:0 auto 18px"></div><div class="strip">${'<div class="sk" style="flex:1;height:66px"></div>'.repeat(6)}</div></span></div>`
-    : `<button class="sky ${lv}" style="--c:${glow}" onclick="${target}"><i class="glow"></i><span class="glass">
+    : `<button class="sky ${lv}" style="--c:${glow}" onclick="later(function(){ ${target} })"><i class="glow"></i><span class="glass">
         <span class="eyebrow">Right now</span>
         <h2>${esc(head)}</h2><p>${esc(line)}</p>
         ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
@@ -699,8 +729,8 @@ screens.home = () => {
       ${orb('Forecast', I.chart, 190, "go('weather')")}
     </div>
     <div class="group glass">
-      <button class="row" onclick="go('official')"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
-      <button class="row" onclick="go('incidents')"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
+      <button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
+      <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
     </div>
     <p class="note">Carrier emergency alerts still arrive on their own.</p>`;
 };
@@ -720,7 +750,7 @@ screens.weather = () => {
     <span class="eyebrow">${esc(f.county)}</span>
     <h1 class="title">Weather</h1>
     <p class="sub">${esc(outlook(f) || statusLine(f))}</p>
-    <div class="group glass"><button class="row" onclick="go('radar')"><span class="lead">${I.radar}</span><div class="main"><div class="t">Radar</div><div class="s">Last ${HOURS} hours</div></div>${I.chev}</button></div>
+    <div class="group glass"><button class="row" onclick="later(function(){ go('radar') })"><span class="lead">${I.radar}</span><div class="main"><div class="t">Radar</div><div class="s">Last ${HOURS} hours</div></div>${I.chev}</button></div>
     ${alerts}
     <p class="h">Forecast</p>
     ${chart}

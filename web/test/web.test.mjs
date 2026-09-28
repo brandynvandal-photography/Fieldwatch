@@ -55,7 +55,7 @@ async function newPage(opts = {}) {
   await page.route(/tile\.openstreetmap\.org/, r => { seen.tiles++; r.fulfill({ status: 200, contentType: 'image/png', body: PNG }); });
   return { page, context, seen, live };
 }
-const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Find your festival")'); if (await start.count()) await start.click(); await page.waitForSelector('h1.title'); };
+const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Find your festival")'); if (await start.count()) await start.click(); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 
 test('the walkthrough opens once, then popular festivals are bubbles and the rest a list, with search', async () => {
@@ -66,7 +66,8 @@ test('the walkthrough opens once, then popular festivals are bubbles and the res
   assert.equal(await page.$$eval('.trio .orb', els => els.length), 3);
   await shot(page, '0-welcome');
   await page.click('button:has-text("Find your festival")');
-  assert.equal(await page.textContent('h1.title'), 'Which festival?');
+  await page.waitForSelector('h1.title:has-text("Which festival?")');
+  assert.ok(await page.$eval('body', () => true), 'the tap played its spring before the screen changed');
   assert.equal(await page.$$eval('.bubble', els => els.length), 6, 'six popular festivals as bubbles');
   const names = await page.$$eval('.bubble .t, .row .t', els => els.map(e => e.textContent));
   assert.equal(names.length, 11);
@@ -98,6 +99,15 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   assert.match(await page.textContent('.sky .foot'), /Checked just now/);
   assert.equal(await page.textContent('button.orb:has-text("Alerts") .badge'), '1');
   assert.equal(seen.alerts, 1); assert.equal(seen.points, 1); assert.equal(seen.hourly, 1);
+  const orbBox = await page.locator('button.orb:has-text("Radar")').boundingBox();
+  await page.mouse.move(orbBox.x + orbBox.width / 2, orbBox.y + 40);
+  await page.mouse.down();
+  assert.ok(await page.$('button.orb.pressed'), 'the orb squishes while pressed');
+  await page.mouse.up();
+  assert.ok(await page.$('button.orb.pop'), 'and springs back on release');
+  await page.waitForSelector('.rmap', { timeout: 5000 });   // the spring plays, then the tap lands
+  await page.click('button[aria-label="Back"]');
+  await page.waitForSelector('.sky.warn');
   await shot(page, '2-home');
 
   await page.click('button.orb:has-text("Forecast")');
@@ -120,6 +130,7 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   await shot(page, '3-weather');
 
   await row.click();
+  await page.waitForSelector('.alerthead');
   assert.equal(await page.textContent('.alerthead h2'), 'Severe Thunderstorm Warning');
   assert.match(await page.textContent('.todo p'), /interior room/, 'the instruction is pulled up top as what to do');
   assert.match(await page.textContent('.body'), /near Live Oak/);

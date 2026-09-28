@@ -246,6 +246,16 @@ test('radar: manifest, immutable frames, and the pack carry the loop', async () 
   assert.equal(pack.radar.frames.at(-1).url, loop.frames.at(-1).url);
 });
 
+test('a browser on another origin may call the API', async () => {
+  const pre = await api('OPTIONS', `/festivals/${FEST}/reports`, { headers: { Origin: 'https://example.github.io', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type' } });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers.get('access-control-allow-origin'), '*');
+  assert.match(pre.headers.get('access-control-allow-headers'), /content-type/i);
+  assert.match(pre.headers.get('access-control-allow-methods'), /POST/);
+  const get = await api('GET', '/festivals');
+  assert.equal(get.headers.get('access-control-allow-origin'), '*');
+});
+
 test('errors come back as JSON', async () => {
   const bad = await api('POST', '/devices', { body: '{not json' });
   assert.equal(bad.status, 400);

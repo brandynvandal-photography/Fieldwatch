@@ -13,6 +13,18 @@ import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './i
 import { iso } from './util.js';
 
 export const app = express();
+// The web build calls this API from another origin (GitHub Pages, a phone's home screen).
+// Keyed routes stay keyed; CORS only decides which pages a browser lets talk to us at all.
+const CORS_ORIGIN = process.env.CORS_ORIGIN || '*';
+app.use((req, res, next) => {
+  res.set('Access-Control-Allow-Origin', CORS_ORIGIN);
+  res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type, x-admin-key, x-node-key');
+  res.set('Access-Control-Max-Age', '86400');
+  if (CORS_ORIGIN !== '*') res.set('Vary', 'Origin');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.use(express.json({ limit: '64kb' }));
 // Behind Fly/Railway/nginx, set TRUST_PROXY to the number of proxy hops so req.ip
 // (used for the report rate limit) is the phone, not the load balancer.
