@@ -63,10 +63,12 @@ Four sources feed one table, and every record passes through `normalizeFestival`
 
 - **Curated** (`data/festivals.json`): the featured list, hand-checked against each festival's own site, seeded on first boot and re-applied by `npm run seed`. Coordinates need to be the actual grounds, not the town: NWS alerts are polygon-based. These are the bubbles in the picker.
 - **Ticketmaster** (`src/importers/ticketmaster.js`, needs `TICKETMASTER_KEY`, free at developer.ticketmaster.com): a daily walk through the next twelve months of US music listings, two nets (anything with "festival" in its text, anything Ticketmaster itself styles a festival, plus any listing with four or more acts). Per-day and multi-day-pass listings fold into one festival, parking and camping add-ons are dropped, and a listing that matches a festival from another source (same grounds on overlapping dates, or the same name) is skipped, so a curated record is never overwritten by a ticket page. A listing that vanishes before it starts is treated as cancelled and removed; imports that ended a month ago are pruned. Around a hundred calls a run.
+- **SeatGeek** (`src/importers/seatgeek.js`, needs `SEATGEEK_CLIENT_ID`, free at seatgeek.com/account/develop): every upcoming US listing in SeatGeek's `music_festival` taxonomy, folded the same way. Reaches a lot of ticketing Ticketmaster does not carry, including smaller independents. A few calls a run.
+- **Edmtrain** (`src/importers/edmtrain.js`, needs `EDMTRAIN_KEY` from edmtrain.com/developer-api): every upcoming US festival on Edmtrain in one request, the electronic side of the calendar. Their API terms are honoured in the data model: each event's link is stored as the record's `source` and shown as given, the data is never resold, and the key stays on the server.
 - **Feeds** (`src/importers/feeds.js`, `FESTIVAL_FEEDS`): your own CSV or JSON, anywhere that serves a file, for example a Google Sheet published to the web as CSV. Columns can be sheet-style (`Festival, Where, Lat, Lon, First day, Last day, Website`); a bare date means the whole day. Rows are trusted, so this is how a maintainer edits the list from a phone.
 - **Community** (`POST /festivals`): the small independent ones no feed knows about. Anyone can send a name, a place and dates from the web build; it sits in the moderation queue until an admin approves it there. Nothing a stranger sends becomes a partner feed or a site map.
 
-Imports run at boot and every `IMPORT_HOURS` (24) when a source is configured, or on demand with `POST /admin/import` or `node src/importers/index.js`.
+Imports run at boot and every `IMPORT_HOURS` (24) when a source is configured, or on demand with `POST /admin/import` or `node src/importers/index.js`. They run widest first (Ticketmaster, SeatGeek, Edmtrain, feeds), and a festival that several sites list is kept once, from the first that listed it. The shared folding and write path is `src/importers/common.js`.
 
 **What is listed.** `GET /festivals` returns only festivals that are on: from the grounds opening until the day after the end. Grounds open `LEAD_DAYS` (7) before gates for early entry, vendors and build crews, or on the record's own `groundsOpen` date when it has one. There is no point in a platform for alerts about a place nobody is at yet. The same window decides which festivals the poller watches and the radar loop pre-fetches (only featured ones and any a phone asked about in the last day; the rest fetch on request).
 
@@ -93,6 +95,8 @@ One Node process with a disk. Run a single instance: the poller and the radar lo
    TRUST_PROXY=1
    CORS_ORIGIN=*
    TICKETMASTER_KEY=your-key-if-you-have-one
+   SEATGEEK_CLIENT_ID=your-client-id-if-you-have-one
+   EDMTRAIN_KEY=your-key-if-you-have-one
    ```
 
    Railway sets `PORT` itself. `NWS_USER_AGENT` is required by the weather service and must carry a way to contact you. `CORS_ORIGIN` can be narrowed to the web build's origin (for GitHub Pages, `https://<user>.github.io`) once you are done trying it from other places; the API sets no cookies, so `*` is safe.

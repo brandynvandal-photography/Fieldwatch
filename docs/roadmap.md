@@ -16,6 +16,6 @@ Priority order. Each item is sized for one Claude Code session.
 12. **Pack downloads with a map tile bundle.** Optional; the prototype promises "site map" and the pack doesn't carry one yet.
 13. **App Store review notes.** Explain the Bonjour service, local network permission, background audio, and that scanner content is public-safety radio only. Drop `fetch` from `UIBackgroundModes` and the location usage string unless something starts using them.
 
-14. **More festival sources.** JamBase's data API covers the jam and camping scene well but is paid after a trial; Wikidata has recurring festivals with coordinates but rarely this year's dates. Both would slot into `backend/src/importers/` behind `normalizeFestival`. And a `groundsOpen` date on the curated records that have long builds.
+14. **More festival sources.** SeatGeek and Edmtrain importers exist beside Ticketmaster's (`backend/src/importers/`); none of the three has been run against the live API from this project yet, so the first run with real keys should be watched (`POST /admin/import` returns the report). Still open: JamBase (paid after a trial, best for the jam and camping scene), Wikidata (recurring festivals with coordinates, rarely this year's dates), Bandsintown for lineups, and reading schema.org event data from a festival's own site. And a `groundsOpen` date on the curated records that have long builds.
 
 Explicitly out of scope: any attempt to receive RF on the phone, Broadcastify integration, recording festival ops radio without consent, accounts.

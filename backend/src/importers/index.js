@@ -4,9 +4,11 @@ import '../env.js';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { importTicketmaster } from './ticketmaster.js';
+import { importSeatGeek } from './seatgeek.js';
+import { importEdmtrain } from './edmtrain.js';
 import { importFeeds } from './feeds.js';
 
-export const importsConfigured = () => Boolean(process.env.TICKETMASTER_KEY || process.env.FESTIVAL_FEEDS);
+export const importsConfigured = () => Boolean(process.env.TICKETMASTER_KEY || process.env.SEATGEEK_CLIENT_ID || process.env.EDMTRAIN_KEY || process.env.FESTIVAL_FEEDS);
 export const imports = { last: null };
 let running = null;
 
@@ -15,7 +17,10 @@ export function runImports(opts = {}) {
   if (running) return running;
   running = (async () => {
     const report = { startedAt: new Date().toISOString() };
+    // Widest source first: a festival on several sites is kept once, from the first that listed it.
     try { report.ticketmaster = await importTicketmaster(opts.ticketmaster); } catch (e) { report.ticketmaster = { error: e.message }; }
+    try { report.seatgeek = await importSeatGeek(opts.seatgeek); } catch (e) { report.seatgeek = { error: e.message }; }
+    try { report.edmtrain = await importEdmtrain(opts.edmtrain); } catch (e) { report.edmtrain = { error: e.message }; }
     try { report.feeds = await importFeeds(opts.feeds); } catch (e) { report.feeds = { error: e.message }; }
     report.finishedAt = new Date().toISOString();
     imports.last = report;

@@ -4,7 +4,7 @@ import { tmEvent, tmVenue, tmPage } from './fixtures/ticketmaster.js';
 
 process.env.DB_PATH = ':memory:';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
-delete process.env.TICKETMASTER_KEY; delete process.env.FESTIVAL_FEEDS;
+delete process.env.TICKETMASTER_KEY; delete process.env.SEATGEEK_CLIENT_ID; delete process.env.EDMTRAIN_KEY; delete process.env.FESTIVAL_FEEDS;
 
 const { q } = await import('../src/db.js');
 const { seedAll } = await import('../src/seed.js');
@@ -180,4 +180,96 @@ test('runImports reports every source and joins a run already in progress', asyn
   assert.equal(a, b);
   assert.equal(a.ticketmaster.skipped, 'TICKETMASTER_KEY not set'); assert.equal(a.feeds.skipped, 'FESTIVAL_FEEDS not set');
   assert.ok(a.startedAt && a.finishedAt);
+});
+
+// ---- SeatGeek and Edmtrain share the folding and the write path with Ticketmaster ------------------------
+
+test('SeatGeek: music_festival listings fold into festivals, other types and other countries are dropped, pages are walked', async () => {
+  const { sgEvent, sgVenue, sgPage } = await import('./fixtures/seatgeek.js');
+  const { festivalsFrom: sgFrom, importSeatGeek } = await import('../src/importers/seatgeek.js');
+  const listings = [
+    sgEvent(),
+    sgEvent({ title: 'Moonrise Fest - Saturday', datetime_utc: '2026-10-10T17:00:00' }),
+    sgEvent({ title: 'Moonrise Fest 2 Day Pass', datetime_utc: '2026-10-09T17:00:00', enddatetime_utc: '2026-10-11T06:00:00' }),
+    sgEvent({ title: 'Moonrise Fest Camping' }),
+    sgEvent({ title: 'Some Band', type: 'concert', taxonomies: [{ id: 2000000, name: 'concert' }] }),
+    sgEvent({ title: 'Osheaga', venue: sgVenue({ id: 77, name: 'Parc Jean-Drapeau', city: 'Montreal', state: 'QC', country: 'CA', location: { lat: 45.51, lon: -73.53 } }) }),
+    sgEvent({ title: 'Someday Fest', date_tbd: true }),
+    sgEvent({ title: 'Lost Fest', venue: sgVenue({ id: 78, location: { lat: 0, lon: 0 } }) }),
+    sgEvent({ title: 'Quiet Hollow', time_tbd: true, datetime_utc: '2026-12-05T03:30:00', datetime_local: '2026-12-04T22:30:00',
+      venue: sgVenue({ id: 79, name: 'Hollow Farm', city: 'Floyd', state: 'VA', location: { lat: 36.91, lon: -80.32 } }) }),
+  ];
+  const list = sgFrom(listings, '2026-09-28');
+  assert.deepEqual(list.map(f => f.name).sort(), ['Moonrise Fest', 'Quiet Hollow']);
+  const m = list.find(f => f.name === 'Moonrise Fest');
+  assert.equal(m.id, 'sg-moonrise-fest-2026'); assert.equal(m.origin, 'seatgeek');
+  assert.equal(m.startDate, '2026-10-09T17:00:00Z', 'a zoneless SeatGeek stamp is UTC');
+  assert.equal(m.endDate, '2026-10-11T08:00:00Z', 'the later of the pass end and the last day');
+  assert.equal(m.location, 'Mulberry Mountain, Ozark, AR'); assert.equal(m.website, 'https://seatgeek.com/moonrise-fest-friday-tickets/1');
+  const qh = list.find(f => f.name === 'Quiet Hollow');
+  assert.equal(qh.startDate, '2026-12-04T16:00:00Z', 'time to be announced: the local date, mid-afternoon');
+
+  // Ticketmaster lists Moonrise Fest on the same grounds and dates (an earlier test moved it; put it back).
+  q.upsertFestival({ ...q.festival('tm-moonrise-fest-2026'), startDate: '2026-10-09T17:00:00Z', endDate: '2026-10-12T08:00:00Z' });
+  const calls = [];
+  const fetchImpl = async u => {
+    const url = new URL(u); calls.push(url);
+    assert.equal(url.searchParams.get('taxonomies.name'), 'music_festival'); assert.equal(url.searchParams.get('venue.country'), 'US'); assert.ok(url.searchParams.get('client_id'));
+    const page = Number(url.searchParams.get('page'));
+    const body = page === 1 ? sgPage(listings, { page: 1, total: 101 }) : sgPage([sgEvent({ title: 'Page Two Fest', datetime_utc: '2027-01-15T20:00:00', venue: sgVenue({ id: 80, location: { lat: 30.2, lon: -97.7 }, city: 'Austin', state: 'TX' }) })], { page: 2, total: 101 });
+    return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const r = await importSeatGeek({ clientId: 'sg-test', fetchImpl, now: NOW, pauseMs: 0 });
+  assert.equal(r.calls, 2, 'total says there is a second page');
+  assert.deepEqual({ added: r.added, duplicates: r.duplicates, errors: r.errors }, { added: 2, duplicates: 1, errors: 0 });
+  assert.ok(q.festival('sg-page-two-fest-2027'));
+  assert.equal(q.festival('sg-moonrise-fest-2026'), null, 'Ticketmaster already lists Moonrise Fest on those grounds, so SeatGeek does not add it twice');
+  assert.equal(q.publishedFestivals().filter(f => /moonrise fest/i.test(f.name)).length, 1);
+
+  const lines = [];
+  const bad = await importSeatGeek({ clientId: 'sg-secret', fetchImpl: async () => new Response('', { status: 403 }), now: NOW, pauseMs: 0, log: { error: m => lines.push(m) } });
+  assert.equal(bad.errors, 1); assert.equal(bad.pruned, 0, 'nothing pruned on a bad run');
+  assert.ok(lines.length && lines.every(l => !l.includes('sg-secret')));
+  assert.deepEqual(await importSeatGeek({ clientId: '', fetchImpl }), { skipped: 'SEATGEEK_CLIENT_ID not set' });
+});
+
+test('Edmtrain: one request, festivals only, US only, the event link kept as given', async () => {
+  const { edmEvent, edmVenue, edmBody } = await import('./fixtures/edmtrain.js');
+  const { festivalsFrom: edmFrom, importEdmtrain } = await import('../src/importers/edmtrain.js');
+  const data = [
+    edmEvent(),
+    edmEvent({ name: 'Beyond Wonderland Sacramento - Day 2', date: '2026-11-08', link: 'https://edmtrain.com/sacramento?event=700002' }),
+    edmEvent({ name: 'Beyond Wonderland Sacramento Shuttle', date: '2026-11-07' }),
+    edmEvent({ name: 'Some DJ', festivalInd: false }),
+    edmEvent({ name: 'Northern Lights Fest', venue: edmVenue({ id: 901, name: 'Somewhere', location: 'Toronto, ON', state: 'Ontario', latitude: 43.65, longitude: -79.38 }) }),
+    edmEvent({ name: 'Stream Fest', livestreamInd: true }),
+    edmEvent({ name: 'No Map Fest', venue: edmVenue({ id: 902, latitude: null, longitude: null }) }),
+    edmEvent({ name: 'Bayou Bass', date: '2026-12-12', link: 'https://edmtrain.com/new-orleans?event=700009', venue: edmVenue({ id: 903, name: 'The Fillmore', location: 'New Orleans, LA', state: 'LA', latitude: 29.95, longitude: -90.07 }) }),
+  ];
+  const list = edmFrom(data, '2026-09-28');
+  assert.deepEqual(list.map(f => f.name).sort(), ['Bayou Bass', 'Beyond Wonderland Sacramento']);
+  const bw = list.find(f => f.name === 'Beyond Wonderland Sacramento');
+  assert.equal(bw.id, 'edm-beyond-wonderland-sacramento-2026'); assert.equal(bw.origin, 'edmtrain');
+  assert.equal(bw.startDate, '2026-11-07T16:00:00Z'); assert.equal(bw.endDate, '2026-11-09T08:00:00Z', 'two daily listings make a two-day festival');
+  assert.equal(bw.source, 'https://edmtrain.com/sacramento?event=700001', 'the first listing\'s link, as the API gave it');
+  assert.equal(bw.location, 'Discovery Park, Sacramento, CA');
+  assert.equal(list.find(f => f.name === 'Bayou Bass').location, 'The Fillmore, New Orleans, LA', 'a two-letter state passes the US check too');
+
+  const calls = [];
+  const fetchImpl = async u => {
+    const url = new URL(u); calls.push(url);
+    assert.equal(url.searchParams.get('festivalInd'), 'true'); assert.equal(url.searchParams.get('startDate'), '2026-09-28'); assert.ok(url.searchParams.get('client'));
+    return new Response(JSON.stringify(edmBody(data)), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const r = await importEdmtrain({ key: 'edm-test', fetchImpl, now: NOW });
+  assert.equal(r.calls, 1); assert.equal(r.events, data.length);
+  assert.deepEqual({ added: r.added, duplicates: r.duplicates, errors: r.errors }, { added: 2, duplicates: 0, errors: 0 });
+  assert.ok(q.festival('edm-bayou-bass-2026'));
+
+  const refused = await importEdmtrain({ key: 'edm-secret', fetchImpl: async () => new Response(JSON.stringify(edmBody([], { success: false, message: 'Invalid client' })), { status: 200 }), now: NOW, log: { error: () => {} } });
+  assert.equal(refused.errors, 1); assert.equal(refused.pruned, 0);
+  assert.ok(q.festival('edm-bayou-bass-2026'), 'kept through a refused run');
+  assert.deepEqual(await importEdmtrain({ key: '', fetchImpl }), { skipped: 'EDMTRAIN_KEY not set' });
+  // Aftershock is curated on the same grounds a month earlier: different dates, so Beyond Wonderland is its own festival.
+  assert.equal(q.publishedFestivals().filter(f => f.origin === 'edmtrain').length, 2);
 });

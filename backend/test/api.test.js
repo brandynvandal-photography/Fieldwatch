@@ -270,6 +270,8 @@ test('the list is what is on: a week before gates for early entry and crews, thr
   assert.equal((await api('POST', '/admin/import')).status, 401);
   const r = (await api('POST', '/admin/import', { headers: admin })).json;
   assert.equal(r.ticketmaster.skipped, 'TICKETMASTER_KEY not set');
+  assert.equal(r.seatgeek.skipped, 'SEATGEEK_CLIENT_ID not set');
+  assert.equal(r.edmtrain.skipped, 'EDMTRAIN_KEY not set');
   assert.equal(r.feeds.skipped, 'FESTIVAL_FEEDS not set');
 
   // PUT still adds or edits a festival outright, through the same validator.

@@ -9,7 +9,7 @@ This repo was scaffolded in a chat session on a phone, then worked over in a Cla
 | Path | What | Status |
 |---|---|---|
 | `ios/` | SwiftUI app, iOS 17+, XcodeGen spec | written and reviewed, not compiled |
-| `backend/` | Node 20 + Express + SQLite. NWS poller, APNs push, incidents, the festival list (curated seed, Ticketmaster and feed imports, community suggestions with moderation) | runs; `npm test` covers every route with a mocked NWS |
+| `backend/` | Node 20 + Express + SQLite. NWS poller, APNs push, incidents, the festival list (curated seed, Ticketmaster, SeatGeek and Edmtrain imports, feed URLs, community suggestions with moderation) | runs; `npm test` covers every route with a mocked NWS |
 | `node/` | Raspberry Pi receiver: trunk-recorder + on-device Whisper + local API + uploader | runs; `python3 test_uploader.py`; never run against a real SDR |
 | `web/` | The app in a browser: what is on right now, live NWS alerts and forecast, the radar loop from the archive, add-a-festival and an admin review screen when a backend is set | runs; `npm test` drives it in headless Chromium against fixture responses and a fake backend |
 | `prototype/index.html` | Tap-through HTML prototype of every screen. Source of truth for UX | done |

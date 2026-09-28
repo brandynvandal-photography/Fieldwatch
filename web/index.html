@@ -763,8 +763,20 @@ screens.home = () => {
       <button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
     </div>
+    ${listingNote(f)}
     <p class="note">Carrier emergency alerts still arrive on their own.</p>`;
 };
+// Where a festival's listing came from, with the link the source gave (Edmtrain's terms ask for it as given).
+const SOURCES = { ticketmaster: 'Ticketmaster', seatgeek: 'SeatGeek', edmtrain: 'Edmtrain' };
+function listingNote(f){
+  const a = href => `<a class="link" href="${esc(href)}" target="_blank" rel="noopener">`;
+  const parts = [];
+  if (f.website && f.website !== f.source) parts.push(`${a(f.website)}Official site</a>`);
+  if (SOURCES[f.origin] && f.source) parts.push(`Listing on ${a(f.source)}${SOURCES[f.origin]}</a>`);
+  else if (f.origin === 'community') parts.push('Added by someone here');
+  else if (f.website) parts.push('');
+  return parts.filter(Boolean).length ? `<p class="note">${parts.filter(Boolean).join(' · ')}</p>` : '';
+}
 
 screens.weather = () => {
   const f = fest(); if (!f) return screens.picker();
@@ -908,7 +920,7 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `<button class="row" onclick="later(function(){ go('review') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review festivals</div><div class="s">What people sent in</div></div>${I.chev}</button>` : ''}</div>
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
-  <p class="note">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. No account, no login.</p>`;
+  <p class="note">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. Listings: Ticketmaster, SeatGeek, Edmtrain and people here. No account, no login.</p>`;
 
 function setBackend(v){ S.backend = v.trim().replace(/\/+$/, ''); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); }
 function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.draft = blankDraft(); S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
