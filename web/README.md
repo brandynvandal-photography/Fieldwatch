@@ -21,8 +21,9 @@ One loud element per screen. The home screen's status card answers "am I safe ri
 
 ## Where the data comes from
 
-- **Alerts and hourly forecast**: the National Weather Service API, straight from the browser (it allows cross-origin requests). With a backend address saved in Settings (or `?backend=https://...`), alerts come from the backend first and fall back to NWS, exactly like the app.
-- **Radar**: the last 12 hours of NEXRAD base reflectivity. Without a backend, one image every 15 minutes from the Iowa Environmental Mesonet WMS-T archive for the 320 km square around the grounds; with a backend, its cached 10-minute frames. Attribution stays on screen. OpenStreetMap tiles sit under the radar; if they don't load the square still draws.
+- **The backend**: this build talks to `https://fieldwatch-production.up.railway.app` (`DEFAULT_BACKEND` in `index.html`) unless Settings or `?backend=https://...` names another; `none` goes without one. Everything below still works when it is down.
+- **Alerts and hourly forecast**: the National Weather Service API, straight from the browser (it allows cross-origin requests). Alerts come from the backend first and fall back to NWS, exactly like the app.
+- **Radar**: the last 12 hours of NEXRAD base reflectivity. The backend's cached 10-minute frames once it holds two hours of them; until then, or without a backend, one image every 15 minutes from the Iowa Environmental Mesonet WMS-T archive for the 320 km square around the grounds. Attribution stays on screen. OpenStreetMap tiles sit under the radar; if they don't load the square still draws.
 - **The festival list**: the bundled `festivals.json` at once, then the backend's live list when a backend is set (cached, so the last list shows if the backend is down). Suggesting a festival and reviewing suggestions need the backend.
 - **Incidents and posts**: backend only.
 - Everything fetched is cached in the browser, so the last good data shows with "before signal dropped" wording when the network goes.

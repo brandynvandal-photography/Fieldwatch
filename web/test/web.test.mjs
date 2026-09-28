@@ -49,12 +49,14 @@ async function newPage(opts = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
     timezoneId: 'America/New_York', locale: 'en-US', serviceWorkers: 'block', colorScheme: opts.dark ? 'dark' : 'light' });
   const page = await context.newPage();
-  const seen = { alerts: 0, points: 0, hourly: 0, frames: [], tiles: 0, fonts: 0, errors: [] };
+  const seen = { alerts: 0, points: 0, hourly: 0, frames: [], tiles: 0, fonts: 0, backend: 0, errors: [] };
   const live = { nws: true, iem: true };
   page.on('pageerror', e => seen.errors.push(String(e)));
   // Aborted requests log 'Failed to load resource'; that is the network, not the page, so only script errors count.
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) seen.errors.push(m.text()); });
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => { seen.fonts++; r.fulfill({ status: 200, contentType: 'text/css', body: '' }); });
+  // The built-in backend is down in these tests, so the page has to fall back to NWS and the archive on its own.
+  await page.route(/fieldwatch-production\.up\.railway\.app/, r => { seen.backend++; r.abort('failed'); });
   await page.route(/api\.weather\.gov\/alerts\/active/, r => { seen.alerts++; live.nws ? r.fulfill(json({ type: 'FeatureCollection', features: [alertFeature()] })) : r.abort('failed'); });
   await page.route(/api\.weather\.gov\/points\//, r => { seen.points++; live.nws ? r.fulfill(json(points)) : r.abort('failed'); });
   await page.route(/gridpoints\/.*\/forecast\/hourly/, r => { seen.hourly++; live.nws ? r.fulfill(json(hourly)) : r.abort('failed'); });
@@ -94,11 +96,16 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   assert.match(await page.textContent('.empty'), /Not on right now/);
   await page.fill('#q', '');
   await page.click('button:has-text("Add a festival")');
-  await page.waitForSelector('h1.title:has-text("Add a festival")');
-  assert.match(await page.textContent('.card'), /Needs the backend/, 'without a backend there is nowhere to send it');
+  await page.waitForSelector('#f-name');   // the built-in backend takes suggestions
   await page.click('button[aria-label="Back"]');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
-  await page.reload();
+  // Told to go without a backend, there is nowhere to send one.
+  await page.goto(`${base}/index.html?backend=none`);
+  await page.waitForSelector('h1.title:has-text("Which festival?")');
+  await page.click('button:has-text("Add a festival")');
+  await page.waitForSelector('h1.title:has-text("Add a festival")');
+  assert.match(await page.textContent('.card'), /Needs the backend/);
+  await page.goto(`${base}/index.html`);
   await page.waitForSelector('h1.title');
   assert.equal(await page.textContent('h1.title'), 'Which festival?', 'the welcome step is shown once');
   assert.deepEqual(seen.errors, []);
@@ -114,6 +121,7 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   assert.match(await page.textContent('.sky .foot'), /Checked just now/);
   assert.equal(await page.textContent('button.orb:has-text("Alerts") .badge'), '1');
   assert.equal(seen.alerts, 1); assert.equal(seen.points, 1); assert.equal(seen.hourly, 1);
+  assert.ok(seen.backend >= 1, 'the built-in backend is tried first; NWS answers when it is down');
   const orbBox = await page.locator('button.orb:has-text("Radar")').boundingBox();
   await page.mouse.move(orbBox.x + orbBox.width / 2, orbBox.y + 40);
   await page.mouse.down();

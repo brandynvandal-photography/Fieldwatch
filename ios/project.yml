@@ -18,7 +18,7 @@ targets:
         NSBonjourServices: [_fieldwatch-rl._tcp, _fieldwatch-rl._udp, _fieldwatch-node._tcp]
         NSLocationWhenInUseUsageDescription: Used to sort festivals by distance from you.
         UIBackgroundModes: [audio, fetch, remote-notification]
-        FieldwatchBackendURL: http://localhost:3000
+        FieldwatchBackendURL: https://fieldwatch-production.up.railway.app   # http://localhost:3000 for a local backend
         # The dev backend and every receiver node speak plain http on the local network.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true

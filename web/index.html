@@ -321,7 +321,9 @@ function load(){
 function save(){
   try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin })); }catch(e){}
 }
-const backend = () => (new URLSearchParams(location.search).get('backend') || S.backend || '').replace(/\/+$/, '');
+// The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
+const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
+const backend = () => { const v = (new URLSearchParams(location.search).get('backend') || S.backend || DEFAULT_BACKEND).replace(/\/+$/, ''); return v === 'none' ? '' : v; };
 const fest = () => FESTS.find(f => f.id === S.fest);
 const data = f => S.cache[f.id] || {};
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
@@ -417,8 +419,11 @@ function iemURL(bbox, t){
 async function radarLoop(f){
   const b = backend(), bbox = coverage(f);
   if (b) {
-    const m = await getJSON(`${b}/festivals/${f.id}/radar`);
-    return { bbox, frames: m.frames.map(x => ({ time: x.time, url: /^https?:/.test(x.url) ? x.url : b + x.url })), attribution: m.attribution, hours: m.hours, step: m.stepMinutes };
+    // The backend's cache serves everyone once it holds a couple of hours; until then, or when it is down, the archive answers directly, like the alerts.
+    try {
+      const m = await getJSON(`${b}/festivals/${f.id}/radar`);
+      if (m && Array.isArray(m.frames) && m.frames.length >= 12) return { bbox, frames: m.frames.map(x => ({ time: x.time, url: /^https?:/.test(x.url) ? x.url : b + x.url })), attribution: m.attribution, hours: m.hours, step: m.stepMinutes };
+    } catch(e) {}
   }
   // Straight from the archive: 12 hours at 15-minute steps, newest at least 10 minutes old (composites land late).
   const step = DIRECT_STEP_MIN * 60000, newest = Math.floor((Date.now() - LAG_MIN * 60000) / step) * step, frames = [];
@@ -897,15 +902,15 @@ screens.review = () => topbar(backBtn(), '', '') + `
 screens.settings = () => topbar(backBtn(), '', '') + `
   <h1 class="title">Settings</h1>
   <p class="h" style="margin-top:22px">Backend</p>
-  <div class="group glass"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="https://your-backend.example.com" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
-  <p class="note">Optional. Adds the live festival list, incidents and cached radar.</p>
+  <div class="group glass"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="${esc(DEFAULT_BACKEND.replace(/^https:\/\//, ''))}" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
+  <p class="note">Empty uses the default. Type none to go without.</p>
   <p class="h">Admin</p>
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `<button class="row" onclick="later(function(){ go('review') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review festivals</div><div class="s">What people sent in</div></div>${I.chev}</button>` : ''}</div>
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
   <p class="note">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. No account, no login.</p>`;
 
-function setBackend(v){ S.backend = v.trim().replace(/\/+$/, ''); save(); toast(S.backend ? 'Backend saved' : 'Using NWS directly'); if (fest()) refresh(fest()); syncFestivals(); }
+function setBackend(v){ S.backend = v.trim().replace(/\/+$/, ''); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); }
 function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.draft = blankDraft(); S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
 
 // ---- the festival list: the bundled copy first, the backend's live list when one is set -------------------

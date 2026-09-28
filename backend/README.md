@@ -97,7 +97,7 @@ One Node process with a disk. Run a single instance: the poller and the radar lo
 
    Railway sets `PORT` itself. `NWS_USER_AGENT` is required by the weather service and must carry a way to contact you. `CORS_ORIGIN` can be narrowed to the web build's origin (for GitHub Pages, `https://<user>.github.io`) once you are done trying it from other places; the API sets no cookies, so `*` is safe.
 5. Settings, Networking, Generate Domain. Open `https://<that domain>/health` and you should see `{"ok":true,...}`.
-6. In the web build: Settings, Backend, paste that domain. Radar then comes from this server's 10-minute frames and the Incidents screen turns on.
+6. The web build already points at `https://fieldwatch-production.up.railway.app` (`DEFAULT_BACKEND` in `web/index.html`, and `FieldwatchBackendURL` in `ios/project.yml`). Another deployment's domain goes in the web build's Settings, or in those two places.
 
 Deploys again on every push to `main` that touches `backend/`.
 
