@@ -8,8 +8,10 @@ import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { pollFestival, polledRecently } from './poller.js';
 import { pushAlert } from './push.js';
-import { RADAR_DIR, radarLoop, refreshRadarSoon } from './radar.js';
+import { RADAR_DIR, noteInterest, radarLoop, refreshRadarSoon } from './radar.js';
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
+import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
+import { runImports } from './importers/index.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -56,16 +58,16 @@ const keyed = (header, envName) => (req, res, next) =>
 const requireAdmin = keyed('x-admin-key', 'ADMIN_KEY');
 const requireNode = keyed('x-node-key', 'NODE_KEY');
 
+const isAdmin = req => sameKey(req.get('x-admin-key'), process.env.ADMIN_KEY);
 const loadFestival = (req, res, next) => {
   const f = q.festival(req.params.id);
-  if (!f) return res.status(404).json({ error: 'no such festival' });
+  if (!f || ((f.status || 'published') !== 'published' && !isAdmin(req))) return res.status(404).json({ error: 'no such festival' });
   req.festival = f;
   next();
 };
 
 const SEVERITIES = ['unknown', 'minor', 'moderate', 'severe', 'extreme'];
 const AUTO_PUBLISH = process.env.INCIDENT_AUTO_PUBLISH !== 'false';
-const validIso = s => (s && !Number.isNaN(Date.parse(s)) ? iso(new Date(s)) : null);
 
 /** The shape phones already understand, so an incident can ride the same banner and push path. */
 export function incidentToAlert(festival, i) {
@@ -91,18 +93,48 @@ async function publishAndPush(festival, incident) {
 
 app.get('/health', (req, res) => res.json({ ok: true, at: iso() }));
 
-app.get('/festivals', (req, res) => res.json(q.allFestivals()));
+// ---- Festivals: the list itself ------------------------------------------
+// What is on: grounds open through the day after the end (festivals.js). ?all=1 for everything published.
+app.get('/festivals', (req, res) => { const all = q.publishedFestivals(); res.json(req.query.all ? all : all.filter(f => isLive(f))); });
+app.get('/festivals/pending', requireAdmin, (req, res) => res.json(q.pendingFestivals()));
 app.get('/festivals/:id', loadFestival, (req, res) => res.json(req.festival));
+
+// Anyone can add a festival; it waits for an admin, and nothing a stranger sends becomes a partner feed or a site map.
+const suggestTimes = new Map();
+app.post('/festivals', (req, res) => {
+  const ip = req.ip, now = Date.now();
+  const recent = (suggestTimes.get(ip) || []).filter(t => now - t < 3_600_000);
+  if (recent.length >= 3) return res.status(429).json({ error: 'too many suggestions, try again later' });
+  suggestTimes.set(ip, [...recent, now]);
+  const body = req.body || {};
+  const { festival, error } = normalizeFestival(body, { origin: 'community', status: 'pending', id: `sub-${slug(body.name || 'festival') || 'festival'}-${randomUUID().slice(0, 6)}` });
+  if (error) return res.status(400).json({ error });
+  Object.assign(festival, { isPartner: false, feeds: [], site: [], featured: false, submittedAt: iso() });
+  q.upsertFestival(festival);
+  console.log(`[festivals] suggested: ${festival.name} (${festival.location}) ${festival.startDate.slice(0, 10)}`);
+  res.status(202).json({ id: festival.id, pending: true });
+});
+app.post('/festivals/:id/approve', requireAdmin, (req, res) => {
+  const f = q.festival(req.params.id);
+  if (!f) return res.status(404).json({ error: 'no such festival' });
+  const { festival, error } = normalizeFestival(req.body || {}, { base: f });
+  if (error) return res.status(400).json({ error });
+  festival.status = 'published';
+  q.upsertFestival(festival);
+  res.json(festival);
+});
+app.delete('/festivals/:id', requireAdmin, (req, res) => { q.deleteFestival(req.params.id); res.json({ ok: true }); });
+app.post('/admin/import', requireAdmin, wrap(async (req, res) => res.json(await runImports())));
 
 app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
   if (!polledRecently(req.festival.id)) { try { await pollFestival(req.festival); } catch {} }
-  refreshRadarSoon(req.festival);
+  noteInterest(req.festival.id); refreshRadarSoon(req.festival);
   res.json(await buildPack(req.festival));
 }));
 
 /** The radar loop: what's on disk right now, with a refresh kicked off in the background if it's due. */
 app.get('/festivals/:id/radar', loadFestival, (req, res) => {
-  refreshRadarSoon(req.festival);
+  noteInterest(req.festival.id); refreshRadarSoon(req.festival);
   res.json(radarLoop(req.festival));
 });
 
@@ -204,20 +236,11 @@ app.delete('/festivals/:id/incidents/:iid', requireAdmin, loadFestival, (req, re
 // ---- Admin and devices ---------------------------------------------------
 
 app.put('/festivals/:id', requireAdmin, (req, res) => {
-  const f = { ...req.body, id: req.params.id };
-  for (const k of ['name', 'location', 'county']) {
-    if (typeof f[k] !== 'string' || !f[k].trim()) return res.status(400).json({ error: `${k} required` });
-  }
-  for (const k of ['latitude', 'longitude']) {
-    if (!Number.isFinite(f[k]) || Math.abs(f[k]) > (k === 'latitude' ? 90 : 180)) return res.status(400).json({ error: `${k} must be a number in range` });
-  }
-  for (const k of ['startDate', 'endDate']) {
-    if (!validIso(f[k])) return res.status(400).json({ error: `${k} must be ISO 8601` });
-  }
-  if (Date.parse(f.endDate) < Date.parse(f.startDate)) return res.status(400).json({ error: 'endDate is before startDate' });
-  f.isPartner = Boolean(f.isPartner); f.feeds = Array.isArray(f.feeds) ? f.feeds : []; f.site = Array.isArray(f.site) ? f.site : [];
-  q.upsertFestival(f);
-  res.json(f);
+  const { festival, error } = normalizeFestival(req.body || {}, { base: q.festival(req.params.id), id: req.params.id });
+  if (error) return res.status(400).json({ error });
+  festival.id = req.params.id; festival.status = 'published';
+  q.upsertFestival(festival);
+  res.json(festival);
 });
 
 app.post('/devices', (req, res) => {

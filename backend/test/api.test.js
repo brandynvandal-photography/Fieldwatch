@@ -37,7 +37,8 @@ globalThis.fetch = async (url, opts = {}) => {
 const { app } = await import('../src/app.js');
 const { q } = await import('../src/db.js');
 const { pollFestival } = await import('../src/poller.js');
-const { refreshRadar } = await import('../src/radar.js');
+const { refreshRadar, radarWanted, noteInterest } = await import('../src/radar.js');
+const { isLive } = await import('../src/festivals.js');
 
 const festivals = JSON.parse(readFileSync(new URL('../data/festivals.json', import.meta.url), 'utf8'));
 for (const f of festivals) q.upsertFestival(f);
@@ -65,8 +66,9 @@ const node = { 'x-node-key': 'test-node' };
 test('health and festival list', async () => {
   assert.equal((await api('GET', '/health')).json.ok, true);
   const list = (await api('GET', '/festivals')).json;
-  assert.equal(list.length, festivals.length);
-  assert.ok(list.some(f => f.id === FEST));
+  assert.deepEqual(list.map(f => f.id), festivals.filter(f => isLive(f)).map(f => f.id), 'the list is what is on right now');
+  assert.equal((await api('GET', '/festivals?all=1')).json.length, festivals.length);
+  assert.ok((await api('GET', '/festivals?all=1')).json.some(f => f.id === FEST));
   assert.equal((await api('GET', '/festivals/nope')).status, 404);
   assert.equal((await api('GET', `/festivals/${FEST}`)).json.name, 'Suwannee Hulaween');
 });
@@ -205,6 +207,80 @@ test('attendee reports queue for moderation, publish with an edited summary, and
   assert.equal((await api('POST', `/festivals/${FEST}/reports`, { body: { summary: 'One report too many here' } })).status, 429);
 });
 
+test('anyone can suggest a festival; it is hidden until an admin approves it, and the admin can remove it', async () => {
+  assert.equal((await api('POST', '/festivals', { body: {} })).json.error, 'name required');
+  const sent = await api('POST', '/festivals', { body: { name: 'Moon Hollow Gathering', location: 'Live Oak, FL', latitude: '30.3', longitude: '-82.9', startDate: '2026-11-06', endDate: '2026-11-08',
+    website: 'moonhollow.org', isPartner: true, feeds: [{ id: 'x' }], site: [{}], featured: true, note: 'Small one, 300 people, second year' } });
+  assert.equal(sent.status, 202); assert.match(sent.json.id, /^sub-moon-hollow-gathering-[0-9a-f]{6}$/); assert.equal(sent.json.pending, true);
+  const id = sent.json.id;
+  assert.ok(!(await api('GET', '/festivals?all=1')).json.some(f => f.id === id), 'not public yet');
+  assert.equal((await api('GET', `/festivals/${id}`)).status, 404, 'nor by id');
+  assert.equal((await api('GET', `/festivals/${id}/pack`)).status, 404);
+  assert.equal((await api('GET', `/festivals/${id}`, { headers: admin })).status, 200, 'an admin sees it');
+  assert.equal((await api('GET', '/festivals/pending')).status, 401);
+  const pending = (await api('GET', '/festivals/pending', { headers: admin })).json;
+  assert.equal(pending.length, 1);
+  const p = pending[0];
+  assert.equal(p.status, 'pending'); assert.equal(p.origin, 'community'); assert.equal(p.featured, false);
+  assert.equal(p.isPartner, false); assert.deepEqual(p.feeds, []); assert.deepEqual(p.site, []);
+  assert.equal(p.website, 'https://moonhollow.org/'); assert.equal(p.note, 'Small one, 300 people, second year');
+  assert.equal(p.startDate, '2026-11-06T12:00:00Z'); assert.equal(p.endDate, '2026-11-09T08:00:00Z', 'a bare last day lasts through the night');
+  assert.ok(p.submittedAt);
+
+  assert.equal((await api('POST', `/festivals/${id}/approve`)).status, 401);
+  assert.equal((await api('POST', '/festivals/sub-nope/approve', { headers: admin })).status, 404);
+  const ok = await api('POST', `/festivals/${id}/approve`, { headers: admin, body: { county: 'Suwannee County' } });
+  assert.equal(ok.status, 200); assert.equal(ok.json.status, 'published'); assert.equal(ok.json.county, 'Suwannee County'); assert.equal(ok.json.name, 'Moon Hollow Gathering');
+  assert.ok((await api('GET', '/festivals?all=1')).json.some(f => f.id === id), 'public once approved (and listed once it is on)');
+  assert.deepEqual((await api('GET', '/festivals/pending', { headers: admin })).json, []);
+  assert.equal((await api('GET', `/festivals/${id}/alerts`)).status, 200);
+
+  assert.equal((await api('DELETE', `/festivals/${id}`)).status, 401);
+  assert.equal((await api('DELETE', `/festivals/${id}`, { headers: admin })).json.ok, true);
+  assert.equal((await api('GET', `/festivals/${id}`, { headers: admin })).status, 404);
+
+  // Three an hour from one address, valid or not.
+  assert.equal((await api('POST', '/festivals', { body: { name: 'Two', location: 'L', latitude: 1, longitude: 2, startDate: '2026-12-01', endDate: '2026-12-02' } })).status, 202);
+  assert.equal((await api('POST', '/festivals', { body: { name: 'Three' } })).status, 429);
+});
+
+test('the list is what is on: a week before gates for early entry and crews, through the day after; and an admin can run the imports', async () => {
+  const DAY = 86_400_000, at = d => new Date(Date.now() + d * DAY).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const base = { location: 'L', latitude: 1, longitude: 2, county: '', isPartner: false, feeds: [], site: [], status: 'published' };
+  q.upsertFestival({ ...base, id: 'old-days-2026', name: 'Old Days', startDate: at(-5), endDate: at(-2) });
+  q.upsertFestival({ ...base, id: 'wrap-up-2026', name: 'Wrap Up', startDate: at(-3), endDate: at(-0.5) });
+  q.upsertFestival({ ...base, id: 'crew-week-2026', name: 'Crew Week', startDate: at(5), endDate: at(8) });
+  q.upsertFestival({ ...base, id: 'next-month-2026', name: 'Next Month', startDate: at(20), endDate: at(23) });
+  q.upsertFestival({ ...base, id: 'big-build-2026', name: 'Big Build', startDate: at(12), endDate: at(15), groundsOpen: at(-1) });
+  const ids = (await api('GET', '/festivals')).json.map(f => f.id);
+  assert.ok(ids.includes('wrap-up-2026'), 'the day after the end still counts: teardown');
+  assert.ok(ids.includes('crew-week-2026'), 'five days out, vendors and early entry are arriving');
+  assert.ok(ids.includes('big-build-2026'), 'a festival that says when its grounds open is on from then');
+  assert.ok(!ids.includes('old-days-2026') && !ids.includes('next-month-2026'));
+  assert.ok((await api('GET', '/festivals?all=1')).json.some(f => f.id === 'next-month-2026'));
+  assert.equal((await api('GET', '/festivals/next-month-2026')).status, 200, 'by id it is there, for a phone that saved it');
+  // Frames are fetched ahead for featured festivals and for any a phone asked about in the last day.
+  assert.equal(radarWanted({ id: 'crew-week-2026', featured: false }), false);
+  assert.equal(radarWanted({ id: 'x', featured: true }), true);
+  await api('GET', '/festivals/crew-week-2026/radar');
+  assert.equal(radarWanted({ id: 'crew-week-2026', featured: false }), true);
+  assert.equal(radarWanted({ id: 'crew-week-2026', featured: false }, Date.now() + 25 * 3_600_000), false);
+  for (const id of ['old-days-2026', 'wrap-up-2026', 'crew-week-2026', 'next-month-2026', 'big-build-2026']) q.deleteFestival(id);
+
+  assert.equal((await api('POST', '/admin/import')).status, 401);
+  const r = (await api('POST', '/admin/import', { headers: admin })).json;
+  assert.equal(r.ticketmaster.skipped, 'TICKETMASTER_KEY not set');
+  assert.equal(r.feeds.skipped, 'FESTIVAL_FEEDS not set');
+
+  // PUT still adds or edits a festival outright, through the same validator.
+  assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { headers: admin, body: { name: 'Dusk Ridge' } })).json.error, 'location required');
+  const put = await api('PUT', '/festivals/dusk-ridge-2026', { headers: admin, body: { name: 'Dusk Ridge', location: 'Somewhere, CO', latitude: 39.5, longitude: -105.1, county: 'Park County', startDate: '2026-10-09T18:00:00Z', endDate: '2026-10-12T06:00:00Z' } });
+  assert.equal(put.status, 200); assert.equal(put.json.id, 'dusk-ridge-2026'); assert.equal(put.json.origin, 'curated'); assert.equal(put.json.featured, true); assert.deepEqual(put.json.feeds, []);
+  const edit = await api('PUT', '/festivals/dusk-ridge-2026', { headers: admin, body: { name: 'Dusk Ridge', location: 'Somewhere, CO', latitude: 39.5, longitude: -105.1, county: 'Park County', startDate: '2026-10-09T18:00:00Z', endDate: '2026-10-12T06:00:00Z', featured: false } });
+  assert.equal(edit.json.featured, false);
+  q.deleteFestival('dusk-ridge-2026');
+});
+
 test('device registration validates the APNs token', async () => {
   assert.equal((await api('POST', '/devices', { body: { token: 'nope' } })).status, 400);
   const token = 'a'.repeat(64);
@@ -217,7 +293,8 @@ test('device registration validates the APNs token', async () => {
 test('festival upsert validates coordinates and dates', async () => {
   const good = { name: 'Dusk Ridge', location: 'Ridge Farm, Somewhere, OH', latitude: 40.1, longitude: -82.4, startDate: '2026-10-30T16:00:00Z', endDate: '2026-11-01T06:00:00Z', county: 'Licking County' };
   assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { body: good })).status, 401);
-  assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { body: { ...good, latitude: '40.1' }, headers: admin })).status, 400);
+  assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { body: { ...good, latitude: 'north' }, headers: admin })).status, 400);
+  assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { body: { ...good, latitude: '40.1' }, headers: admin })).json.latitude, 40.1, 'a number typed into a form is still a number');
   assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { body: { ...good, longitude: 200 }, headers: admin })).status, 400);
   assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { body: { ...good, endDate: 'soon' }, headers: admin })).status, 400);
   assert.equal((await api('PUT', '/festivals/dusk-ridge-2026', { body: { ...good, endDate: '2026-10-01T00:00:00Z' }, headers: admin })).status, 400);

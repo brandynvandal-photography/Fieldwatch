@@ -127,6 +127,12 @@ async function fill(f, { now = Date.now() } = {}) {
 export const refreshedRecently = (id, ms = 5 * 60_000) => Date.now() - (lastRefresh.get(id) || 0) < ms;
 
 /** Refresh in the background unless it just happened. Errors are logged per frame, never thrown. */
+// Frames are fetched ahead of time only where someone is likely to open them: featured festivals,
+// and any festival a phone asked about in the last day. Everything else is fetched on request.
+const asked = new Map();
+export function noteInterest(id) { asked.set(id, Date.now()); }
+export const radarWanted = (f, now = Date.now()) => Boolean(f.featured) || now - (asked.get(f.id) || 0) < 24 * 3_600_000;
+
 export function refreshRadarSoon(f) {
   if (refreshedRecently(f.id) || inflight.has(f.id)) return;
   refreshRadar(f).catch(e => console.error(`[${f.id}] radar refresh failed:`, e.message));
@@ -142,7 +148,7 @@ export function radarLoop(f) {
 }
 
 export function startRadarLoop(seconds = Number(process.env.RADAR_REFRESH_SECONDS || 300)) {
-  const tick = () => { for (const f of festivalsInWindow()) refreshRadarSoon(f); };
+  const tick = () => { for (const f of festivalsInWindow()) if (radarWanted(f)) refreshRadarSoon(f); };
   tick();
   setInterval(tick, seconds * 1000);
 }

@@ -50,12 +50,19 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 `);
+// Added later: a festival someone suggested waits as 'pending' until an admin approves it.
+if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
+  db.exec(`ALTER TABLE festivals ADD COLUMN status TEXT NOT NULL DEFAULT 'published'`);
+}
 
 const s = {
-  upsertFestival: db.prepare(`INSERT INTO festivals (id, json, start_date, end_date) VALUES (?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET json = excluded.json, start_date = excluded.start_date, end_date = excluded.end_date`),
+  upsertFestival: db.prepare(`INSERT INTO festivals (id, json, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET json = excluded.json, start_date = excluded.start_date, end_date = excluded.end_date, status = excluded.status`),
   allFestivals: db.prepare(`SELECT json FROM festivals ORDER BY start_date`),
+  publishedFestivals: db.prepare(`SELECT json FROM festivals WHERE status = 'published' ORDER BY start_date`),
+  pendingFestivals: db.prepare(`SELECT json FROM festivals WHERE status = 'pending' ORDER BY start_date`),
   festival: db.prepare(`SELECT json FROM festivals WHERE id = ?`),
+  deleteFestival: db.prepare(`DELETE FROM festivals WHERE id = ?`),
 
   alert: db.prepare(`SELECT json FROM alerts WHERE id = ?`),
   insertAlert: db.prepare(`INSERT INTO alerts (id, festival_id, json, first_seen, expires_at) VALUES (?, ?, ?, ?, ?)`),
@@ -83,9 +90,12 @@ const s = {
 };
 
 export const q = {
-  upsertFestival: f => s.upsertFestival.run(f.id, JSON.stringify(f), f.startDate, f.endDate),
+  upsertFestival: f => { const status = f.status || 'published'; return s.upsertFestival.run(f.id, JSON.stringify({ ...f, status }), f.startDate, f.endDate, status); },
   allFestivals: () => s.allFestivals.all().map(r => JSON.parse(r.json)),
+  publishedFestivals: () => s.publishedFestivals.all().map(r => JSON.parse(r.json)),
+  pendingFestivals: () => s.pendingFestivals.all().map(r => JSON.parse(r.json)),
   festival: id => { const r = s.festival.get(id); return r ? JSON.parse(r.json) : null; },
+  deleteFestival: id => s.deleteFestival.run(id),
 
   alert: id => { const r = s.alert.get(id); return r ? JSON.parse(r.json) : null; },
   insertAlert: (festivalId, a) => s.insertAlert.run(a.id, festivalId, JSON.stringify(a), iso(), a.expiresAt),

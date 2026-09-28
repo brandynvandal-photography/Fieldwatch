@@ -2,6 +2,8 @@
 
 The same app for a browser, for people who won't install anything and for testing the data paths without a Mac. Same festivals, same sources, same shapes as the iPhone app.
 
+The picker lists only what is on: from a week before gates (early entry, vendors, build crews) to the day after the end, the same window as `backend/src/festivals.js`. Bubbles are the featured festivals happening now, the rest a list, and the last row is "Add a festival": a name, a place looked up on OpenStreetMap's Nominatim, two dates, and it goes to the backend's moderation queue. An admin key in Settings unlocks the queue (approve or remove) on the phone.
+
 ## Run it
 
 ```
@@ -21,6 +23,7 @@ One loud element per screen. The home screen's status card answers "am I safe ri
 
 - **Alerts and hourly forecast**: the National Weather Service API, straight from the browser (it allows cross-origin requests). With a backend address saved in Settings (or `?backend=https://...`), alerts come from the backend first and fall back to NWS, exactly like the app.
 - **Radar**: the last 12 hours of NEXRAD base reflectivity. Without a backend, one image every 15 minutes from the Iowa Environmental Mesonet WMS-T archive for the 320 km square around the grounds; with a backend, its cached 10-minute frames. Attribution stays on screen. OpenStreetMap tiles sit under the radar; if they don't load the square still draws.
+- **The festival list**: the bundled `festivals.json` at once, then the backend's live list when a backend is set (cached, so the last list shows if the backend is down). Suggesting a festival and reviewing suggestions need the backend.
 - **Incidents and posts**: backend only.
 - Everything fetched is cached in the browser, so the last good data shows with "before signal dropped" wording when the network goes.
 

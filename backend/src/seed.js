@@ -6,10 +6,10 @@ import { q } from './db.js';
 
 const festivals = () => JSON.parse(readFileSync(new URL('../data/festivals.json', import.meta.url), 'utf8'));
 
-/** Load data/festivals.json; entries that already exist are updated in place. */
+/** Load data/festivals.json; entries that already exist are updated in place. The curated list is the featured one. */
 export function seedAll() {
   const list = festivals();
-  for (const f of list) q.upsertFestival(f);
+  for (const f of list) q.upsertFestival({ origin: 'curated', status: 'published', featured: true, ...f });
   return list.length;
 }
 

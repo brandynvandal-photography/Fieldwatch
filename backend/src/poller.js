@@ -2,15 +2,12 @@ import './env.js';
 import { q } from './db.js';
 import { activeAlerts } from './nws.js';
 import { pushAlert } from './push.js';
+import { isLive } from './festivals.js';
 import { iso, daysFromNow } from './util.js';
 
-const BEFORE_DAYS = 3;  // start watching a festival's sky a few days out
-const AFTER_DAYS = 1;
-
+/** The festivals whose sky is worth watching: grounds open (see festivals.js) through the day after the end. */
 export function festivalsInWindow(now = Date.now()) {
-  return q.allFestivals().filter(f =>
-    now >= Date.parse(f.startDate) - BEFORE_DAYS * 86_400_000 &&
-    now <= Date.parse(f.endDate) + AFTER_DAYS * 86_400_000);
+  return q.publishedFestivals().filter(f => isLive(f, now));
 }
 
 const lastPolled = new Map();

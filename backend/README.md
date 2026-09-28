@@ -21,8 +21,13 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | Method | Path | What it does |
 |---|---|---|
 | GET | `/health` | `{ ok, at }` |
-| GET | `/festivals` | List of festivals (the picker) |
-| GET | `/festivals/:id` | One festival |
+| GET | `/festivals` | What is on right now (the picker): grounds open through the day after the end. `?all=1` for every published festival |
+| POST | `/festivals` | Anyone suggests a festival; it waits for an admin. 3 an hour per address |
+| GET | `/festivals/pending` | Suggestions waiting (admin key) |
+| POST | `/festivals/:id/approve` | Publish a suggestion, with optional edits in the body (admin key) |
+| DELETE | `/festivals/:id` | Remove a festival (admin key) |
+| POST | `/admin/import` | Run the Ticketmaster and feed imports now; returns the report (admin key) |
+| GET | `/festivals/:id` | One festival (a pending one only with the admin key) |
 | GET | `/festivals/:id/pack` | Offline pack: festival, active alerts, posts, hourly forecast |
 | GET | `/festivals/:id/alerts` | Active NWS alerts, polled on demand if stale |
 | GET | `/festivals/:id/radar` | Radar loop manifest: bounds, and one immutable URL per frame (see Radar) |
@@ -54,7 +59,16 @@ The phone also polls `/alerts` when it's open, and falls back to NWS directly if
 
 ## Festival data
 
-`data/festivals.json` is the curated list. There's no clean public feed of every festival in the country, and scraping aggregators breaks their terms, so this is hand-maintained (or edited live through `PUT /festivals/:id`). Coordinates need to be the actual grounds, not the town: NWS alerts are polygon-based.
+Four sources feed one table, and every record passes through `normalizeFestival` in `src/festivals.js` on the way in:
+
+- **Curated** (`data/festivals.json`): the featured list, hand-checked against each festival's own site, seeded on first boot and re-applied by `npm run seed`. Coordinates need to be the actual grounds, not the town: NWS alerts are polygon-based. These are the bubbles in the picker.
+- **Ticketmaster** (`src/importers/ticketmaster.js`, needs `TICKETMASTER_KEY`, free at developer.ticketmaster.com): a daily walk through the next twelve months of US music listings, two nets (anything with "festival" in its text, anything Ticketmaster itself styles a festival, plus any listing with four or more acts). Per-day and multi-day-pass listings fold into one festival, parking and camping add-ons are dropped, and a listing that matches a festival from another source (same grounds on overlapping dates, or the same name) is skipped, so a curated record is never overwritten by a ticket page. A listing that vanishes before it starts is treated as cancelled and removed; imports that ended a month ago are pruned. Around a hundred calls a run.
+- **Feeds** (`src/importers/feeds.js`, `FESTIVAL_FEEDS`): your own CSV or JSON, anywhere that serves a file, for example a Google Sheet published to the web as CSV. Columns can be sheet-style (`Festival, Where, Lat, Lon, First day, Last day, Website`); a bare date means the whole day. Rows are trusted, so this is how a maintainer edits the list from a phone.
+- **Community** (`POST /festivals`): the small independent ones no feed knows about. Anyone can send a name, a place and dates from the web build; it sits in the moderation queue until an admin approves it there. Nothing a stranger sends becomes a partner feed or a site map.
+
+Imports run at boot and every `IMPORT_HOURS` (24) when a source is configured, or on demand with `POST /admin/import` or `node src/importers/index.js`.
+
+**What is listed.** `GET /festivals` returns only festivals that are on: from the grounds opening until the day after the end. Grounds open `LEAD_DAYS` (7) before gates for early entry, vendors and build crews, or on the record's own `groundsOpen` date when it has one. There is no point in a platform for alerts about a place nobody is at yet. The same window decides which festivals the poller watches and the radar loop pre-fetches (only featured ones and any a phone asked about in the last day; the rest fetch on request).
 
 `feeds` holds public audio streams you have permission to relay. Broadcastify is not licensing new scanner apps, so leave this empty unless a feed owner has agreed.
 
@@ -78,6 +92,7 @@ One Node process with a disk. Run a single instance: the poller and the radar lo
    NWS_USER_AGENT=Fieldwatch (your-contact@example.com)
    TRUST_PROXY=1
    CORS_ORIGIN=*
+   TICKETMASTER_KEY=your-key-if-you-have-one
    ```
 
    Railway sets `PORT` itself. `NWS_USER_AGENT` is required by the weather service and must carry a way to contact you. `CORS_ORIGIN` can be narrowed to the web build's origin (for GitHub Pages, `https://<user>.github.io`) once you are done trying it from other places; the API sets no cookies, so `*` is safe.

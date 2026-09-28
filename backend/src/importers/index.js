@@ -1,0 +1,38 @@
+// Runs every configured source, at boot and then every IMPORT_HOURS, or once from the command line:
+//   node src/importers/index.js
+import '../env.js';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { importTicketmaster } from './ticketmaster.js';
+import { importFeeds } from './feeds.js';
+
+export const importsConfigured = () => Boolean(process.env.TICKETMASTER_KEY || process.env.FESTIVAL_FEEDS);
+export const imports = { last: null };
+let running = null;
+
+/** One run of every source. A second call while one runs joins it instead of starting another. */
+export function runImports(opts = {}) {
+  if (running) return running;
+  running = (async () => {
+    const report = { startedAt: new Date().toISOString() };
+    try { report.ticketmaster = await importTicketmaster(opts.ticketmaster); } catch (e) { report.ticketmaster = { error: e.message }; }
+    try { report.feeds = await importFeeds(opts.feeds); } catch (e) { report.feeds = { error: e.message }; }
+    report.finishedAt = new Date().toISOString();
+    imports.last = report;
+    console.log(`imports: ${JSON.stringify(report)}`);
+    return report;
+  })().finally(() => { running = null; });
+  return running;
+}
+
+export function startImporters(hours = Number(process.env.IMPORT_HOURS || 24)) {
+  if (!importsConfigured()) return false;
+  runImports();
+  setInterval(runImports, hours * 3_600_000);
+  return true;
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  console.log(JSON.stringify(await runImports(), null, 2));
+  process.exit(0);
+}
