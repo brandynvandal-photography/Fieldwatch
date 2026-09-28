@@ -10,7 +10,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: [web/index.html, web/festivals.json, .github/workflows/pages.yml]
+    paths: [web/**, .github/workflows/pages.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -28,10 +28,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Stage the two files the site needs
+      - name: Stage the site files
         run: |
           mkdir -p site
-          cp web/index.html web/festivals.json site/
+          cp web/index.html web/festivals.json web/sw.js web/manifest.webmanifest web/icon.svg web/icon-192.png web/icon-512.png web/apple-touch-icon.png site/
           touch site/.nojekyll
       - uses: actions/configure-pages@v5
         with:
