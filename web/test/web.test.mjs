@@ -55,28 +55,36 @@ async function newPage(opts = {}) {
   await page.route(/tile\.openstreetmap\.org/, r => { seen.tiles++; r.fulfill({ status: 200, contentType: 'image/png', body: PNG }); });
   return { page, context, seen, live };
 }
-const pickHulaween = async page => { await page.goto(`${base}/index.html`); await page.click('button.row:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
+const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Find your festival")'); if (await start.count()) await start.click(); await page.waitForSelector('h1.title'); };
+const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 
-test('the picker lists the real festivals, grouped by how soon they start, and searches', async () => {
+test('the walkthrough opens once, then popular festivals are bubbles and the rest a list, with search', async () => {
   const { page, context, seen } = await newPage();
   await page.goto(`${base}/index.html`);
-  await page.waitForSelector('button.row');
-  const names = await page.$$eval('button.row .t', els => els.map(e => e.textContent));
+  await page.waitForSelector('h1.title');
+  assert.equal(await page.textContent('h1.title'), 'Fieldwatch');
+  assert.equal(await page.$$eval('.trio .orb', els => els.length), 3);
+  await shot(page, '0-welcome');
+  await page.click('button:has-text("Find your festival")');
+  assert.equal(await page.textContent('h1.title'), 'Which festival?');
+  assert.equal(await page.$$eval('.bubble', els => els.length), 6, 'six popular festivals as bubbles');
+  const names = await page.$$eval('.bubble .t, .row .t', els => els.map(e => e.textContent));
   assert.equal(names.length, 11);
   assert.ok(names.includes('Suwannee Hulaween') && names.includes('Escape Halloween') && names.includes('Austin City Limits, Weekend 2'));
   const headings = await page.$$eval('p.h', els => els.map(e => e.textContent));
-  for (const h of headings) assert.ok(['Happening now', 'Coming up', 'Later this season', 'Ended'].includes(h), h);
-  assert.ok(headings.includes('Later this season'));
+  assert.deepEqual(headings, ['Popular this fall', 'More festivals']);
   const body = await page.textContent('body');
   assert.match(body, /Oct 1 – Oct 4/, 'Aftershock ends on the 4th, not at the midnight stamp on the 5th');
-  assert.match(await page.textContent('button.row:has-text("Sick New World")'), /Oct 24(?! –)/, 'a one-day festival shows one date');
-  assert.match(await page.textContent('button.row:has-text("Aftershock")'), /In \d+ days|Starts in \d+ days|Starts tomorrow|Happening now/);
-  assert.match(await page.textContent('p.note'), /checked 2026-09-27/);
+  assert.match(await page.textContent('button:has-text("Sick New World")'), /Oct 24(?! –)/, 'a one-day festival shows one date');
+  assert.match(await page.textContent('button:has-text("Aftershock")'), /In \d+ days|Starts in \d+ days|Starts tomorrow|Happening now/);
   await shot(page, '1-picker');
   await page.fill('#q', 'orlando');
   assert.deepEqual(await page.$$eval('button.row .t', els => els.map(e => e.textContent)), ['EDC Orlando']);
   await page.fill('#q', 'zzz');
   assert.match(await page.textContent('.empty'), /No festival by that name/);
+  await page.reload();
+  await page.waitForSelector('h1.title');
+  assert.equal(await page.textContent('h1.title'), 'Which festival?', 'the welcome step is shown once');
   assert.deepEqual(seen.errors, []);
   await context.close();
 });
@@ -88,12 +96,11 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   assert.match(await page.textContent('.sky p'), /Take shelter now/);
   assert.equal(await page.$$eval('.sky .strip .c', els => els.length), 6, 'six hours inside the status card');
   assert.match(await page.textContent('.sky .foot'), /Checked just now/);
-  assert.match(await page.textContent('.pill'), /^Live, updated just now/);
-  assert.match(await page.textContent('.action:has-text("Alerts")'), /1 active/);
+  assert.equal(await page.textContent('button.orb:has-text("Alerts") .badge'), '1');
   assert.equal(seen.alerts, 1); assert.equal(seen.points, 1); assert.equal(seen.hourly, 1);
   await shot(page, '2-home');
 
-  await page.click('.action:has-text("Forecast")');
+  await page.click('button.orb:has-text("Forecast")');
   await page.waitForSelector('#chart');
   assert.equal(await page.getAttribute('#chart', 'data-n'), '24');
   assert.equal(await page.$$eval('.hours .hr', els => els.length), 24, 'the strip shows the next 24 of the 36 fetched hours');
@@ -128,7 +135,7 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
 test('the radar screen asks the archive for 48 frames, newest first, and plays them', async () => {
   const { page, context, seen } = await newPage();
   await pickHulaween(page);
-  await page.click('.action:has-text("Radar")');
+  await page.click('button.orb:has-text("Radar")');
   await page.waitForFunction(() => document.querySelectorAll('.frame').length === 48 && document.getElementById('radar-loaded')?.textContent === '');
   assert.equal(seen.frames.length, 48);
   const times = seen.frames.map(t => Date.parse(t));
@@ -163,10 +170,8 @@ test('losing the weather service keeps the last good data and says so', async ()
   await pickHulaween(page);
   live.nws = false;
   await page.click('button[aria-label="Refresh"]');
-  await page.waitForSelector('.pill.off');
-  assert.match(await page.textContent('.pill'), /^Offline, updated/);
+  await page.waitForFunction(() => /before signal dropped/.test(document.querySelector('.sky .foot')?.textContent || ''));
   assert.equal(await page.textContent('.sky h2'), 'Severe Thunderstorm Warning', 'the cached alert is still shown');
-  assert.match(await page.textContent('.sky .foot'), /before signal dropped/);
   await shot(page, '6-offline');
 
   await page.reload();
@@ -180,10 +185,10 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
   const { page, context, seen } = await newPage({ dark: true });
   await page.goto(`${base}/index.html`);
   await page.waitForSelector('h1.title');
-  assert.equal(await page.textContent('h1.title'), 'Which festival?');
+  assert.equal(await page.textContent('h1.title'), 'Fieldwatch');
   assert.equal(seen.alerts + seen.points + seen.hourly + seen.frames.length, 0, 'nothing fetched until a festival is chosen');
   const bg = await page.$eval('body', el => getComputedStyle(el).backgroundColor);
-  assert.equal(bg, 'rgb(11, 14, 21)', 'dark palette applies from the system setting');
+  assert.equal(bg, 'rgb(11, 10, 22)', 'dark palette applies from the system setting');
   await pickHulaween(page);
   await shot(page, '7-home-dark');
   assert.equal(await page.getAttribute('link[rel="manifest"]', 'href'), 'manifest.webmanifest');

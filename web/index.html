@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F3F4F8">
-<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0E15">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#FBFAFF">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0B0A16">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Fieldwatch">
@@ -15,238 +15,256 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..700,100,1&display=swap">
 <title>Fieldwatch</title>
 <style>
 :root{
-  --bg:#F3F4F8; --surface:#FFFFFF; --surface-2:#EAEDF4; --surface-3:#DFE3EC;
-  --ink:#0F1320; --ink-2:#3B4252; --muted:#6A7284; --line:#E2E5EE; --line-2:#CDD2DE;
-  --accent:#4B4FE0; --accent-ink:#FFFFFF; --accent-soft:#E9EAFF;
-  --ok:#1E9A62; --ok-2:#178A55; --ok-ink:#FFFFFF;
-  --watch:#F0B23A; --watch-2:#E2951B; --watch-ink:#241800;
-  --warn:#E64A3E; --warn-2:#C93327; --warn-ink:#FFFFFF;
-  --rain:#3D8BE8; --temp:#EF8A2A;
-  --map:#0E1420;
-  --shadow:0 10px 30px rgba(15,19,32,.10);
-  --radius:18px; --gutter:16px;
-  --font-display:"Bricolage Grotesque",-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --bg:#FBFAFF; --ink:#1A1533; --ink-2:#3E3860; --muted:#6F6A8F; --line:rgba(26,21,51,.08);
+  --glass:rgba(255,255,255,.66); --glass-2:rgba(255,255,255,.84); --glass-border:rgba(255,255,255,.85);
+  --accent:#7B5CF5; --accent-ink:#FFFFFF; --grad:linear-gradient(135deg,#FF5FA8 0%,#9B7BFF 58%,#4FE3FF 135%);
+  --ok:#17B37A; --ok-2:#0E9563; --watch:#FFB03B; --watch-2:#F0951C; --watch-ink:#2A1B00; --warn:#F43F5E; --warn-2:#D8264B;
+  --rain:#3FA9F5; --temp:#FF7A45; --map:#120F26;
+  --pink:#FF5FA8; --tang:#FFB03B; --lime:#B8F53D; --cyan:#4FE3FF; --violet:#9B7BFF; --orb-opacity:.62;
+  --shadow:0 12px 40px rgba(76,52,150,.14); --shadow-2:0 2px 12px rgba(76,52,150,.09);
+  --font-display:"Fraunces",Georgia,"Times New Roman",serif;
   --font-body:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  box-sizing:border-box;
-  padding-top:env(safe-area-inset-top,0px);
-  padding-bottom:env(safe-area-inset-bottom,0px);
+  --radius:24px; --gutter:18px;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#0B0E15; --surface:#151A26; --surface-2:#1D2434; --surface-3:#273044;
-    --ink:#EEF1F7; --ink-2:#C5CBD8; --muted:#98A1B4; --line:#262E40; --line-2:#354060;
-    --accent:#9C9BFF; --accent-ink:#0B0E15; --accent-soft:#23264A;
-    --ok:#2CAE72; --ok-2:#1F8F5C; --watch:#F0B241; --watch-2:#D9951E; --warn:#EE5548; --warn-2:#C63A2F;
-    --rain:#5FA3F5; --temp:#FFA04A;
-    --shadow:0 10px 30px rgba(0,0,0,.45);
+    --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08);
+    --glass:rgba(22,18,42,.5); --glass-2:rgba(22,18,42,.78); --glass-border:rgba(255,255,255,.1);
+    --accent:#B29CFF; --accent-ink:#0B0A16; --ok:#22C58A; --ok-2:#15A06E; --watch:#FFB847; --watch-2:#E89A22; --warn:#FF4D6D; --warn-2:#D8264B;
+    --rain:#5FB8FF; --temp:#FF8E5C; --orb-opacity:.85;
+    --shadow:0 14px 44px rgba(0,0,0,.45); --shadow-2:0 2px 12px rgba(0,0,0,.3);
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0B0E15; --surface:#151A26; --surface-2:#1D2434; --surface-3:#273044;
-  --ink:#EEF1F7; --ink-2:#C5CBD8; --muted:#98A1B4; --line:#262E40; --line-2:#354060;
-  --accent:#9C9BFF; --accent-ink:#0B0E15; --accent-soft:#23264A;
-  --ok:#2CAE72; --ok-2:#1F8F5C; --watch:#F0B241; --watch-2:#D9951E; --warn:#EE5548; --warn-2:#C63A2F;
-  --rain:#5FA3F5; --temp:#FFA04A;
-  --shadow:0 10px 30px rgba(0,0,0,.45);
+  --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08);
+  --glass:rgba(22,18,42,.5); --glass-2:rgba(22,18,42,.78); --glass-border:rgba(255,255,255,.1);
+  --accent:#B29CFF; --accent-ink:#0B0A16; --ok:#22C58A; --ok-2:#15A06E; --watch:#FFB847; --watch-2:#E89A22; --warn:#FF4D6D; --warn-2:#D8264B;
+  --rain:#5FB8FF; --temp:#FF8E5C; --orb-opacity:.85;
+  --shadow:0 14px 44px rgba(0,0,0,.45); --shadow-2:0 2px 12px rgba(0,0,0,.3);
   color-scheme:dark;
 }
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 html,body{height:100%}
 *{box-sizing:border-box;margin:0;padding:0}
-body{
-  background:var(--bg); color:var(--ink); font-family:var(--font-body); font-size:17px; line-height:1.4;
-  -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent; overscroll-behavior-y:contain;
-}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.4;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-appearance:none;appearance:none;text-align:left}
 input{font:inherit;color:inherit;-webkit-appearance:none;appearance:none}
 input::-webkit-search-decoration,input::-webkit-search-cancel-button{-webkit-appearance:none}
 a{color:var(--accent)}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:10px}
-.display{font-family:var(--font-display);font-optical-sizing:auto;letter-spacing:-.02em}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:999px}
 .num{font-variant-numeric:tabular-nums}
+.display{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-optical-sizing:auto}
+
+/* Light behind everything: five slow orbs, blurred, under a frosted page. */
+.orbs{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.orbs i{position:absolute;border-radius:50%;filter:blur(54px);opacity:var(--orb-opacity);will-change:transform}
+.orbs .o1{width:64vw;height:64vw;left:-20vw;top:-14vw;background:radial-gradient(circle,var(--pink),transparent 68%)}
+.orbs .o2{width:56vw;height:56vw;right:-18vw;top:6vh;background:radial-gradient(circle,var(--tang),transparent 68%)}
+.orbs .o3{width:60vw;height:60vw;left:-16vw;top:46vh;background:radial-gradient(circle,var(--lime),transparent 68%)}
+.orbs .o4{width:66vw;height:66vw;right:-22vw;bottom:-16vw;background:radial-gradient(circle,var(--cyan),transparent 68%)}
+.orbs .o5{width:52vw;height:52vw;left:24vw;top:28vh;background:radial-gradient(circle,var(--violet),transparent 68%)}
+@media (prefers-reduced-motion:no-preference){
+  .orbs i{animation:drift 26s ease-in-out infinite alternate}
+  .orbs .o2{animation-duration:31s}.orbs .o3{animation-duration:23s}.orbs .o4{animation-duration:35s}.orbs .o5{animation-duration:19s;animation-direction:alternate-reverse}
+  @keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(7vw,-6vh) scale(1.14)}}
+}
+#app{position:relative;z-index:1}
+.glass{background:var(--glass);-webkit-backdrop-filter:blur(18px) saturate(170%);backdrop-filter:blur(18px) saturate(170%);border:1px solid var(--glass-border);box-shadow:var(--shadow-2)}
 
 .screen{min-height:100%;max-width:560px;margin:0 auto;padding:0 var(--gutter) calc(48px + env(safe-area-inset-bottom,0px))}
 @media (prefers-reduced-motion:no-preference){
-  .screen.in{animation:rise .22s cubic-bezier(.2,.7,.2,1)}
-  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .screen.in{animation:rise .26s cubic-bezier(.2,.7,.2,1)}
+  @keyframes rise{from{opacity:0;transform:translateY(12px) scale(.995)}to{opacity:1;transform:none}}
 }
-.topbar{
-  position:sticky; top:env(safe-area-inset-top,0px); z-index:5; height:56px; margin:0 calc(-1 * var(--gutter)); padding:0 8px;
-  display:flex; align-items:center; justify-content:space-between;
-  background:var(--bg); background:color-mix(in srgb,var(--bg) 84%,transparent);
-  -webkit-backdrop-filter:saturate(180%) blur(16px); backdrop-filter:saturate(180%) blur(16px);
-}
-.topbar .side{min-width:88px;display:flex;align-items:center;gap:2px}
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;height:62px;margin:0 calc(-1 * var(--gutter));padding:0 12px;display:flex;align-items:center;justify-content:space-between}
+.topbar .side{min-width:92px;display:flex;align-items:center;gap:8px}
 .topbar .side.r{justify-content:flex-end}
-.topbar .mid{flex:1;text-align:center;font-weight:600;font-size:17px}
-.tb{display:inline-flex;align-items:center;gap:2px;height:40px;padding:0 8px;border-radius:12px;color:var(--accent);font-weight:500;font-size:17px}
-.tb svg{width:22px;height:22px}
-.tb:active{background:var(--surface-2)}
+.tb{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:42px;min-width:42px;padding:0 14px;border-radius:999px;color:var(--ink);font-weight:600;font-size:15px}
+.tb.icon{width:42px;padding:0}
+.tb svg{width:20px;height:20px}
+.tb:active{transform:scale(.96)}
 .tb[disabled]{opacity:.45}
 .tb.spin svg{animation:spin 1s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.eyebrow{display:block;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:10px 0 4px}
-h1.title{font-family:var(--font-display);font-optical-sizing:auto;font-weight:700;font-size:34px;line-height:1.06;letter-spacing:-.025em;text-wrap:balance;margin:0 0 6px}
-.sub{color:var(--muted);font-size:15px;line-height:1.4;margin-bottom:18px;max-width:38ch}
-.h{font-size:13px;font-weight:600;color:var(--muted);margin:0 0 8px 4px;letter-spacing:.01em}
-.group{background:var(--surface);border-radius:var(--radius);overflow:hidden;margin-bottom:18px;box-shadow:0 1px 0 var(--line)}
-.row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;min-height:60px;position:relative}
-.row+.row::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
-button.row:active{background:var(--surface-2)}
+
+.eyebrow{display:block;text-align:center;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:12px 0 6px}
+h1.title{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-optical-sizing:auto;font-weight:600;font-size:42px;line-height:1.02;letter-spacing:-.015em;text-align:center;text-wrap:balance;margin:0 0 8px}
+.sub{text-align:center;color:var(--muted);font-size:15px;line-height:1.4;margin:0 auto 20px;max-width:34ch;text-wrap:balance}
+.h{text-align:center;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.note{text-align:center;font-size:12px;color:var(--muted);margin:-4px auto 22px;line-height:1.5;max-width:36ch}
+.group{border-radius:var(--radius);overflow:hidden;margin-bottom:18px}
+.row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;min-height:62px;position:relative}
+.row+.row::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
+button.row:active{background:rgba(255,255,255,.35)}
 .row .main{flex:1;min-width:0}
 .row .t{font-weight:600;font-size:17px;line-height:1.25}
 .row .s{color:var(--muted);font-size:14px;margin-top:2px;line-height:1.3}
-.row .tr{text-align:right;color:var(--muted);font-size:13px;flex:none;line-height:1.3}
+.row .tr{text-align:right;color:var(--muted);font-size:12px;flex:none;line-height:1.3}
 .row .tr b{display:block;color:var(--ink);font-weight:600;font-size:15px}
-.row .lead{width:36px;height:36px;border-radius:11px;flex:none;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
+.row .lead{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;background:rgba(155,123,255,.18);color:var(--accent)}
 .row .lead svg{width:20px;height:20px}
+.dotc{width:12px;height:12px;border-radius:50%;flex:none;background:hsl(var(--hue) 92% 62%);box-shadow:0 0 0 4px hsl(var(--hue) 92% 62% / .22)}
 .chev{width:18px;height:18px;color:var(--muted);flex:none;opacity:.6}
-.badge{min-width:22px;height:22px;border-radius:11px;background:var(--warn);color:#fff;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 7px;flex:none}
-.dot{width:10px;height:10px;border-radius:50%;flex:none}
-.dot.warn{background:var(--warn)} .dot.watch{background:var(--watch)} .dot.ok{background:var(--ok)} .dot.off{background:var(--muted)}
-.pill{display:inline-flex;align-items:center;gap:7px;padding:6px 12px 6px 10px;border-radius:999px;background:var(--surface);font-size:13px;font-weight:600;margin-bottom:14px;box-shadow:0 1px 0 var(--line)}
-.pill i{width:8px;height:8px;border-radius:50%;background:var(--ok);display:inline-block}
-.pill.off i{background:var(--muted)}
-.pill.busy i{background:var(--accent);animation:blink 1s ease-in-out infinite}
-@keyframes blink{50%{opacity:.3}}
-.card{background:var(--surface);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:0 1px 0 var(--line)}
-.card h3{font-size:17px;font-weight:600;margin-bottom:4px}
-.card p{color:var(--muted);font-size:15px;line-height:1.45}
-.card.quiet{background:transparent;box-shadow:none;border:1px dashed var(--line-2)}
-.note{font-size:13px;color:var(--muted);margin:-6px 4px 22px;line-height:1.45}
-.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:52px;padding:12px 16px;border-radius:16px;background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:17px;margin-bottom:12px}
-.btn.quiet{background:var(--surface);color:var(--accent);box-shadow:0 1px 0 var(--line)}
-.btn:active{transform:scale(.99);opacity:.9}
-.search{display:flex;align-items:center;gap:8px;background:var(--surface);border-radius:14px;padding:10px 12px;margin-bottom:22px;box-shadow:0 1px 0 var(--line)}
+.badge{min-width:22px;height:22px;border-radius:11px;background:var(--warn);color:#fff;font-size:13px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;padding:0 7px;flex:none;box-shadow:0 2px 8px rgba(244,63,94,.4)}
+.card{border-radius:var(--radius);padding:18px;margin-bottom:14px;text-align:center}
+.card h3{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:22px;line-height:1.1;margin-bottom:6px}
+.card p{color:var(--muted);font-size:15px;line-height:1.45;max-width:32ch;margin:0 auto}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;padding:12px 22px;border-radius:999px;background:var(--grad);color:#fff;font-weight:700;font-size:17px;box-shadow:0 12px 30px rgba(155,123,255,.38);margin-bottom:12px;text-align:center}
+.btn:active{transform:scale(.98)}
+.btn.quiet{background:var(--glass);color:var(--ink);box-shadow:var(--shadow-2);border:1px solid var(--glass-border)}
+.search{display:flex;align-items:center;gap:10px;border-radius:999px;padding:12px 18px;margin-bottom:24px}
 .search svg{width:18px;height:18px;color:var(--muted);flex:none}
 .search input{flex:1;border:0;background:none;outline:none;font-size:17px;min-width:0}
 .search input::placeholder{color:var(--muted)}
 .empty{text-align:center;padding:36px 20px;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px;font-weight:600}
 
-/* The one loud element: right now, in colour. */
-.sky{position:relative;overflow:hidden;width:100%;border-radius:22px;padding:20px 20px 16px;margin-bottom:14px;color:var(--ok-ink);box-shadow:var(--shadow)}
-.sky.ok{background:linear-gradient(160deg,var(--ok),var(--ok-2))}
-.sky.watch{background:linear-gradient(160deg,var(--watch),var(--watch-2));color:var(--watch-ink)}
-.sky.warn{background:linear-gradient(160deg,var(--warn),var(--warn-2));color:var(--warn-ink)}
-.sky.none{background:var(--surface);color:var(--ink);box-shadow:0 1px 0 var(--line)}
-.sky .eyebrow{color:inherit;opacity:.8;margin:0 0 6px}
-.sky h2{font-family:var(--font-display);font-optical-sizing:auto;font-size:30px;line-height:1.06;letter-spacing:-.025em;font-weight:700;text-wrap:balance}
-.sky p{margin-top:8px;font-size:16px;line-height:1.4;opacity:.92;max-width:36ch}
-.sky .strip{display:flex;gap:6px;margin-top:16px}
-.sky .strip .c{flex:1;min-width:0;background:rgba(255,255,255,.16);border-radius:12px;padding:8px 2px 7px;text-align:center;font-size:12px;line-height:1.2}
-.sky.watch .strip .c{background:rgba(0,0,0,.09)}
-.sky.none .strip .c{background:var(--surface-2)}
-.sky .strip svg{width:22px;height:22px;margin:4px 0 3px;display:block;margin-left:auto;margin-right:auto}
+/* Welcome */
+.welcome{min-height:calc(100vh - 140px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8px 0 30px}
+.mark{position:relative;isolation:isolate;width:150px;height:150px;margin-bottom:28px}
+.mark .glow{position:absolute;inset:-16px;border-radius:50%;background:conic-gradient(from 0deg,var(--pink),var(--tang),var(--lime),var(--cyan),var(--violet),var(--pink));filter:blur(22px);z-index:-1;opacity:.9}
+@media (prefers-reduced-motion:no-preference){.mark .glow{animation:spin 16s linear infinite}}
+.mark .glass{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;color:var(--ink)}
+.mark svg{width:66px;height:66px}
+.welcome h1.title{font-size:54px;margin-bottom:10px}
+.welcome .sub{font-size:18px;margin-bottom:28px}
+.trio{display:flex;gap:16px;margin-bottom:36px}
+.welcome .btn{max-width:320px}
+
+/* Bubbles: a colour lit from behind, frosted in front. */
+.bubble{position:relative;display:block;width:100%;padding:0;text-align:center;isolation:isolate}
+.bubble .glow{position:absolute;left:10%;right:10%;top:4%;bottom:12%;border-radius:50%;background:radial-gradient(circle at 50% 40%,hsl(var(--hue) 96% 66% / .95),hsl(calc(var(--hue) + 45) 96% 70% / .55) 48%,transparent 74%);filter:blur(16px);z-index:-1}
+.bubble .glass{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:136px;padding:18px 12px;border-radius:32px;transition:transform .15s}
+.bubble:active .glass{transform:scale(.97)}
+.bubble .t{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:22px;line-height:1.08;letter-spacing:-.01em;text-wrap:balance}
+.bubble .d{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.bubble .ph{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:hsl(var(--hue) 70% 36%);margin-top:2px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .bubble .ph{color:hsl(var(--hue) 90% 74%)}}
+:root[data-theme="dark"] .bubble .ph{color:hsl(var(--hue) 90% 74%)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+
+.orbrow{display:flex;justify-content:center;gap:14px;margin:22px 0 26px}
+.orb{display:flex;flex-direction:column;align-items:center;gap:9px;position:relative;isolation:isolate;padding:0;width:98px;text-align:center}
+.orb .glow{position:absolute;left:12px;right:12px;top:-4px;height:96px;border-radius:50%;background:radial-gradient(circle,hsl(var(--hue) 96% 66% / .95),transparent 70%);filter:blur(14px);z-index:-1}
+.orb .glass{width:86px;height:86px;border-radius:50%;display:grid;place-items:center;color:var(--ink);transition:transform .15s}
+.orb:active .glass{transform:scale(.95)}
+.orb .glass svg{width:30px;height:30px}
+.orb .l{font-size:13px;font-weight:600}
+.orb .badge{position:absolute;top:-2px;right:8px}
+.trio .orb{width:78px}.trio .orb .glass{width:66px;height:66px}.trio .orb .glass svg{width:24px;height:24px}.trio .orb .glow{height:72px;top:-3px}
+
+/* The one loud element. */
+.sky{position:relative;isolation:isolate;display:block;width:100%;padding:0;text-align:center;margin-bottom:6px}
+.sky .glow{position:absolute;inset:-4% 8% 8% 8%;border-radius:50%;background:radial-gradient(circle at 50% 30%,var(--c),transparent 70%);filter:blur(30px);z-index:-1;opacity:.9}
+.sky .glass{display:block;border-radius:32px;padding:24px 20px 18px;color:var(--ink)}
+.sky.warn .glass{background:linear-gradient(160deg,var(--warn),var(--warn-2));color:#fff;border-color:transparent;box-shadow:0 16px 44px rgba(244,63,94,.35)}
+.sky.watch .glass{background:linear-gradient(160deg,var(--watch),var(--watch-2));color:var(--watch-ink);border-color:transparent;box-shadow:0 16px 44px rgba(255,176,59,.35)}
+.sky .eyebrow{color:inherit;opacity:.72;margin:0 0 8px}
+.sky h2{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-optical-sizing:auto;font-size:34px;line-height:1.04;font-weight:600;letter-spacing:-.012em;text-wrap:balance}
+.sky p{margin:8px auto 0;font-size:15px;line-height:1.4;max-width:30ch;opacity:.9}
+.sky .strip{display:flex;gap:6px;margin-top:18px}
+.sky .strip .c{flex:1;min-width:0;border-radius:14px;padding:8px 2px 7px;font-size:11px;line-height:1.2;background:rgba(255,255,255,.5)}
+.sky.warn .strip .c{background:rgba(255,255,255,.18)}
+.sky.watch .strip .c{background:rgba(0,0,0,.08)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .sky.ok .strip .c,:root:not([data-theme="light"]) .sky.none .strip .c{background:rgba(255,255,255,.08)}}
+:root[data-theme="dark"] .sky.ok .strip .c,:root[data-theme="dark"] .sky.none .strip .c{background:rgba(255,255,255,.08)}
+.sky .strip svg{width:22px;height:22px;margin:4px auto 3px;display:block}
 .sky .strip b{display:block;font-size:14px;font-weight:600}
-.sky .foot{display:flex;justify-content:space-between;gap:12px;margin-top:14px;font-size:13px;opacity:.85}
+.sky .foot{display:block;margin-top:14px;font-size:12px;opacity:.72}
 @media (prefers-reduced-motion:no-preference){
-  .sky.warn::after{content:"";position:absolute;inset:0;border-radius:22px;border:2px solid #fff;opacity:0;animation:pulse 1.8s ease-out infinite;pointer-events:none}
+  .sky.warn .glass::after{content:"";position:absolute;inset:0;border-radius:32px;border:2px solid #fff;opacity:0;animation:pulse 1.8s ease-out infinite;pointer-events:none}
   @keyframes pulse{0%{opacity:.6;transform:scale(1)}100%{opacity:0;transform:scale(1.035)}}
 }
-.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
-.action{background:var(--surface);border-radius:16px;padding:12px;display:flex;flex-direction:column;gap:10px;align-items:flex-start;min-height:92px;position:relative;box-shadow:0 1px 0 var(--line)}
-.action:active{background:var(--surface-2)}
-.action .ic{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center}
-.action .ic svg{width:20px;height:20px}
-.action .t{font-weight:600;font-size:15px;line-height:1.2}
-.action .s{font-size:12px;color:var(--muted);line-height:1.25;margin-top:-6px}
-.action .badge{position:absolute;top:10px;right:10px}
-
-/* Skeletons while the first fetch is out. */
-.sk{background:var(--surface-2);border-radius:12px}
+.sk{background:rgba(255,255,255,.45);border-radius:14px}
 @media (prefers-reduced-motion:no-preference){
-  .sk{background:linear-gradient(90deg,var(--surface-2) 25%,var(--surface-3) 40%,var(--surface-2) 60%);background-size:300% 100%;animation:shimmer 1.4s ease infinite}
+  .sk{background:linear-gradient(90deg,rgba(255,255,255,.35) 25%,rgba(255,255,255,.7) 40%,rgba(255,255,255,.35) 60%);background-size:300% 100%;animation:shimmer 1.4s ease infinite}
   @keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
 }
 
 /* Alerts */
-.alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative}
-.alert+.alert::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
-.alert .bar{width:4px;border-radius:2px;flex:none;align-self:stretch}
+.alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative;align-items:center}
+.alert+.alert::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
+.alert .bar{width:5px;border-radius:3px;flex:none;align-self:stretch}
 .alert .bar.warn{background:var(--warn)} .alert .bar.watch{background:var(--watch)}
 .alert .main{flex:1;min-width:0}
 .alert .t{font-weight:600;font-size:17px;line-height:1.25}
 .alert .s{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.35}
-.alerthead{border-radius:22px;padding:22px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
-.alerthead.watch{background:linear-gradient(160deg,var(--watch),var(--watch-2));color:var(--watch-ink)}
-.alerthead.warn{background:linear-gradient(160deg,var(--warn),var(--warn-2));color:var(--warn-ink)}
-.alerthead .eyebrow{color:inherit;opacity:.85;margin:0 0 6px}
-.alerthead h2{font-family:var(--font-display);font-optical-sizing:auto;font-size:30px;line-height:1.06;letter-spacing:-.025em;font-weight:700;text-wrap:balance}
+.alerthead{border-radius:32px;padding:26px 20px 22px;margin-bottom:14px;text-align:center;color:#fff}
+.alerthead.watch{background:linear-gradient(160deg,var(--watch),var(--watch-2));color:var(--watch-ink);box-shadow:0 16px 44px rgba(255,176,59,.35)}
+.alerthead.warn{background:linear-gradient(160deg,var(--warn),var(--warn-2));box-shadow:0 16px 44px rgba(244,63,94,.35)}
+.alerthead .eyebrow{color:inherit;opacity:.8;margin:0 0 8px}
+.alerthead h2{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:34px;line-height:1.04;font-weight:600;letter-spacing:-.012em;text-wrap:balance}
 .alerthead p{margin-top:8px;font-size:15px;opacity:.9}
-.todo{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;box-shadow:0 1px 0 var(--line)}
-.todo .ic{width:34px;height:34px;border-radius:10px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;flex:none}
+.todo{display:flex;gap:12px;align-items:flex-start;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
+.todo .ic{width:36px;height:36px;border-radius:50%;background:rgba(23,179,122,.18);color:var(--ok);display:grid;place-items:center;flex:none}
 .todo .ic svg{width:20px;height:20px}
-.todo .t{font-weight:600;margin-bottom:2px}
+.todo .t{font-weight:700;margin-bottom:2px}
 .todo p{font-size:15px;line-height:1.45}
 .kv{display:flex;gap:12px;padding:12px 16px;position:relative;font-size:15px}
-.kv+.kv::before{content:"";position:absolute;left:16px;right:0;top:0;height:1px;background:var(--line)}
-.kv .k{color:var(--muted);flex:none;width:96px}
+.kv+.kv::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
+.kv .k{color:var(--muted);flex:none;width:92px}
 .kv .v{flex:1;line-height:1.45}
-.kv .v.right{text-align:right;font-weight:500}
-.body{font-size:17px;line-height:1.5;margin-bottom:16px;color:var(--ink-2)}
+.body{font-size:16px;line-height:1.5;margin-bottom:14px;color:var(--ink-2);padding:0 4px}
 
 /* Forecast */
-.chart{position:relative;background:var(--surface);border-radius:var(--radius);padding:14px 10px 6px;margin-bottom:12px;box-shadow:0 1px 0 var(--line)}
-.chart .lbl{font-size:13px;font-weight:600;color:var(--muted);margin:0 6px 4px}
+.chart{position:relative;border-radius:var(--radius);padding:14px 10px 6px;margin-bottom:12px}
+.chart .lbl{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 6px 6px;text-align:center}
 .chart svg{display:block;width:100%;height:auto;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .chart .tip{position:absolute;left:0;top:0;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;font-weight:500;padding:6px 9px;border-radius:9px;white-space:nowrap;transform:translate(-50%,calc(-100% - 8px));display:none;z-index:2}
 .chart .tip b{font-weight:700}
-.hours{display:flex;gap:8px;overflow-x:auto;padding:4px var(--gutter) 10px;margin:0 calc(-1 * var(--gutter)) 8px;scrollbar-width:none;scroll-snap-type:x proximity}
+.hours{display:flex;gap:8px;overflow-x:auto;padding:4px var(--gutter) 12px;margin:0 calc(-1 * var(--gutter)) 6px;scrollbar-width:none;scroll-snap-type:x proximity}
 .hours::-webkit-scrollbar{display:none}
-.hr{flex:none;width:66px;background:var(--surface);border-radius:14px;padding:10px 4px;text-align:center;scroll-snap-align:start;box-shadow:0 1px 0 var(--line)}
-.hr.now{background:var(--accent-soft)}
+.hr{flex:none;width:66px;border-radius:18px;padding:10px 4px;text-align:center;scroll-snap-align:start}
+.hr.now{background:rgba(155,123,255,.22)}
 .hr .tm{font-size:12px;color:var(--muted)}
 .hr svg{width:24px;height:24px;margin:7px auto 5px;display:block}
-.hr .tp{font-weight:600;font-size:16px}
-.hr .pp{font-size:11px;color:var(--rain);margin-top:2px;font-weight:600}
+.hr .tp{font-weight:700;font-size:16px}
+.hr .pp{font-size:11px;color:var(--rain);margin-top:2px;font-weight:700}
 
 /* Radar */
-.rmap{position:relative;width:100%;aspect-ratio:1;border-radius:20px;overflow:hidden;background:var(--map);margin-bottom:10px;box-shadow:var(--shadow)}
+.rmap{position:relative;width:100%;aspect-ratio:1;border-radius:30px;overflow:hidden;background:var(--map);margin-bottom:10px;box-shadow:var(--shadow)}
 .rmap .stage{position:absolute;left:0;top:0;width:512px;height:512px;transform-origin:0 0}
-.rmap .tile{position:absolute;filter:saturate(.55) brightness(.82) contrast(1.05)}
+.rmap .tile{position:absolute;filter:saturate(.5) brightness(.8) contrast(1.05)}
 .rmap .frame{position:absolute;left:0;top:0;width:512px;height:512px;opacity:0;transition:opacity .12s linear}
-.rmap .frame.on{opacity:.8}
+.rmap .frame.on{opacity:.82}
 @media (prefers-reduced-motion:reduce){.rmap .frame{transition:none}}
-.rmap .pin{position:absolute;left:256px;top:256px;width:12px;height:12px;margin:-6px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px var(--accent),0 0 0 9px rgba(75,79,224,.25)}
-.rmap .pinlabel{position:absolute;left:256px;top:270px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#111;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
-.rmap .stamp{position:absolute;left:12px;top:12px;background:rgba(255,255,255,.94);color:#111;border-radius:14px;padding:8px 12px 7px;line-height:1.1}
-.rmap .stamp b{display:block;font-family:var(--font-display);font-size:18px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.rmap .pin{position:absolute;left:256px;top:256px;width:12px;height:12px;margin:-6px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px #FF5FA8,0 0 0 10px rgba(255,95,168,.28)}
+.rmap .pinlabel{position:absolute;left:256px;top:272px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#1A1533;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
+.rmap .stamp{position:absolute;left:12px;top:12px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:16px;padding:8px 12px 7px;line-height:1.1;text-align:left}
+.rmap .stamp b{display:block;font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
 .rmap .stamp span{font-size:12px;color:#555}
-.rmap .legend{position:absolute;right:12px;bottom:14px;background:rgba(255,255,255,.94);color:#111;border-radius:999px;font-size:12px;padding:5px 10px;display:flex;align-items:center;gap:6px}
+.rmap .legend{position:absolute;right:12px;bottom:14px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:999px;font-size:12px;padding:5px 10px;display:flex;align-items:center;gap:6px}
 .rmap .legend i{display:block;width:56px;height:8px;border-radius:999px;background:linear-gradient(90deg,#2fb04a,#ffe600,#f2a900,#c8102e,#a020a0)}
-.rmap .progress{position:absolute;left:0;bottom:0;height:3px;background:var(--accent);width:0;transition:width .25s}
+.rmap .progress{position:absolute;left:0;bottom:0;height:3px;background:var(--grad);width:0;transition:width .25s}
 .rmap .msg{position:absolute;inset:0;display:grid;place-items:center;text-align:center;padding:24px;color:#fff;font-size:15px}
 .rctl{display:flex;align-items:center;gap:12px;margin:2px 0 0}
-.play{width:48px;height:48px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;flex:none}
+.play{width:50px;height:50px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;flex:none;box-shadow:0 8px 22px rgba(155,123,255,.4)}
 .play svg{width:20px;height:20px}
-.play:active{transform:scale(.96)}
+.play:active{transform:scale(.95)}
 .scrubwrap{flex:1;min-width:0}
 input[type=range].scrub{-webkit-appearance:none;appearance:none;width:100%;height:36px;background:transparent;margin:0}
-input[type=range].scrub::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--line-2)}
-input[type=range].scrub::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;background:var(--accent);border:3px solid var(--surface);box-shadow:0 1px 4px rgba(0,0,0,.3);margin-top:-8px}
-input[type=range].scrub::-moz-range-track{height:6px;border-radius:3px;background:var(--line-2)}
-input[type=range].scrub::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid var(--surface)}
-.ticks{display:flex;justify-content:space-between;padding:0 6px 0 66px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;margin:-6px 0 14px}
+input[type=range].scrub::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:rgba(155,123,255,.28)}
+input[type=range].scrub::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border-radius:50%;background:var(--grad);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);margin-top:-9px}
+input[type=range].scrub::-moz-range-track{height:6px;border-radius:3px;background:rgba(155,123,255,.28)}
+input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:var(--accent);border:3px solid #fff}
+.ticks{display:flex;justify-content:space-between;padding:0 6px 0 68px;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums;margin:-6px 0 14px}
 
-/* Settings and misc */
 .field{display:flex;align-items:center;gap:10px;padding:12px 16px}
 .field input{flex:1;border:0;background:none;outline:none;min-width:0}
 .field .k{color:var(--muted);font-size:14px;flex:none}
-.toast{
-  position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,16px);opacity:0;
-  background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;max-width:calc(100% - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,16px);opacity:0;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;max-width:calc(100% - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .toast.show{opacity:1;transform:translate(-50%,0)}
-.link{color:var(--accent);font-weight:500;text-decoration:none}
+.link{color:var(--accent);font-weight:600;text-decoration:none}
 </style>
 </head>
 <body>
+<div class="orbs" aria-hidden="true"><i class="o1"></i><i class="o2"></i><i class="o3"></i><i class="o4"></i><i class="o5"></i></div>
 <div id="app"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script>
@@ -265,15 +283,15 @@ const IN_PREVIEW = !!(window.claude && typeof window.claude.use === 'function');
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
 const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
-const S = { screen: 'picker', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '' };
+const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '' }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed })); }catch(e){}
 }
 const backend = () => (new URLSearchParams(location.search).get('backend') || S.backend || '').replace(/\/+$/, '');
 const fest = () => FESTS.find(f => f.id === S.fest);
@@ -594,100 +612,119 @@ function outlook(f){
 }
 
 // ---- screens ---------------------------------------------------------------------------------------------------
+const HUES = [322, 28, 96, 190, 262, 345, 48, 160, 212, 288, 14];
+const hue = f => HUES[Math.max(0, FESTS.indexOf(f)) % HUES.length];
 const topbar = (l, m, r) => `<div class="topbar"><div class="side">${l || ''}</div><div class="mid">${m || ''}</div><div class="side r">${r || ''}</div></div>`;
-const backBtn = (label) => `<button class="tb" onclick="back()" aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ''}</button>`;
-const gearBtn = () => `<button class="tb" onclick="go('settings')" aria-label="Settings">${I.gear}</button>`;
-const refreshBtn = () => `<button class="tb ${S.busy ? 'spin' : ''}" onclick="refresh(fest())" aria-label="Refresh" ${S.busy ? 'disabled' : ''}>${I.refresh}</button>`;
+const backBtn = label => `<button class="tb glass ${label ? '' : 'icon'}" onclick="back()" aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ''}</button>`;
+const gearBtn = () => `<button class="tb glass icon" onclick="go('settings')" aria-label="Settings">${I.gear}</button>`;
+const refreshBtn = () => `<button class="tb glass icon ${S.busy ? 'spin' : ''}" onclick="refresh(fest())" aria-label="Refresh" ${S.busy ? 'disabled' : ''}>${I.refresh}</button>`;
+const orb = (label, icon, h, onclick, badge) => `<button class="orb" style="--hue:${h}" onclick="${onclick}"><i class="glow"></i><span class="glass">${icon}</span><span class="l">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
 function statusLine(f){
   const d = data(f);
-  if (S.busy && !d.at) return 'Checking the National Weather Service';
+  if (S.busy && !d.at) return 'Checking the sky';
   if (d.error && d.at) return `Last checked ${ago(d.at)}, before signal dropped`;
-  if (d.error) return IN_PREVIEW ? 'This preview cannot reach the weather service' : 'Cannot reach the National Weather Service';
+  if (d.error) return IN_PREVIEW ? 'This preview cannot reach the weather service' : 'No signal';
   if (d.at) return `Checked ${ago(d.at)}`;
   return 'Not checked yet';
 }
-const pill = f => { const d = data(f); const off = !!d.error; return `<span class="pill ${off ? 'off' : ''} ${S.busy ? 'busy' : ''}"><i></i>${S.busy ? 'Updating' : off ? 'Offline' : 'Live'}${d.at ? ', updated ' + ago(d.at) : ''}</span>`; };
 
 const screens = {};
 
+screens.welcome = () => topbar('', '', '') + `
+  <div class="welcome">
+    <div class="mark"><i class="glow"></i><span class="glass">${I.radar}</span></div>
+    <h1 class="title">Fieldwatch</h1>
+    <p class="sub">The sky, before the crowd knows.</p>
+    <div class="trio">
+      <div class="orb" style="--hue:345"><i class="glow"></i><span class="glass">${I.bell}</span><span class="l">Alerts</span></div>
+      <div class="orb" style="--hue:262"><i class="glow"></i><span class="glass">${I.radar}</span><span class="l">Radar</span></div>
+      <div class="orb" style="--hue:190"><i class="glow"></i><span class="glass">${I.chart}</span><span class="l">Forecast</span></div>
+    </div>
+    <button class="btn" onclick="start()">Find your festival</button>
+    <p class="note">No account. Nothing tracked.</p>
+  </div>`;
+function start(){ S.welcomed = true; save(); go('picker', null, { reset: true }); }
+
 screens.picker = () => {
   const q = S.query.trim().toLowerCase();
-  const list = FESTS.filter(f => !q || `${f.name} ${f.location} ${f.county}`.toLowerCase().includes(q));
-  const groups = [['now', 'Happening now'], ['soon', 'Coming up'], ['later', 'Later this season'], ['ended', 'Ended']];
-  const row = f => { const ph = phase(f); return `<button class="row" onclick="pick('${f.id}')">
-    <div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div>
-    <div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(ph.text)}</div>${I.chev}</button>`; };
-  const sections = groups.map(([key, title]) => {
-    const items = list.filter(f => phase(f).key === key).sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate));
-    return items.length ? `<p class="h">${title}</p><div class="group">${items.map(row).join('')}</div>` : '';
-  }).join('');
+  const bySoonest = (a, b) => Date.parse(a.startDate) - Date.parse(b.startDate);
+  const upcoming = FESTS.filter(f => phase(f).key !== 'ended').sort(bySoonest);
+  const popular = upcoming.slice(0, 6), rest = FESTS.filter(f => !popular.includes(f)).sort(bySoonest);
+  const bubble = f => `<button class="bubble" style="--hue:${hue(f)}" onclick="pick('${f.id}')"><i class="glow"></i><span class="glass"><span class="t">${esc(f.name)}</span><span class="d">${esc(fmtRange(f))}</span><span class="ph">${esc(phase(f).text)}</span></span></button>`;
+  const row = f => `<button class="row" onclick="pick('${f.id}')"><span class="dotc" style="--hue:${hue(f)}"></span><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}</div>${I.chev}</button>`;
+  let body;
+  if (q) {
+    const hits = FESTS.filter(f => `${f.name} ${f.location} ${f.county}`.toLowerCase().includes(q)).sort(bySoonest);
+    body = hits.length ? `<div class="group glass">${hits.map(row).join('')}</div>` : `<div class="empty"><b>No festival by that name</b>Try the town or the state.</div>`;
+  } else if (!FESTS.length) {
+    body = `<div class="card glass"><h3>Nothing loaded</h3><p>festivals.json did not load.</p></div>`;
+  } else {
+    body = `<p class="h">Popular this fall</p><div class="grid">${popular.map(bubble).join('')}</div>${rest.length ? `<p class="h">More festivals</p><div class="group glass">${rest.map(row).join('')}</div>` : ''}`;
+  }
   return topbar('', '', gearBtn()) + `
-    <p class="eyebrow">Fieldwatch</p>
     <h1 class="title">Which festival?</h1>
-    <p class="sub">Live weather, alerts and radar for the grounds. Pick one and it stays on this phone.</p>
-    <label class="search">${I.search}<input id="q" type="search" placeholder="Search festivals" autocomplete="off" value="${esc(S.query)}" oninput="filterFests(this.value)"></label>
-    ${sections || (FESTS.length ? `<div class="empty"><b>No festival by that name</b>Try the town or the state.</div>` : `<div class="card"><h3>No festivals loaded</h3><p>festivals.json did not load.</p></div>`)}
-    <p class="note">Dates and venues from each festival's own site, checked ${esc(FESTS[0]?.verifiedOn || '')}. Attendee relay and receiver pairing need the iPhone app.</p>`;
+    <label class="search glass">${I.search}<input id="q" type="search" placeholder="Search festivals" autocomplete="off" value="${esc(S.query)}" oninput="filterFests(this.value)"></label>
+    ${body}
+    <p class="note">Dates from each festival's own site.</p>`;
 };
-function filterFests(v){ S.query = v; const el = document.getElementById('app'); const pos = document.activeElement === document.getElementById('q'); render(); if (pos) { const q = document.getElementById('q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+function filterFests(v){ S.query = v; const had = document.activeElement === document.getElementById('q'); render(); if (had) { const q = document.getElementById('q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
 
 screens.home = () => {
   const f = fest(); if (!f) return screens.picker();
   const d = data(f), al = activeAlerts(f), lv = d.alerts ? level(f) : (d.error ? 'none' : 'loading');
   const strip = (d.hourly || []).slice(0, 6);
-  const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories in effect`) : lv === 'ok' ? 'All clear' : lv === 'none' ? 'No weather data' : '';
+  const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories`) : lv === 'ok' ? 'All clear' : lv === 'none' ? 'No weather data' : '';
   const line = lv === 'warn' ? 'Take shelter now. Stages and tents are not safe shelter.'
-             : lv === 'watch' ? (al[0].expiresAt ? `Until ${fmtWhen(al[0].expiresAt)}. Tap for details.` : 'Tap for details.')
-             : lv === 'ok' ? `No weather alerts for ${f.county}. ${outlook(f)}`
-             : lv === 'none' ? statusLine(f) + '.' : '';
+             : lv === 'watch' ? (al[0].expiresAt ? `Until ${fmtWhen(al[0].expiresAt)}` : 'Tap for details')
+             : lv === 'ok' ? outlook(f) || `No alerts for ${f.county}`
+             : lv === 'none' ? statusLine(f) : '';
   const target = lv === 'ok' || lv === 'none' ? "go('weather')" : lv === 'loading' ? '' : `go('alert','${esc((al.find(isWarning) || al[0]).id)}')`;
+  const glow = lv === 'ok' ? 'var(--ok)' : lv === 'none' ? 'var(--muted)' : 'var(--violet)';
   const sky = lv === 'loading'
-    ? `<div class="sky none" aria-busy="true"><div class="sk" style="width:38%;height:12px;margin-bottom:12px"></div><div class="sk" style="width:70%;height:30px;margin-bottom:10px"></div><div class="sk" style="width:90%;height:16px;margin-bottom:18px"></div><div class="strip">${'<div class="sk" style="flex:1;height:64px"></div>'.repeat(6)}</div></div>`
-    : `<button class="sky ${lv}" onclick="${target}">
+    ? `<div class="sky none" style="--c:var(--violet)" aria-busy="true"><i class="glow"></i><span class="glass"><div class="sk" style="width:38%;height:12px;margin:0 auto 12px"></div><div class="sk" style="width:72%;height:32px;margin:0 auto 10px"></div><div class="sk" style="width:60%;height:15px;margin:0 auto 18px"></div><div class="strip">${'<div class="sk" style="flex:1;height:66px"></div>'.repeat(6)}</div></span></div>`
+    : `<button class="sky ${lv}" style="--c:${glow}" onclick="${target}"><i class="glow"></i><span class="glass">
         <span class="eyebrow">Right now</span>
         <h2>${esc(head)}</h2><p>${esc(line)}</p>
-        ${strip.length ? `<div class="strip">${strip.map((h, i) => `<div class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h)}<b class="num">${Math.round(h.temperature)}°</b></div>`).join('')}</div>` : ''}
-        <div class="foot"><span>${esc(statusLine(f))}</span><span>National Weather Service</span></div>
-      </button>`;
-  return topbar(`<button class="tb" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', refreshBtn() + gearBtn()) + `
-    <p class="eyebrow num">${esc(fmtRange(f))} · ${esc(phase(f).text)}</p>
+        ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
+        <span class="foot">${esc(statusLine(f))}</span>
+      </span></button>`;
+  return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', refreshBtn() + gearBtn()) + `
+    <span class="eyebrow num">${esc(fmtRange(f))} · ${esc(phase(f).text)}</span>
     <h1 class="title">${esc(f.name)}</h1>
     <p class="sub">${esc(f.location)}</p>
-    ${pill(f)}
     ${sky}
-    <div class="actions">
-      <button class="action" onclick="go('radar')"><span class="ic">${I.radar}</span><span class="t">Radar</span><span class="s">Last ${HOURS} hours</span></button>
-      <button class="action" onclick="go('weather')"><span class="ic">${I.bell}</span><span class="t">Alerts</span><span class="s">${al.length ? `${al.length} active` : 'None active'}</span>${al.length ? `<span class="badge">${al.length}</span>` : ''}</button>
-      <button class="action" onclick="go('weather')"><span class="ic">${I.chart}</span><span class="t">Forecast</span><span class="s">Next 24 hours</span></button>
+    <div class="orbrow">
+      ${orb('Radar', I.radar, 262, "go('radar')")}
+      ${orb('Alerts', I.bell, 345, "go('weather')", al.length || '')}
+      ${orb('Forecast', I.chart, 190, "go('weather')")}
     </div>
-    <p class="h">Channels</p>
-    <div class="group">
+    <div class="group glass">
       <button class="row" onclick="go('official')"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
-      <button class="row" onclick="go('incidents')"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and attendee reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
+      <button class="row" onclick="go('incidents')"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
     </div>
-    <p class="note">Emergency alerts from your carrier still arrive on their own. Weather and alerts from the National Weather Service for ${esc(f.county)}.</p>`;
+    <p class="note">Carrier emergency alerts still arrive on their own.</p>`;
 };
 
 screens.weather = () => {
   const f = fest(); if (!f) return screens.picker();
   const d = data(f), al = activeAlerts(f), hr = (d.hourly || []).slice(0, 24);
   const alerts = al.length
-    ? `<p class="h">Active alerts</p><div class="group">${al.map(a => `<button class="alert" onclick="go('alert','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${a.expiresAt ? 'Until ' + esc(fmtWhen(a.expiresAt)) + '. ' : ''}${esc(a.area)}</div></div>${I.chev}</button>`).join('')}</div>`
-    : d.alerts ? `<div class="card"><h3>No active alerts</h3><p>Nothing in effect for ${esc(f.county)} right now.</p></div>`
-    : `<div class="card"><h3>${S.busy ? 'Checking' : 'No data yet'}</h3><p>${esc(statusLine(f))}.</p></div>`;
+    ? `<p class="h">Active alerts</p><div class="group glass">${al.map(a => `<button class="alert" onclick="go('alert','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${a.expiresAt ? 'Until ' + esc(fmtWhen(a.expiresAt)) : esc(a.area)}</div></div>${I.chev}</button>`).join('')}</div>`
+    : d.alerts ? `<div class="card glass"><h3>No active alerts</h3><p>Nothing in effect for ${esc(f.county)}.</p></div>`
+    : `<div class="card glass"><h3>${S.busy ? 'Checking' : 'No data yet'}</h3><p>${esc(statusLine(f))}</p></div>`;
   const chart = hr.length
-    ? `<div class="chart"><div class="lbl">Temperature, next ${hr.length} hours</div>${chartSVG(hr)}<div class="tip" id="tip"></div></div>
-       <div class="hours">${hr.map((h, i) => `<div class="hr ${i === 0 ? 'now' : ''}" title="${esc(h.shortForecast)}"><div class="tm">${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</div>${glyph(h)}<div class="tp num">${Math.round(h.temperature)}°</div>${h.precipChance ? `<div class="pp">${h.precipChance}%</div>` : '<div class="pp">&nbsp;</div>'}</div>`).join('')}</div>`
-    : S.busy ? `<div class="chart"><div class="sk" style="height:150px"></div></div>` : `<div class="card"><p>The forecast loads when you have signal.</p></div>`;
+    ? `<div class="chart glass"><div class="lbl">Next ${hr.length} hours</div>${chartSVG(hr)}<div class="tip" id="tip"></div></div>
+       <div class="hours">${hr.map((h, i) => `<div class="hr glass ${i === 0 ? 'now' : ''}" title="${esc(h.shortForecast)}"><div class="tm">${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</div>${glyph(h)}<div class="tp num">${Math.round(h.temperature)}°</div>${h.precipChance ? `<div class="pp">${h.precipChance}%</div>` : '<div class="pp">&nbsp;</div>'}</div>`).join('')}</div>`
+    : S.busy ? `<div class="chart glass"><div class="sk" style="height:150px"></div></div>` : `<div class="card glass"><p>The forecast loads when you have signal.</p></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
-    <p class="eyebrow">${esc(f.county)}</p>
+    <span class="eyebrow">${esc(f.county)}</span>
     <h1 class="title">Weather</h1>
-    <p class="sub">${esc(outlook(f) || statusLine(f) + '.')}</p>
-    <div class="group"><button class="row" onclick="go('radar')"><span class="lead">${I.radar}</span><div class="main"><div class="t">Radar</div><div class="s">Last ${HOURS} hours over the grounds</div></div>${I.chev}</button></div>
+    <p class="sub">${esc(outlook(f) || statusLine(f))}</p>
+    <div class="group glass"><button class="row" onclick="go('radar')"><span class="lead">${I.radar}</span><div class="main"><div class="t">Radar</div><div class="s">Last ${HOURS} hours</div></div>${I.chev}</button></div>
     ${alerts}
     <p class="h">Forecast</p>
     ${chart}
-    <p class="note">National Weather Service. ${esc(statusLine(f))}.</p>`;
+    <p class="note">National Weather Service · ${esc(statusLine(f))}</p>`;
 };
 
 screens.radar = () => {
@@ -696,7 +733,7 @@ screens.radar = () => {
   const n = loop && !loop.error ? loop.frames.length : 0;
   const tickAt = k => { const fr = loop.frames[Math.round(k * (n - 1))]; return fr ? esc(fmtHour(fr.time)) : ''; };
   const body = !loop ? `<div class="rmap" id="rmap"><div class="msg"><div><div class="sk" style="width:120px;height:14px;margin:0 auto 10px;background:rgba(255,255,255,.12)"></div>Fetching the last ${HOURS} hours</div></div></div>`
-    : loop.error ? `<div class="rmap" id="rmap"><div class="msg"><div><b>Radar unavailable</b><br><span style="opacity:.8">${IN_PREVIEW ? 'This preview cannot reach the radar archive. Open the hosted build to see it live.' : 'Cannot reach the radar archive right now.'}</span></div></div></div>`
+    : loop.error ? `<div class="rmap" id="rmap"><div class="msg"><div><b>Radar unavailable</b><br><span style="opacity:.8">${IN_PREVIEW ? 'This preview cannot reach the radar archive.' : 'Cannot reach the radar archive right now.'}</span></div></div></div>`
     : `<div class="rmap" id="rmap"><div class="stage" id="stage">
         ${tiles(bbox).map(t => `<img class="tile" alt="" src="${t.url}" style="left:${t.left}px;top:${t.top}px;width:${t.size}px;height:${t.size}px" onerror="this.remove()">`).join('')}
         ${loop.frames.map((fr, i) => `<img class="frame" id="fr${i}" alt="">`).join('')}
@@ -712,8 +749,8 @@ screens.radar = () => {
     </div>
     <div class="ticks" aria-hidden="true"><span>${tickAt(0)}</span><span>${tickAt(.25)}</span><span>${tickAt(.5)}</span><span>${tickAt(.75)}</span><span>${tickAt(1)}</span></div>
     <p class="note" id="radar-loaded"></p>
-    <p class="note">Last ${loop.hours} hours, every ${loop.step} minutes, 160 km from the grounds to the edge. ${esc(loop.attribution)}. Map © OpenStreetMap contributors.</p>`;
-  return topbar(backBtn(), '', '') + `<p class="eyebrow">${esc(f.county)}</p><h1 class="title">Radar</h1><p class="sub">${esc(f.name)}</p>${body}`;
+    <p class="note">${esc(loop.attribution)} · Map © OpenStreetMap contributors</p>`;
+  return topbar(backBtn(), '', '') + `<span class="eyebrow">${esc(f.county)}</span><h1 class="title">Radar</h1><p class="sub">Last ${HOURS} hours, 160 km around ${esc(f.name)}</p>${body}`;
 };
 
 screens.alert = id => {
@@ -721,60 +758,53 @@ screens.alert = id => {
   if (!a) return topbar(backBtn(), '', '') + `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`;
   const warn = isWarning(a), { sections, paragraphs } = parseNWS(a.body);
   const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim();
-  return topbar(backBtn(), '', navigator.share ? `<button class="tb" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>` : '') + `
+  return topbar(backBtn(), '', navigator.share ? `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>` : '') + `
     <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p>${a.expiresAt ? 'Until ' + esc(fmtFull(a.expiresAt)) : esc(a.area)}</p></div>
-    ${instruction ? `<div class="todo"><span class="ic">${I.check}</span><div><div class="t">What to do</div><p>${esc(instruction)}</p></div></div>` : ''}
-    ${sections.length ? `<div class="group">${sections.map(s => `<div class="kv"><span class="k">${esc(s.label)}</span><span class="v">${esc(s.text)}</span></div>`).join('')}</div>` : ''}
+    ${instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">What to do</div><p>${esc(instruction)}</p></div></div>` : ''}
+    ${sections.length ? `<div class="group glass">${sections.map(s => `<div class="kv"><span class="k">${esc(s.label)}</span><span class="v">${esc(s.text)}</span></div>`).join('')}</div>` : ''}
     ${paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('')}
-    <p class="h">Details</p>
-    <div class="group">
+    <div class="group glass">
       <div class="kv"><span class="k">Area</span><span class="v">${esc(a.area)}</span></div>
       <div class="kv"><span class="k">Source</span><span class="v">${esc(a.source)}</span></div>
       <div class="kv"><span class="k">Issued</span><span class="v num">${esc(fmtFull(a.issuedAt))}</span></div>
       ${a.expiresAt ? `<div class="kv"><span class="k">Ends</span><span class="v num">${esc(fmtFull(a.expiresAt))}</span></div>` : ''}
-      <div class="kv"><span class="k">Severity</span><span class="v">${esc(a.severity.charAt(0).toUpperCase() + a.severity.slice(1))}</span></div>
     </div>
-    <p class="note">Saved in this browser. Reopens without signal.</p>`;
+    <p class="note">Saved on this phone. Opens without signal.</p>`;
 };
 
 screens.official = () => {
   const f = fest(); if (!f) return screens.picker();
   const posts = data(f).posts || [];
   return topbar(backBtn(), '', '') + `
-    <p class="eyebrow">${esc(f.name)}</p>
+    <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Festival official</h1>
-    <p class="sub">Updates and site information straight from the festival.</p>
-    ${f.isPartner ? (posts.length ? `<p class="h">Updates</p><div class="group">${posts.map(p => `<div class="row" style="align-items:flex-start"><div class="main"><div class="t">${esc(p.title)}</div><div class="s">${esc(p.body)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(p.postedAt))}</div></div></div>`).join('')}</div>` : '<div class="card"><h3>Nothing posted yet</h3></div>')
-                 : `<div class="card"><h3>This festival hasn't joined yet</h3><p>When it does, staff updates and evacuation notices show up here.</p></div>`}
-    <p class="h">On site</p>
-    ${(f.site || []).length ? `<div class="group">${f.site.map(s => `<div class="row"><div class="main"><div class="t">${esc(s.title)}</div><div class="s">${esc(s.detail)}</div></div></div>`).join('')}</div>`
-                            : `<div class="card quiet"><p>No site information for ${esc(f.name)} yet. Medical, water and exits appear here once the festival provides them.</p></div>`}
-    <p class="note">Festival site: <a class="link" href="${esc(f.source)}" target="_blank" rel="noopener">${esc(f.source.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))}</a></p>`;
+    ${f.isPartner ? (posts.length ? `<p class="h">Updates</p><div class="group glass">${posts.map(p => `<div class="row" style="align-items:flex-start"><div class="main"><div class="t">${esc(p.title)}</div><div class="s">${esc(p.body)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(p.postedAt))}</div></div></div>`).join('')}</div>` : '<div class="card glass"><h3>Nothing posted yet</h3></div>')
+                 : `<div class="card glass" style="margin-top:14px"><h3>Not joined yet</h3><p>Staff updates and evacuation notices show up here once the festival signs on.</p></div>`}
+    ${(f.site || []).length ? `<p class="h">On site</p><div class="group glass">${f.site.map(s => `<div class="row"><div class="main"><div class="t">${esc(s.title)}</div><div class="s">${esc(s.detail)}</div></div></div>`).join('')}</div>` : ''}
+    <p class="note"><a class="link" href="${esc(f.source)}" target="_blank" rel="noopener">${esc(f.source.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))}</a></p>`;
 };
 
 screens.incidents = () => {
   const f = fest(); if (!f) return screens.picker();
   const list = data(f).incidents;
   return topbar(backBtn(), '', refreshBtn()) + `
-    <p class="eyebrow">Last 48 hours</p>
+    <span class="eyebrow">Last 48 hours</span>
     <h1 class="title">Incidents</h1>
-    <p class="sub">County dispatch traffic that matters to safety, and attendee reports checked by a person.</p>
-    ${!backend() ? `<div class="card"><h3>Needs the Fieldwatch backend</h3><p>Incidents come from the backend and its on-site receivers. Set its address in Settings.</p></div>`
-      : !list ? `<div class="card"><h3>${S.busy ? 'Checking' : 'Cannot reach the backend'}</h3></div>`
-      : !list.length ? `<div class="card"><h3>Nothing reported</h3><p>Nothing in the last 48 hours for this festival.</p></div>`
-      : `<div class="group">${list.map(i => `<div class="alert"><span class="bar ${i.level === 'warning' ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(i.category)}</div><div class="s">${esc(i.summary)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(i.occurredAt))}${i.location ? ', ' + esc(i.location) : ''}, ${esc(i.source)}</div></div></div>`).join('')}</div>`}
-    <p class="note">Only safety-relevant traffic is kept. Names and numbers are removed. Reporting needs the iPhone app.</p>`;
+    ${!backend() ? `<div class="card glass" style="margin-top:14px"><h3>Needs the backend</h3><p>County dispatch incidents and attendee reports come from the Fieldwatch backend. Set its address in Settings.</p></div>`
+      : !list ? `<div class="card glass" style="margin-top:14px"><h3>${S.busy ? 'Checking' : 'Cannot reach the backend'}</h3></div>`
+      : !list.length ? `<div class="card glass" style="margin-top:14px"><h3>Nothing reported</h3></div>`
+      : `<div class="group glass" style="margin-top:14px">${list.map(i => `<div class="alert"><span class="bar ${i.level === 'warning' ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(i.category)}</div><div class="s">${esc(i.summary)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(i.occurredAt))}${i.location ? ', ' + esc(i.location) : ''}</div></div></div>`).join('')}</div>`}
+    <p class="note">Only safety traffic is kept. Names and numbers removed.</p>`;
 };
 
-screens.settings = () => topbar(backBtn(), 'Settings', '') + `
-  <p class="h" style="margin-top:14px">Fieldwatch backend</p>
-  <div class="group"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="https://your-backend.example.com" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
-  <p class="note">Optional. With a backend, alerts come pushed from its poller and radar frames from its cache; without one this page asks the National Weather Service and the NEXRAD archive directly.</p>
-  ${IOS && !STANDALONE && !IN_PREVIEW ? `<p class="h">Keep it handy</p><div class="card"><h3>Add to your Home Screen</h3><p>Tap Share, then "Add to Home Screen". Fieldwatch opens full screen like an app and keeps the last weather it saw.</p></div>` : ''}
-  <p class="h">Saved in this browser</p>
-  <div class="group"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
-  <p class="h">About</p>
-  <div class="card"><p>Weather and alerts: National Weather Service (api.weather.gov). Radar: ${esc(ATTRIBUTION)}. Map tiles: OpenStreetMap contributors. Festival dates and venues: each festival's own site. No account, no login; nothing leaves this browser except those requests.</p></div>`;
+screens.settings = () => topbar(backBtn(), '', '') + `
+  <h1 class="title">Settings</h1>
+  <p class="h" style="margin-top:22px">Backend</p>
+  <div class="group glass"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="https://your-backend.example.com" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
+  <p class="note">Optional. Adds pushed alerts, incidents and cached radar.</p>
+  ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
+  <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
+  <p class="note">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. No account, no login.</p>`;
 
 function setBackend(v){ S.backend = v.trim().replace(/\/+$/, ''); save(); toast(S.backend ? 'Backend saved' : 'Using NWS directly'); if (fest()) refresh(fest()); }
 function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
@@ -799,7 +829,7 @@ async function boot(){
   load();
   try{ FESTS = await (await fetch('festivals.json', { cache: 'no-cache' })).json(); }catch(e){ FESTS = []; }
   if (S.fest && !fest()) S.fest = null;
-  S.screen = S.fest ? 'home' : 'picker';
+  S.screen = !S.welcomed ? 'welcome' : S.fest ? 'home' : 'picker';
   render();
   if (fest()) refresh(fest());
   setInterval(() => { if (fest() && document.visibilityState === 'visible' && !S.busy) refresh(fest()); }, 5 * 60000);
