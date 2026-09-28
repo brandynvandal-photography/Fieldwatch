@@ -9,7 +9,13 @@ cd web && npm start          # python3 -m http.server 8090
 open http://localhost:8090
 ```
 
-Any static host works (GitHub Pages, Netlify, an S3 bucket): the folder is `index.html` plus `festivals.json`. `.github/workflows/pages.yml` at the project root deploys it to GitHub Pages on every push to `main` once Fieldwatch is in a public repository of its own; it turns Pages on by itself on the first run. `festivals.json` is a copy of `backend/data/festivals.json`; a backend test fails if the two drift.
+Any static host works (GitHub Pages, Netlify, an S3 bucket). The site is `index.html`, `festivals.json`, `sw.js`, `manifest.webmanifest` and the icons; `.github/workflows/pages.yml` at the project root deploys exactly those to GitHub Pages on every push to `main` once Fieldwatch is in a public repository of its own, and turns Pages on by itself on the first run.
+
+It installs: on an iPhone, Share then "Add to Home Screen" gives a full-screen app with its own icon, and the service worker keeps the shell opening with no signal (an update lands on the next refresh). The display face is Bricolage Grotesque from Google Fonts with the system face as fallback; everything else is inline. `festivals.json` is a copy of `backend/data/festivals.json`; a backend test fails if the two drift.
+
+## The interface
+
+One loud element per screen. The home screen's status card answers "am I safe right now" in colour, carries the next six hours, and adds one line derived from the forecast. The forecast is two aligned single-measure panels (temperature curve with a scrub-to-read tooltip, chance-of-rain bars), never a dual axis. Alert detail leads with what to do, then the NWS bullets as sections. Radar has crossfading frames, a stamp with time and age, and a scrubber with hour ticks. Dark theme is designed, not inverted; motion respects reduced-motion; everything is keyboard focusable. Change `icon.svg` and re-render the PNGs (`test/` has the Chromium harness) rather than editing the PNGs.
 
 ## Where the data comes from
 
