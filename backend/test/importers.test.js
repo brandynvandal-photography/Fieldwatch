@@ -63,7 +63,7 @@ test('per-day listings fold into one festival and add-ons, venues, sports and te
   assert.equal(river.endDate, '2026-12-05T08:00:00Z');
 });
 
-test('the import walks a year in monthly windows with two nets, skips what is curated, and prunes what vanished', async () => {
+test('the import walks a year in monthly windows with three nets, skips what is curated, and prunes what vanished', async () => {
   const calls = [];
   let serve = (u) => tmPage([]);
   const fetchImpl = async (u) => {
@@ -72,9 +72,16 @@ test('the import walks a year in monthly windows with two nets, skips what is cu
     const body = serve(url);
     return new Response(JSON.stringify(body), { status: body.status || 200, headers: { 'content-type': 'application/json' } });
   };
+  // Front Gate's net: a festival with no "fest" in its name and the festival itself as its only attraction, and a parking add-on.
+  const frontgate = [
+    tmEvent({ name: 'Electric Forest', url: 'https://www.frontgatetickets.com/event/electric-forest', dates: { start: { localDate: '2026-10-20', dateTime: '2026-10-20T16:00:00Z' }, end: { localDate: '2026-10-23' } },
+      _embedded: { venues: [tmVenue({ id: 'v-double-jj', name: 'Double JJ Resort', city: { name: 'Rothbury' }, state: { stateCode: 'MI' }, location: { latitude: '43.51', longitude: '-86.31' } })], attractions: [{ name: 'Electric Forest' }] } }),
+    tmEvent({ name: 'Electric Forest Parking', url: 'https://www.frontgatetickets.com/event/electric-forest-parking' }),
+  ];
   serve = url => {
     const w0 = url.searchParams.get('startDateTime') === '2026-09-28T12:00:00Z';
     if (!w0) return tmPage([]);
+    if (url.searchParams.get('source') === 'frontgate') return tmPage(frontgate);
     if (url.searchParams.get('keyword') === 'festival') return tmPage([...moonrise, ...others]);
     // The second net pages: two pages, the second holding a festival the first net missed.
     return url.searchParams.get('page') === '0' ? tmPage([], { totalPages: 2 }) : tmPage([tmEvent({ name: 'Hidden Hollow', dates: { start: { localDate: '2026-10-17' } },
@@ -82,14 +89,20 @@ test('the import walks a year in monthly windows with two nets, skips what is cu
       _embedded: { venues: [tmVenue({ id: 'v-hh', name: 'Hollow Farm', city: { name: 'Floyd' }, state: { stateCode: 'VA' }, location: { latitude: '36.91', longitude: '-80.32' } })] } })], { page: 1, totalPages: 2 });
   };
   const r = await importTicketmaster({ key: 'k-test', fetchImpl, now: NOW, pauseMs: 0, log: { error: () => {} } });
-  assert.equal(r.calls, 25, '12 windows, two nets each, one of them two pages');
+  assert.equal(r.calls, 37, '12 windows, three nets each, one of them two pages');
   assert.equal(r.errors, 0);
-  assert.deepEqual({ added: r.added, updated: r.updated, duplicates: r.duplicates, pruned: r.pruned }, { added: 4, updated: 0, duplicates: 1, pruned: 0 });
-  assert.ok(calls.some(u => u.searchParams.get('classificationName') === 'Music' && u.searchParams.get('keyword') === 'festival'));
+  assert.deepEqual({ added: r.added, updated: r.updated, duplicates: r.duplicates, pruned: r.pruned }, { added: 5, updated: 0, duplicates: 1, pruned: 0 });
+  assert.equal(r.frontgate, 2); assert.deepEqual(r.hosts, { 'ticketmaster.com': 5, 'frontgatetickets.com': 1 }, 'counted before the curated duplicate is dropped');
+  assert.ok(calls.some(u => u.searchParams.get('classificationName') === 'Music' && u.searchParams.get('keyword') === 'festival' && !u.searchParams.has('source')), 'the wide nets span every source');
   assert.ok(calls.some(u => u.searchParams.get('classificationName') === 'Festival' && u.searchParams.get('page') === '1'));
-  assert.equal(calls.filter(u => u.searchParams.get('startDateTime') === '2026-09-28T12:00:00Z').length, 3);
+  assert.ok(calls.some(u => u.searchParams.get('source') === 'frontgate' && u.searchParams.get('classificationName') === 'Music' && !u.searchParams.has('keyword')), 'Front Gate: every music listing, no name filter');
+  assert.equal(calls.filter(u => u.searchParams.get('startDateTime') === '2026-09-28T12:00:00Z').length, 4);
+  const ef = q.festival('tm-electric-forest-2026');
+  assert.ok(ef, 'a Front Gate listing counts as a festival without "fest" in its name');
+  assert.equal(ef.endDate, '2026-10-24T08:00:00Z'); assert.equal(ef.location, 'Double JJ Resort, Rothbury, MI');
+  assert.equal(candidate(frontgate[0]), null, 'the same listing from the wide nets alone would not have passed');
   const published = q.publishedFestivals();
-  assert.equal(published.filter(f => f.origin === 'ticketmaster').length, 4);
+  assert.equal(published.filter(f => f.origin === 'ticketmaster').length, 5);
   assert.equal(published.filter(f => /hulaween/i.test(f.name)).length, 1, 'the curated Hulaween is not listed twice');
   assert.equal(published.find(f => /hulaween/i.test(f.name)).origin, 'curated');
 
@@ -104,8 +117,9 @@ test('the import walks a year in monthly windows with two nets, skips what is cu
       _embedded: { venues: [tmVenue({ id: 'v-hh', location: { latitude: '36.91', longitude: '-80.32' } })] } })]);
   };
   const r2 = await importTicketmaster({ key: 'k-test', fetchImpl, now: NOW, pauseMs: 0 });
-  assert.deepEqual({ added: r2.added, updated: r2.updated, pruned: r2.pruned }, { added: 0, updated: 2, pruned: 2 });
+  assert.deepEqual({ added: r2.added, updated: r2.updated, pruned: r2.pruned }, { added: 0, updated: 2, pruned: 3 });
   assert.equal(q.festival('tm-big-sky-jam-2026'), null, 'gone from the API before it started: cancelled');
+  assert.equal(q.festival('tm-electric-forest-2026'), null, 'same for a Front Gate listing');
   assert.equal(q.festival('tm-moonrise-fest-2026').startDate, '2026-10-16T17:00:00Z', 'moved dates follow the listing');
   assert.equal(q.festival('tm-hidden-hollow-2026').featured, true, 'what the admin set stays');
   assert.equal(q.festival('tm-hidden-hollow-2026').county, 'Floyd County');
