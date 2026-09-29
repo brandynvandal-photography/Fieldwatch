@@ -330,7 +330,8 @@ const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || na
 function blankDraft(){ return { name: '', where: '', place: null, start: '', end: '', website: '', error: null }; }
 const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false,
   fests: null, admin: '', draft: blankDraft(), places: null, finding: false, sending: false, sent: null, pending: null, reviewing: false,
-  push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false };
+  push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
+  report: { what: '', where: '', error: null }, reporting: false, reported: null };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
@@ -587,6 +588,7 @@ function go(name, param, opts){
   S.screen = name; S.param = param || null;
   render(false); window.scrollTo(0, 0);
   if (name === 'radar' && fest()) { startRadar(fest()); locate(); }
+  if (name === 'report') locate();
   if (name === 'review') loadPending();
 }
 function back(){
@@ -608,6 +610,7 @@ const I = {
   refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
   search: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  flag: svg('<path d="M5 21V4"/><path d="M5 4h11l-1.5 4L16 12H5"/>'),
   check: svg('<path d="M5 12l5 5L20 7"/>'),
   pin: svg('<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>'),
   radar: svg('<path d="M12 12L19 5"/><path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'),
@@ -930,6 +933,7 @@ screens.home = () => {
     <div class="group glass">
       <button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
+      <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>
       ${pushRow()}
     </div>
     ${listingNote(f)}
@@ -1038,8 +1042,49 @@ screens.incidents = () => {
       : !list ? `<div class="card glass" style="margin-top:14px"><h3>${S.busy ? 'Checking' : 'Cannot reach the backend'}</h3></div>`
       : !list.length ? `<div class="card glass" style="margin-top:14px"><h3>Nothing reported</h3></div>`
       : `<div class="group glass" style="margin-top:14px">${list.map(i => `<div class="alert"><span class="bar ${i.level === 'warning' ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(i.category)}</div><div class="s">${esc(i.summary)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(i.occurredAt))}${i.location ? ', ' + esc(i.location) : ''}</div></div></div>`).join('')}</div>`}
+    ${backend() ? `<button class="btn quiet" onclick="later(function(){ go('report') })">${I.flag}<span>Report a hazard</span></button>` : ''}
     <p class="note">Only safety traffic is kept. Names and numbers removed.</p>`;
 };
+
+screens.report = () => {
+  const f = fest(); if (!f) return screens.picker();
+  const r = S.report;
+  if (S.reported) return topbar(backBtn(), '', '') + `
+    <div class="welcome">
+      <div class="mark"><i class="glow"></i><span class="glass">${I.check}</span></div>
+      <h1 class="title">Sent</h1>
+      <p class="sub">Someone checks it before it goes out to everyone here.</p>
+      <button class="btn" onclick="later(function(){ S.reported = null; back() })">Done</button>
+    </div>`;
+  if (!backend()) return topbar(backBtn(), '', '') + `
+    <h1 class="title">Report a hazard</h1>
+    <div class="card glass" style="margin-top:22px"><h3>Needs the backend</h3><p>Reports go to the Fieldwatch backend for a check. Set its address in Settings.</p></div>`;
+  return topbar(backBtn(), '', '') + `
+    <h1 class="title">Report a hazard</h1>
+    <p class="sub">For things people here need to know. Emergencies: call 911.</p>
+    <div class="group glass">
+      <label class="field"><span class="k">What</span><input id="r-what" value="${esc(r.what)}" placeholder="Flooded path behind Stage 2" autocomplete="off" oninput="setReport('what', this.value)"></label>
+      <label class="field"><span class="k">Where</span><input id="r-where" value="${esc(r.where)}" placeholder="Near the east gate" autocomplete="off" oninput="setReport('where', this.value)"></label>
+      <button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Attach my location</div><div class="s">${S.here ? 'Where you are right now' : 'Tap to allow'}</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button>
+    </div>
+    <button class="btn" id="r-send" ${r.what.trim().length >= 8 && !S.reporting ? '' : 'disabled'} onclick="sendReport()">${S.reporting ? 'Sending' : 'Send'}</button>
+    <p class="note">${r.error ? esc(r.error) : 'No name, no account. Names and numbers are removed.'}</p>`;
+};
+function setReport(k, v){ S.report[k] = v; S.report.error = null; const b = document.getElementById('r-send'); if (b) b.disabled = S.report.what.trim().length < 8; }
+async function sendReport(){
+  const f = fest(), r = S.report; if (!f || r.what.trim().length < 8 || S.reporting) return;
+  S.reporting = true; r.error = null; render();
+  const body = { summary: r.what.trim(), location: r.where.trim() || undefined };
+  if (S.here) { body.latitude = S.here.latitude; body.longitude = S.here.longitude; }
+  try{
+    const res = await postJSON(`${backend()}/festivals/${encodeURIComponent(f.id)}/reports`, body);
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 429) throw new Error('Too many reports from this phone for now.');
+    if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
+    S.reported = j.id || true; S.report = { what: '', where: '', error: null };
+  }catch(e){ r.error = /fetch/i.test(e.message) ? "Couldn't reach the backend" : e.message; }
+  S.reporting = false; render();
+}
 
 screens.add = () => {
   const d = S.draft;
@@ -1208,6 +1253,7 @@ function locate(){
       }
     }
     if (S.screen === 'picker' && document.activeElement !== document.getElementById('q')) render();
+    if ((S.screen === 'report' || S.screen === 'settings') && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) render();
     if (S.screen === 'radar') { const st = document.getElementById('stage'); if (st && !document.querySelector('.rmap .me')) st.insertAdjacentHTML('beforeend', meDot(coverage(fest()))); }
   }, err => { S.locating = false; if (err && err.code === 1) { S.geoDenied = true; save(); if (S.screen === 'settings') render(); } }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
 }

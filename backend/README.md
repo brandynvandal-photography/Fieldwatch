@@ -35,6 +35,10 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | GET | `/festivals/:id/posts` | Staff updates |
 | POST | `/festivals/:id/posts` | Staff update (admin key); pushes to subscribers |
 | PUT | `/festivals/:id` | Add or edit a festival (admin key) |
+| GET | `/festivals/:id/qr.svg` | A QR code that opens the web build on this festival (print it at the gate) |
+| GET | `/push/vapid` | The public VAPID key the web build subscribes with; 404 until keys are set |
+| POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings |
+| DELETE | `/push/subscribe` | `{ endpoint }` and it stops |
 | POST | `/devices` | `{ token, festivalId }` subscribe a phone |
 | DELETE | `/devices/:token` | Unsubscribe |
 
@@ -97,6 +101,8 @@ One Node process with a disk. Run a single instance: the poller and the radar lo
    TICKETMASTER_KEY=your-key-if-you-have-one
    SEATGEEK_CLIENT_ID=your-client-id-if-you-have-one
    EDMTRAIN_KEY=your-key-if-you-have-one
+   VAPID_PUBLIC_KEY=from npm run vapid
+   VAPID_PRIVATE_KEY=from npm run vapid
    ```
 
    Railway sets `PORT` itself. `NWS_USER_AGENT` is required by the weather service and must carry a way to contact you. `CORS_ORIGIN` can be narrowed to the web build's origin (for GitHub Pages, `https://<user>.github.io`) once you are done trying it from other places; the API sets no cookies, so `*` is safe.
@@ -112,6 +118,8 @@ Deploys again on every push to `main` that touches `backend/`.
 - A VPS: `npm ci --omit=dev`, the `.env` from `.env.example`, `node src/server.js` under systemd, nginx in front with `TRUST_PROXY=1`.
 
 Push is optional everywhere: leave the `APNS_*` lines out until there is a key, and the server starts without them (alerts are stored and served, just not pushed).
+
+**Web push** (warnings on a phone's Home Screen, no app store): run `npm run vapid` once, put the two lines it prints into the variables as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, and set `SITE_URL` to where the web build lives if it is not the GitHub Pages address. From then on every new warning, watch and staff post reaches every browser that switched warnings on for that festival; advisories are not pushed. Dead subscriptions are dropped on the next send. The switch is in the web build's home screen; on an iPhone it works once the site is on the Home Screen (iOS 16.4+).
 
 ## Radar
 

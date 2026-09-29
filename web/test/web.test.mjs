@@ -266,7 +266,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], subs: [], calls: [] };
+  const store = { list: [...list], pending: [], subs: [], reports: [], calls: [] };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-allow-headers': 'Content-Type, x-admin-key' };
   const server = http.createServer((req, res) => {
     let raw = ''; req.on('data', c => { raw += c; }); req.on('end', () => {
@@ -281,6 +281,8 @@ function fakeBackend(list) {
         store.pending.push(f); return send(202, { id: f.id, pending: true });
       }
       if (m === 'GET' && /^\/festivals\/[^/]+\/qr\.svg$/.test(path)) { res.writeHead(200, { ...cors, 'content-type': 'image/svg+xml' }); return res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21"><rect width="21" height="21" fill="#fff"/><path d="M1 1h7v7H1z" fill="#000"/></svg>'); }
+      const rep = path.match(/^\/festivals\/([^/]+)\/reports$/);
+      if (m === 'POST' && rep) { const b = JSON.parse(raw); if (!b.summary || b.summary.length < 8) return send(400, { error: 'summary required' }); store.reports.push({ festival: rep[1], ...b }); return send(202, { id: `rep-${store.reports.length}`, queued: true }); }
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
@@ -469,6 +471,34 @@ test('share: a link that opens on the festival, and a QR code from the backend t
     await page.click('button.btn:has-text("Copy link")');
     await page.waitForSelector('.toast.show:has-text("Link copied")');
     assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `${base}/index.html?f=hulaween-2026`);
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('a hazard report goes to the moderation queue with your location attached', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 30.4051, longitude: -82.9401 });
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026`);
+    await page.waitForSelector('.sky');
+    await page.click('button.row:has-text("Report a hazard")');
+    await page.waitForSelector('#r-what');
+    await page.waitForSelector('button.row:has-text("Attach my location") .pill.on');
+    assert.ok(await page.$('#r-send[disabled]'), 'nothing to send yet');
+    await page.fill('#r-what', 'Flooded path behind Stage 2, knee deep');
+    await page.fill('#r-where', 'Behind Stage 2');
+    assert.equal(await page.$('#r-send[disabled]'), null);
+    await shot(page, '15-report');
+    await page.click('#r-send');
+    await page.waitForSelector('h1.title:has-text("Sent")');
+    assert.equal(store.reports.length, 1);
+    const r = store.reports[0];
+    assert.equal(r.festival, 'hulaween-2026'); assert.equal(r.summary, 'Flooded path behind Stage 2, knee deep'); assert.equal(r.location, 'Behind Stage 2');
+    assert.ok(Math.abs(r.latitude - 30.4051) < 1e-6 && Math.abs(r.longitude + 82.9401) < 1e-6, 'your position rides along');
+    await page.click('button:has-text("Done")');
+    await page.waitForSelector('.sky');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

@@ -15,6 +15,15 @@ Any static host works (GitHub Pages, Netlify, an S3 bucket). The site is `index.
 
 It installs: on an iPhone, Share then "Add to Home Screen" gives a full-screen app with its own icon, and the service worker keeps the shell opening with no signal (an update lands on the next refresh). The display face is Bricolage Grotesque from Google Fonts with the system face as fallback; everything else is inline. `festivals.json` is a copy of `backend/data/festivals.json`; a backend test fails if the two drift.
 
+## What it does for someone at the grounds
+
+- **Opens on your festival.** With location allowed, the picker skips itself when you are within a few miles of a festival that is on, and sorts the rest by distance. A link with `?f=<festival>` (a QR code at the gate, a pushed warning) opens there too, past the walkthrough.
+- **Warnings on this phone.** One row on the home screen turns Web Push on for the chosen festival: warnings, watches and staff posts arrive with the app closed. On an iPhone it needs the site on the Home Screen. A warning that lands while the app is open vibrates the phone and shows a banner.
+- **Heat, wind, lightning.** The weather screen reads the grid behind the forecast: heat index with the 90 and 103 guides, wind gusts with the 25 and 40 mph guides crews watch for tents and stages, chance of thunder. One crosshair across all three. The home card leads with whichever matters most in the next twelve hours.
+- **Day by day.** One row per festival day through the day after, and one line about what to pack.
+- **Share.** A QR code (rendered by the backend) and a link that open straight on the festival.
+- **Report a hazard.** What, where, your position if you allow it. It goes to the backend's moderation queue; a human checks it before it goes out.
+
 ## The interface
 
 One loud element per screen. The home screen's status card answers "am I safe right now" in colour, carries the next six hours, and adds one line derived from the forecast. The forecast is two aligned single-measure panels (temperature curve with a scrub-to-read tooltip, chance-of-rain bars), never a dual axis. Alert detail leads with what to do, then the NWS bullets as sections. Radar has crossfading frames, a stamp with time and age, and a scrubber with hour ticks. Dark theme is designed, not inverted; motion respects reduced-motion; everything is keyboard focusable. Change `icon.svg` and re-render the PNGs (`test/` has the Chromium harness) rather than editing the PNGs.
@@ -25,7 +34,9 @@ One loud element per screen. The home screen's status card answers "am I safe ri
 - **Alerts and hourly forecast**: the National Weather Service API, straight from the browser (it allows cross-origin requests). Alerts come from the backend first and fall back to NWS, exactly like the app.
 - **Radar**: the last 12 hours of NEXRAD base reflectivity. The backend's cached 10-minute frames once it holds two hours of them; until then, or without a backend, one image every 15 minutes from the Iowa Environmental Mesonet WMS-T archive for the 320 km square around the grounds. Attribution stays on screen. OpenStreetMap tiles sit under the radar; if they don't load the square still draws.
 - **The festival list**: the bundled `festivals.json` at once, then the backend's live list when a backend is set (cached, so the last list shows if the backend is down). Suggesting a festival and reviewing suggestions need the backend.
-- **Incidents and posts**: backend only.
+- **The grid and the days**: the same weather service, `/gridpoints` for heat index, gusts and thunder and `/gridpoints/.../forecast` for the 7-day outlook. One `/points` call per festival feeds all of it.
+- **Where you are**: the browser's own location, asked once on the picker, never stored. Nominatim (OpenStreetMap) only for the place lookup when adding a festival.
+- **Incidents, posts, reports, push, the QR code**: backend only.
 - Everything fetched is cached in the browser, so the last good data shows with "before signal dropped" wording when the network goes.
 
 Be polite to the archive: one browser pulling 48 frames now and then is fine; a hosted build with real traffic should point at the backend, which fetches each frame once for everyone.
