@@ -384,3 +384,41 @@ test('a link opens straight to a festival and its alert, and warnings can be swi
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
+
+test('with location on, the app opens the festival you are standing at, sorts the rest by distance, and places you on the radar', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 30.4045, longitude: -82.9390 });   // the Hulaween grounds
+  await page.goto(`${base}/index.html`);
+  await page.click('button:has-text("Find your festival")');
+  await page.waitForSelector('.sky', { timeout: 10000 });
+  assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'no tap needed: you are there');
+  await page.click('button.orb:has-text("Radar")');
+  await page.waitForSelector('.rmap .me');
+  const dot = await page.$eval('.rmap .me', el => ({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) }));
+  assert.ok(Math.abs(dot.left - 256) < 2 && Math.abs(dot.top - 256) < 2, 'standing on the grounds means the centre of the square');
+  await shot(page, '12-radar-me');
+  await page.click('button[aria-label="Back"]');
+  await page.waitForSelector('.sky');
+  await page.click('button:has-text("Change")');
+  await page.waitForSelector('h1.title:has-text("Which festival?")');
+  assert.equal((await page.$$eval('p.h', els => els.map(e => e.textContent)))[0], 'Right here');
+  assert.equal(await page.textContent('.bubble .t'), 'Suwannee Hulaween');
+  assert.match(await page.textContent('.bubble .ph'), /right here$/);
+  const others = await page.$$eval('.bubble .ph, .row .tr', els => els.map(e => e.textContent).filter(t => / mi$/.test(t)));
+  assert.ok(others.length >= 1, 'the others say how far');
+  assert.equal(await page.$('.sky'), null, 'after Change, the picker stays put');
+
+  // From far away, nothing opens by itself, and the nearest comes first.
+  await context.setGeolocation({ latitude: 39.74, longitude: -104.99 });   // Denver
+  await page.goto(`${base}/index.html`);
+  await page.waitForSelector('h1.title:has-text("Which festival?")');
+  await page.waitForFunction(() => /\d mi/.test(document.querySelector('.bubble .ph')?.textContent || ''));
+  const dist = await page.$$eval('.bubble .ph', els => els.map(e => Number(e.textContent.match(/([\d,.]+) mi/)?.[1].replace(',', ''))));
+  assert.ok(dist.every((d, i) => i === 0 || d >= dist[i - 1]), 'nearest first');
+  assert.equal(await page.$('.sky'), null);
+  await page.click('button[aria-label="Settings"]');
+  await page.waitForSelector('button.row:has-text("Use my location") .pill.on');
+  assert.deepEqual(seen.errors, []);
+  await context.close();
+});

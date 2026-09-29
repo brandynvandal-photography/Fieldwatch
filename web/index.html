@@ -231,6 +231,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .rmap .frame.on{opacity:.82}
 @media (prefers-reduced-motion:reduce){.rmap .frame{transition:none}}
 .rmap .pin{position:absolute;left:256px;top:256px;width:12px;height:12px;margin:-6px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px #FF5FA8,0 0 0 10px rgba(255,95,168,.28)}
+.rmap .me{position:absolute;width:14px;height:14px;margin:-7px;border-radius:50%;background:#2F7BFF;border:3px solid #fff;box-shadow:0 0 0 7px rgba(47,123,255,.28)}
 .rmap .pinlabel{position:absolute;left:256px;top:272px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#1A1533;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
 .rmap .stamp{position:absolute;left:12px;top:12px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:16px;padding:8px 12px 7px;line-height:1.1;text-align:left}
 .rmap .stamp b{display:block;font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -306,6 +307,12 @@ const closesAt = f => Date.parse(f.endDate) + TAIL_DAYS * DAY;
 const isLive = (f, now = Date.now()) => now >= opensAt(f) && now <= closesAt(f);
 const live = () => FESTS.filter(f => isLive(f));
 const isFeatured = f => (f.featured === undefined ? !f.origin || f.origin === 'curated' : !!f.featured);
+// Where you are, if you let the app know: opens the festival you are standing at and places you on the radar.
+const NEAR_KM = 12;
+function distKm(a, b){ const R = 6371, rad = x => x * Math.PI / 180, dLat = rad(b.latitude - a.latitude), dLon = rad(b.longitude - a.longitude); const s = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLon / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(s)); }
+const fmtDist = km => km < 0.3 ? 'right here' : km < 16 ? `${(km / 1.609).toFixed(1)} mi` : `${Math.round(km / 1.609).toLocaleString()} mi`;
+const away = f => (S.here ? distKm(S.here, f) : null);
+const distNote = f => (S.here ? ` · ${fmtDist(away(f))}` : '');
 // Inside a Claude artifact preview the browser is not allowed to reach outside hosts.
 const IN_PREVIEW = !!(window.claude && typeof window.claude.use === 'function');
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
@@ -314,15 +321,15 @@ const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || na
 function blankDraft(){ return { name: '', where: '', place: null, start: '', end: '', website: '', error: null }; }
 const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false,
   fests: null, admin: '', draft: blankDraft(), places: null, finding: false, sending: false, sent: null, pending: null, reviewing: false,
-  push: null, vapid: null, link: null };
+  push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -533,7 +540,7 @@ function go(name, param, opts){
   if (opts.reset) S.stack = [];
   S.screen = name; S.param = param || null;
   render(false); window.scrollTo(0, 0);
-  if (name === 'radar' && fest()) startRadar(fest());
+  if (name === 'radar' && fest()) { startRadar(fest()); locate(); }
   if (name === 'review') loadPending();
 }
 function back(){
@@ -544,7 +551,7 @@ function back(){
   render(true); window.scrollTo(0, 0);
 }
 function pick(id){ later(() => { S.fest = id; save(); go('home', null, { reset: true }); refresh(fest()); resubscribePush(); }); }
-function changeFestival(){ S.fest = null; save(); go('picker', null, { reset: true }); }
+function changeFestival(){ S.fest = null; S.autoPicked = true; save(); go('picker', null, { reset: true }); locate(); }
 
 // ---- icons: one stroke family, 1.9px, rounded ------------------------------------------------------------
 const svg = (body, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${body}</svg>`;
@@ -708,17 +715,17 @@ screens.welcome = () => topbar('', '', '') + `
     <button class="btn" onclick="start()">Find your festival</button>
     <p class="note">No account. Nothing tracked.</p>
   </div>`;
-function start(){ later(() => { S.welcomed = true; save(); go('picker', null, { reset: true }); }); }
+function start(){ later(() => { S.welcomed = true; save(); go('picker', null, { reset: true }); locate(); }); }
 
 screens.picker = () => {
   const q = S.query.trim().toLowerCase(), now = Date.now();
   const started = f => now >= Date.parse(f.startDate);
-  const byOn = (a, b) => (started(b) - started(a)) || (Date.parse(a.startDate) - Date.parse(b.startDate));
+  const byOn = (a, b) => (S.here ? away(a) - away(b) : 0) || (started(b) - started(a)) || (Date.parse(a.startDate) - Date.parse(b.startDate));
   const on = live().sort(byOn);
   const top = on.filter(isFeatured);
   const bubbles = (top.length ? top : on).slice(0, 6), rest = on.filter(f => !bubbles.includes(f));
-  const bubble = f => `<button class="bubble" style="--hue:${hue(f)}" onclick="pick('${f.id}')"><i class="glow"></i><span class="glass"><span class="t">${esc(f.name)}</span><span class="d">${esc(fmtRange(f))}</span><span class="ph">${esc(phase(f).text)}</span></span></button>`;
-  const row = f => `<button class="row" onclick="pick('${f.id}')"><span class="dotc" style="--hue:${hue(f)}"></span><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}</div>${I.chev}</button>`;
+  const bubble = f => `<button class="bubble" style="--hue:${hue(f)}" onclick="pick('${f.id}')"><i class="glow"></i><span class="glass"><span class="t">${esc(f.name)}</span><span class="d">${esc(fmtRange(f))}</span><span class="ph">${esc(phase(f).text)}${esc(distNote(f))}</span></span></button>`;
+  const row = f => `<button class="row" onclick="pick('${f.id}')"><span class="dotc" style="--hue:${hue(f)}"></span><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}${esc(distNote(f))}</div>${I.chev}</button>`;
   const addRow = `<div class="group glass"><button class="row" onclick="later(function(){ go('add') })"><span class="lead">${I.plus}</span><div class="main"><div class="t">Add a festival</div><div class="s">Small ones too</div></div>${I.chev}</button></div>`;
   let body;
   if (!FESTS.length) {
@@ -729,7 +736,7 @@ screens.picker = () => {
     const hits = on.filter(f => `${f.name} ${f.location} ${f.county || ''}`.toLowerCase().includes(q));
     body = (hits.length ? `<div class="group glass">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + addRow;
   } else {
-    body = `<p class="h">${started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass">${rest.map(row).join('')}</div>` : ''}${addRow}`;
+    body = `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass">${rest.map(row).join('')}</div>` : ''}${addRow}`;
   }
   return topbar('', '', gearBtn()) + `
     <h1 class="title">Which festival?</h1>
@@ -820,7 +827,7 @@ screens.radar = () => {
     : `<div class="rmap" id="rmap"><div class="stage" id="stage">
         ${tiles(bbox).map(t => `<img class="tile" alt="" src="${t.url}" style="left:${t.left}px;top:${t.top}px;width:${t.size}px;height:${t.size}px" onerror="this.remove()">`).join('')}
         ${loop.frames.map((fr, i) => `<img class="frame" id="fr${i}" alt="">`).join('')}
-        <div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>
+        <div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}
       </div>
       <div class="stamp"><b id="radar-time" class="num">Loading</b><span id="radar-ago">&nbsp;</span></div>
       <div class="legend"><i></i>light to heavy</div>
@@ -926,6 +933,7 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <p class="h" style="margin-top:22px">Backend</p>
   <div class="group glass"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="${esc(DEFAULT_BACKEND.replace(/^https:\/\//, ''))}" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
   <p class="note">Empty uses the default. Type none to go without.</p>
+  <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at, and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
   <p class="h">Admin</p>
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `<button class="row" onclick="later(function(){ go('review') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review festivals</div><div class="s">What people sent in</div></div>${I.chev}</button>` : ''}</div>
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
@@ -1007,6 +1015,33 @@ async function decide(id, ok){
     toast(ok ? 'Approved' : 'Removed');
   }catch(e){ toast(e.message === 'HTTP 401' ? 'Wrong admin key' : "Couldn't reach the backend"); }
   loadPending(); if (ok) syncFestivals();
+}
+
+// ---- where you are ------------------------------------------------------------------------------------------
+function locate(){
+  if (!('geolocation' in navigator) || S.geoDenied || S.locating || IN_PREVIEW) return;
+  S.locating = true;
+  navigator.geolocation.getCurrentPosition(p => {
+    S.locating = false; S.here = { latitude: p.coords.latitude, longitude: p.coords.longitude, at: Date.now() };
+    if (S.screen === 'picker' && !S.fest && !S.autoPicked) {
+      const near = live().map(f => ({ f, km: away(f) })).sort((a, b) => a.km - b.km)[0];
+      if (near && near.km <= NEAR_KM) {
+        S.autoPicked = true; S.fest = near.f.id; save();
+        go('home', null, { reset: true }); refresh(fest()); resubscribePush(); toast(`You're at ${near.f.name}`, 3500);
+        return;
+      }
+    }
+    if (S.screen === 'picker' && document.activeElement !== document.getElementById('q')) render();
+    if (S.screen === 'radar') { const st = document.getElementById('stage'); if (st && !document.querySelector('.rmap .me')) st.insertAdjacentHTML('beforeend', meDot(coverage(fest()))); }
+  }, err => { S.locating = false; if (err && err.code === 1) { S.geoDenied = true; save(); if (S.screen === 'settings') render(); } }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+}
+function retryLocate(){ S.geoDenied = false; save(); locate(); toast('Asking for your location'); }
+/** A blue dot on the radar square, if you are inside it. */
+function meDot(bbox){
+  if (!S.here) return '';
+  const c = mercator(S.here.latitude, S.here.longitude), [x0, y0, x1, y1] = bbox;
+  if (c.x < x0 || c.x > x1 || c.y < y0 || c.y > y1) return '';
+  return `<div class="me" title="You" style="left:${((c.x - x0) / (x1 - x0) * SIZE).toFixed(1)}px;top:${((y1 - c.y) / (y1 - y0) * SIZE).toFixed(1)}px"></div>`;
 }
 
 // ---- warnings on this phone: Web Push through the service worker -----------------------------------------
@@ -1093,6 +1128,7 @@ async function boot(){
   if (S.fest && !(fest() && isLive(fest()))) S.fest = null;
   if (!linked || !S.fest) S.screen = !S.welcomed ? 'welcome' : S.fest ? 'home' : 'picker';
   render();
+  if (S.screen === 'picker') locate();
   if (fest()) refresh(fest());
   syncFestivals();
   setInterval(() => { if (fest() && document.visibilityState === 'visible' && !S.busy) refresh(fest()); }, 5 * 60000);
