@@ -49,6 +49,12 @@ db.exec(`
     festival_id TEXT,
     updated_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS web_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    festival_id TEXT,
+    json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 // Added later: a festival someone suggested waits as 'pending' until an admin approves it.
 if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
@@ -87,6 +93,11 @@ const s = {
     ON CONFLICT(token) DO UPDATE SET festival_id = excluded.festival_id, updated_at = excluded.updated_at`),
   deleteDevice: db.prepare(`DELETE FROM devices WHERE token = ?`),
   tokensFor: db.prepare(`SELECT token FROM devices WHERE festival_id = ?`),
+
+  upsertWebSubscription: db.prepare(`INSERT INTO web_subscriptions (endpoint, festival_id, json, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET festival_id = excluded.festival_id, json = excluded.json, updated_at = excluded.updated_at`),
+  deleteWebSubscription: db.prepare(`DELETE FROM web_subscriptions WHERE endpoint = ?`),
+  webSubscriptionsFor: db.prepare(`SELECT endpoint, json FROM web_subscriptions WHERE festival_id = ?`),
 };
 
 export const q = {
@@ -118,6 +129,10 @@ export const q = {
   upsertDevice: (token, festivalId) => s.upsertDevice.run(token, festivalId || null, iso()),
   deleteDevice: token => s.deleteDevice.run(token),
   tokensFor: festivalId => s.tokensFor.all(festivalId).map(r => r.token),
+
+  upsertWebSubscription: (endpoint, festivalId, subscription) => s.upsertWebSubscription.run(endpoint, festivalId || null, JSON.stringify(subscription), iso()),
+  deleteWebSubscription: endpoint => s.deleteWebSubscription.run(endpoint),
+  webSubscriptionsFor: festivalId => s.webSubscriptionsFor.all(festivalId).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json) })),
 };
 
 function rowToIncident(r) {

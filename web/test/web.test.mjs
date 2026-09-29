@@ -239,7 +239,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], calls: [] };
+  const store = { list: [...list], pending: [], subs: [], calls: [] };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-allow-headers': 'Content-Type, x-admin-key' };
   const server = http.createServer((req, res) => {
     let raw = ''; req.on('data', c => { raw += c; }); req.on('end', () => {
@@ -253,6 +253,9 @@ function fakeBackend(list) {
         const f = { ...b, id: `sub-${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-abc123`, county: '', isPartner: false, feeds: [], site: [], origin: 'community', status: 'pending', featured: false };
         store.pending.push(f); return send(202, { id: f.id, pending: true });
       }
+      if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
+      if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
+      if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
       if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' });
       if (m === 'GET' && path === '/festivals/pending') return send(200, store.pending);
       const ap = path.match(/^\/festivals\/([^/]+)\/approve$/);
@@ -340,6 +343,44 @@ test('with a backend: its live list is the list, anyone can add a festival, and 
     await page.reload();
     await page.waitForSelector('h1.title:has-text("Which festival?")');
     assert.ok(await page.$('button.row:has-text("Moon Hollow Gathering")'), 'the last live list survives a dead backend');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('a link opens straight to a festival and its alert, and warnings can be switched on for this phone', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['notifications']);
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  // The test blocks service workers, so stand in for the registration and the browser's push service.
+  await page.addInitScript(() => {
+    const sub = { endpoint: 'https://push.example.test/abc', unsubscribe: async () => { window.__subscribed = false; return true; },
+      toJSON: () => ({ endpoint: 'https://push.example.test/abc', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }) };
+    window.__subscribed = false;
+    const reg = { pushManager: { getSubscription: async () => (window.__subscribed ? sub : null), subscribe: async () => { window.__subscribed = true; return sub; } } };
+    Object.defineProperty(navigator.serviceWorker, 'ready', { get: () => Promise.resolve(reg) });
+    window.PushManager = function PushManager(){};
+  });
+  try {
+    const alertId = alertFeature().properties.id;
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026&alert=${encodeURIComponent(alertId)}`);
+    await page.waitForSelector('.alerthead');
+    assert.match(await page.textContent('.alerthead h2'), /Severe Thunderstorm Warning/, 'straight to the alert: no walkthrough, no picker');
+    assert.equal(new URL(page.url()).searchParams.get('f'), null, 'the link is consumed');
+    assert.equal(new URL(page.url()).searchParams.get('backend'), api, 'other settings in the address stay');
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('.pill'), 'Off');
+    await page.click('button.row:has-text("Warnings on this phone")');
+    await page.waitForSelector('.pill.on');
+    assert.ok(store.calls.includes('GET /push/vapid') && store.calls.includes('POST /push/subscribe'));
+    assert.equal(store.subs.length, 1);
+    assert.equal(store.subs[0].festivalId, 'hulaween-2026');
+    assert.deepEqual(store.subs[0].subscription, { endpoint: 'https://push.example.test/abc', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } });
+    await shot(page, '11-home-push');
+    await page.click('button.row:has-text("Warnings on this phone")');
+    await page.waitForSelector('.pill:not(.on)');
+    assert.ok(store.calls.includes('DELETE /push/subscribe'));
+    assert.equal(store.subs.length, 0);
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

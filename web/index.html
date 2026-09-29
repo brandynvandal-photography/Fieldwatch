@@ -266,6 +266,8 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .pend .s{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.4}
 .pend .link{display:inline-block;margin-top:4px;font-size:14px}
 .acts{display:flex;gap:10px;justify-content:center;margin-top:12px}
+.pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
+.pill.on{background:var(--ok);color:#fff}
 
 /* Touch feel: squish on press, spring back on release, and the light behind it flares. */
 .bubble>.glass,.orb>.glass,.sky>.glass,.mark>.glass,.btn,.tb,.play,button.row,button.alert{transition:transform .16s cubic-bezier(.2,.8,.2,1),box-shadow .16s,background-color .16s;will-change:transform}
@@ -311,15 +313,16 @@ const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || na
 
 function blankDraft(){ return { name: '', where: '', place: null, start: '', end: '', website: '', error: null }; }
 const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false,
-  fests: null, admin: '', draft: blankDraft(), places: null, finding: false, sending: false, sent: null, pending: null, reviewing: false };
+  fests: null, admin: '', draft: blankDraft(), places: null, finding: false, sending: false, sent: null, pending: null, reviewing: false,
+  push: null, vapid: null, link: null };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '' }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -397,7 +400,13 @@ async function refresh(f){
   ]);
   const next = { ...data(f) };
   let ok = false;
-  if (al.status === 'fulfilled') { next.alerts = al.value; ok = true; }
+  if (al.status === 'fulfilled') {
+    // A warning that was not there at the last check gets a buzz, even with the screen open.
+    const had = data(f).alerts, seen = new Set((had || []).map(a => a.id));
+    const fresh = had ? al.value.filter(a => isWarning(a) && !seen.has(a.id)) : [];
+    next.alerts = al.value; ok = true;
+    if (fresh.length) alarm(fresh[0]);
+  }
   if (hr.status === 'fulfilled') { next.hourly = hr.value; ok = true; }
   if (po.status === 'fulfilled') next.posts = po.value;
   if (inc.status === 'fulfilled') next.incidents = inc.value;
@@ -534,7 +543,7 @@ function back(){
   else { S.screen = p.name; S.param = p.param; }
   render(true); window.scrollTo(0, 0);
 }
-function pick(id){ later(() => { S.fest = id; save(); go('home', null, { reset: true }); refresh(fest()); }); }
+function pick(id){ later(() => { S.fest = id; save(); go('home', null, { reset: true }); refresh(fest()); resubscribePush(); }); }
 function changeFestival(){ S.fest = null; save(); go('picker', null, { reset: true }); }
 
 // ---- icons: one stroke family, 1.9px, rounded ------------------------------------------------------------
@@ -762,6 +771,7 @@ screens.home = () => {
     <div class="group glass">
       <button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
+      ${pushRow()}
     </div>
     ${listingNote(f)}
     <p class="note">Carrier emergency alerts still arrive on their own.</p>`;
@@ -828,7 +838,7 @@ screens.radar = () => {
 
 screens.alert = id => {
   const f = fest(); const a = (data(f).alerts || []).find(x => x.id === id);
-  if (!a) return topbar(backBtn(), '', '') + `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`;
+  if (!a) return topbar(backBtn(), '', '') + (S.busy && !data(f).alerts ? `<div class="card glass" style="margin-top:22px"><h3>Checking</h3></div>` : `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`);
   const warn = isWarning(a), { sections, paragraphs } = parseNWS(a.body);
   const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim();
   return topbar(backBtn(), '', navigator.share ? `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>` : '') + `
@@ -936,6 +946,7 @@ async function syncFestivals(){
     const list = await getJSON(`${b}/festivals`);
     if (!Array.isArray(list)) return;
     FESTS = list; S.fests = list; save();
+    if (S.link && applyLink()) { render(); if (fest()) refresh(fest()); return; }
     const wasHome = S.screen === 'home';
     dropStaleChoice();
     if (S.screen === 'picker' && (wasHome || document.activeElement !== document.getElementById('q'))) render();
@@ -998,8 +1009,61 @@ async function decide(id, ok){
   loadPending(); if (ok) syncFestivals();
 }
 
+// ---- warnings on this phone: Web Push through the service worker -----------------------------------------
+const PUSH_OK = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !IN_PREVIEW;
+function pushRow(){
+  const on = !!(S.push && S.push.fest === S.fest);
+  const need = !PUSH_OK ? (IOS && !STANDALONE ? 'Add to Home Screen first' : 'Not in this browser')
+    : Notification.permission === 'denied' ? 'Blocked in browser settings' : '';
+  const tap = need ? (IOS && !STANDALONE ? "later(function(){ go('settings') })" : '') : 'togglePush()';
+  return `<button class="row" onclick="${tap}" ${tap ? '' : 'disabled'}><span class="lead">${I.bell}</span><div class="main"><div class="t">Warnings on this phone</div><div class="s">${esc(need || 'Even when the app is closed')}</div></div><span class="pill ${on ? 'on' : ''}">${on ? 'On' : 'Off'}</span></button>`;
+}
+const b64url = s => { const pad = '='.repeat((4 - s.length % 4) % 4), raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); };
+async function vapidKey(){ if (!S.vapid) S.vapid = (await getJSON(`${backend()}/push/vapid`)).key; return S.vapid; }
+const postJSON = (url, body, method) => fetch(url, { method: method || 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+async function togglePush(){
+  if (!PUSH_OK || !fest()) return;
+  const b = backend(); if (!b) { toast('Needs the backend'); return; }
+  try{
+    const reg = await navigator.serviceWorker.ready, cur = await reg.pushManager.getSubscription();
+    if (S.push && cur) {
+      await postJSON(`${b}/push/subscribe`, { endpoint: cur.endpoint }, 'DELETE').catch(() => {});
+      await cur.unsubscribe(); S.push = null; save(); toast('Warnings off'); render(); return;
+    }
+    if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') { toast('Notifications are blocked'); render(); return; }
+    const key = await vapidKey();
+    const sub = cur || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64url(key) });
+    const r = await postJSON(`${b}/push/subscribe`, { subscription: sub.toJSON(), festivalId: S.fest });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    S.push = { endpoint: sub.endpoint, fest: S.fest }; save(); toast(`Warnings on for ${fest().name}`);
+  }catch(e){ toast(/404/.test(e.message) ? 'The backend has no push keys yet' : "Couldn't turn warnings on"); }
+  render();
+}
+/** Warnings follow the festival you chose. */
+async function resubscribePush(){
+  if (!PUSH_OK || !S.push || !S.fest || S.push.fest === S.fest || !backend()) return;
+  try{
+    const reg = await navigator.serviceWorker.ready, cur = await reg.pushManager.getSubscription();
+    if (!cur) { S.push = null; save(); render(); return; }
+    const r = await postJSON(`${backend()}/push/subscribe`, { subscription: cur.toJSON(), festivalId: S.fest });
+    if (r.ok) { S.push = { endpoint: cur.endpoint, fest: S.fest }; save(); render(); }
+  }catch(e){}
+}
+
+// ---- links straight to a festival: a push notification, a QR code at the gate ------------------------------
+function applyLink(){
+  const l = S.link; if (!l) return false;
+  const f = FESTS.find(x => x.id === l.fest); if (!f) return false;
+  S.fest = f.id; S.stack = []; S.screen = 'home'; S.param = null; S.welcomed = true;
+  if (l.alert) { S.stack = [{ name: 'home', param: null }]; S.screen = 'alert'; S.param = l.alert; }
+  S.link = null; save();
+  resubscribePush();
+  return true;
+}
+
 let toastTimer;
-function toast(msg){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200); }
+function toast(msg, ms){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2200); }
+function alarm(a){ try{ if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 600]); }catch(e){} toast(`New warning: ${a.event}`, 6000); }
 async function share(id){
   const a = (data(fest()).alerts || []).find(x => x.id === id); if (!a) return;
   const text = `${a.event} for ${a.area}. ${a.headline || a.body.slice(0, 200)}`;
@@ -1019,8 +1083,15 @@ async function boot(){
   let bundled = [];
   try{ bundled = await (await fetch('festivals.json', { cache: 'no-cache' })).json(); }catch(e){}
   FESTS = backend() && S.fests ? mergeLists(bundled, S.fests) : bundled;
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('f')) {
+    S.link = { fest: qs.get('f'), alert: qs.get('alert') || null };
+    qs.delete('f'); qs.delete('alert');
+    try{ history.replaceState(null, '', location.pathname + (qs.toString() ? `?${qs}` : '')); }catch(e){}
+  }
+  const linked = applyLink();
   if (S.fest && !(fest() && isLive(fest()))) S.fest = null;
-  S.screen = !S.welcomed ? 'welcome' : S.fest ? 'home' : 'picker';
+  if (!linked || !S.fest) S.screen = !S.welcomed ? 'welcome' : S.fest ? 'home' : 'picker';
   render();
   if (fest()) refresh(fest());
   syncFestivals();

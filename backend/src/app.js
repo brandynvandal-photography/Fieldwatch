@@ -8,6 +8,7 @@ import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { pollFestival, polledRecently } from './poller.js';
 import { pushAlert } from './push.js';
+import { pushWeb, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
 import { RADAR_DIR, noteInterest, radarLoop, refreshRadarSoon } from './radar.js';
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
@@ -87,6 +88,7 @@ async function publishAndPush(festival, incident) {
   q.publishIncident(incident.id);
   const alert = incidentToAlert(festival, incident);
   const result = await pushAlert(q.tokensFor(festival.id), festival, alert);
+  result.web = await pushWeb(festival, alert);
   console.log(`[${festival.id}] incident ${incident.category}/${incident.level}: ${incident.summary} push=${JSON.stringify(result)}`);
   return result;
 }
@@ -157,7 +159,8 @@ app.post('/festivals/:id/posts', requireAdmin, loadFestival, wrap(async (req, re
     issuedAt: iso(), expiresAt: null, channel: 'official', relayCount: 0,
   };
   const push = await pushAlert(q.tokensFor(req.festival.id), req.festival, alert);
-  res.status(201).json({ id: String(info.lastInsertRowid), push });
+  const web = await pushWeb(req.festival, alert);
+  res.status(201).json({ id: String(info.lastInsertRowid), push, web });
 }));
 
 // ---- Incidents -----------------------------------------------------------
@@ -250,6 +253,24 @@ app.post('/devices', (req, res) => {
   res.json({ ok: true });
 });
 app.delete('/devices/:token', (req, res) => { q.deleteDevice(req.params.token); res.json({ ok: true }); });
+
+// ---- Web push: the web build's warnings, same alerts as APNs -------------
+
+app.get('/push/vapid', (req, res) => (webPushEnabled() ? res.json({ key: vapidPublicKey() }) : res.status(404).json({ error: 'web push not configured' })));
+app.post('/push/subscribe', (req, res) => {
+  if (!webPushEnabled()) return res.status(404).json({ error: 'web push not configured' });
+  const { subscription, festivalId } = req.body || {};
+  if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys is required' });
+  if (festivalId && !q.festival(festivalId)) return res.status(404).json({ error: 'no such festival' });
+  q.upsertWebSubscription(subscription.endpoint, festivalId || null, { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } });
+  res.json({ ok: true });
+});
+app.delete('/push/subscribe', (req, res) => {
+  const endpoint = req.body?.endpoint || req.query.endpoint;
+  if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
+  q.deleteWebSubscription(String(endpoint));
+  res.json({ ok: true });
+});
 
 // ---- Errors, always as JSON ----------------------------------------------
 

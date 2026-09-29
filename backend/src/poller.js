@@ -2,6 +2,7 @@ import './env.js';
 import { q } from './db.js';
 import { activeAlerts } from './nws.js';
 import { pushAlert } from './push.js';
+import { pushWeb } from './webpush.js';
 import { isLive } from './festivals.js';
 import { iso, daysFromNow } from './util.js';
 
@@ -32,7 +33,8 @@ export async function pollFestival(f) {
     const tokens = q.tokensFor(f.id);
     for (const a of brandNew) {
       const r = await pushAlert(tokens, f, a);
-      console.log(`[${f.id}] new: ${a.event} (${a.severity}) push=${JSON.stringify(r)}`);
+      const w = await pushWeb(f, a);
+      console.log(`[${f.id}] new: ${a.event} (${a.severity}) push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
     }
   }
   return brandNew;

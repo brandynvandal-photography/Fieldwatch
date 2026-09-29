@@ -16,6 +16,10 @@ process.env.NODE_KEY = 'test-node';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
 delete process.env.OPENAI_API_KEY;
 delete process.env.APNS_KEY_PATH;
+const { default: webpushLib } = await import('web-push');
+const vapid = webpushLib.generateVAPIDKeys();
+process.env.VAPID_PUBLIC_KEY = vapid.publicKey;
+process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
 
 // Node's own fetch, kept for talking to our server; the global one becomes the NWS fake below.
 const fetchReal = globalThis.fetch;
@@ -38,6 +42,8 @@ const { app } = await import('../src/app.js');
 const { q } = await import('../src/db.js');
 const { pollFestival } = await import('../src/poller.js');
 const { refreshRadar, radarWanted, noteInterest } = await import('../src/radar.js');
+const { setWebPushTransport } = await import('../src/webpush.js');
+setWebPushTransport(async () => {});
 const { isLive } = await import('../src/festivals.js');
 
 const festivals = JSON.parse(readFileSync(new URL('../data/festivals.json', import.meta.url), 'utf8'));
@@ -340,4 +346,51 @@ test('errors come back as JSON', async () => {
   assert.equal(bad.status, 400);
   assert.deepEqual(bad.json, { error: 'invalid JSON' });
   assert.deepEqual((await api('GET', '/nothing/here')).json, { error: 'not found' });
+});
+
+test('web push: a browser subscribes to a festival and gets warnings and staff posts, not advisories; dead endpoints are dropped', async () => {
+  const sent = []; let dead = null;
+  setWebPushTransport(async (sub, payload, opts) => {
+    if (dead && sub.endpoint === dead) { const e = new Error('gone'); e.statusCode = 410; throw e; }
+    sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload), opts });
+  });
+  const sub = n => ({ endpoint: `https://push.example.test/${n}`, expirationTime: null, keys: { p256dh: `p-${n}`, auth: `a-${n}` } });
+  assert.equal((await api('GET', '/push/vapid')).json.key, process.env.VAPID_PUBLIC_KEY);
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: { endpoint: 'nope' } } })).status, 400);
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: 'nope' } })).status, 404);
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: FEST } })).json.ok, true);
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('b'), festivalId: FEST } })).json.ok, true);
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: FEST } })).json.ok, true, 'subscribing again is fine');
+
+  // A new warning from NWS reaches both browsers; an advisory reaches neither.
+  nwsState.features = [
+    alertFeature({ id: 'urn:oid:web-1', '@id': 'https://api.weather.gov/alerts/urn:oid:web-1', event: 'Tornado Warning', severity: 'Extreme', headline: 'Tornado Warning until 3:30 PM' }),
+    alertFeature({ id: 'urn:oid:web-2', '@id': 'https://api.weather.gov/alerts/urn:oid:web-2', event: 'Rip Current Statement', severity: 'Minor' }),
+  ];
+  await pollFestival(q.festival(FEST));
+  assert.equal(sent.length, 2);
+  assert.deepEqual(sent.map(x => x.endpoint).sort(), ['https://push.example.test/a', 'https://push.example.test/b']);
+  assert.equal(sent[0].payload.title, 'Tornado Warning'); assert.equal(sent[0].payload.tag, 'urn:oid:web-1'); assert.equal(sent[0].payload.urgent, true);
+  assert.match(sent[0].payload.body, /^Suwannee Hulaween\. Tornado Warning until 3:30 PM/);
+  assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&alert=urn%3Aoid%3Aweb-1`);
+  assert.equal(sent[0].opts.urgency, 'high');
+
+  // A staff post reaches them too, whatever its severity.
+  sent.length = 0;
+  const post = await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Gates closed', body: 'Lightning within 8 miles. Shelter in vehicles.' } });
+  assert.deepEqual(post.json.web, { sent: 2, gone: 0, failed: 0 });
+  assert.equal(sent[0].payload.title, 'Gates closed'); assert.equal(sent[0].opts.urgency, 'normal');
+
+  // A browser that is gone (410) is dropped on the next send and never tried again.
+  dead = 'https://push.example.test/b'; sent.length = 0;
+  assert.deepEqual((await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Gates open', body: 'Storm passed.' } })).json.web, { sent: 1, gone: 1, failed: 0 });
+  dead = null; sent.length = 0;
+  assert.deepEqual((await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Water', body: 'Free water at the east gate.' } })).json.web, { sent: 1, gone: 0, failed: 0 });
+  assert.equal(sent[0].endpoint, 'https://push.example.test/a');
+
+  // Switching off.
+  assert.equal((await api('DELETE', '/push/subscribe', { body: {} })).status, 400);
+  assert.equal((await api('DELETE', '/push/subscribe', { body: { endpoint: 'https://push.example.test/a' } })).json.ok, true);
+  assert.deepEqual((await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Bye', body: 'See you next year.' } })).json.web, { sent: 0 });
+  nwsState.features = [alertFeature()];
 });
