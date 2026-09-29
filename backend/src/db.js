@@ -55,6 +55,10 @@ db.exec(`
     json TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 // Added later: a festival someone suggested waits as 'pending' until an admin approves it.
 if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
@@ -98,6 +102,9 @@ const s = {
     ON CONFLICT(endpoint) DO UPDATE SET festival_id = excluded.festival_id, json = excluded.json, updated_at = excluded.updated_at`),
   deleteWebSubscription: db.prepare(`DELETE FROM web_subscriptions WHERE endpoint = ?`),
   webSubscriptionsFor: db.prepare(`SELECT endpoint, json FROM web_subscriptions WHERE festival_id = ?`),
+
+  setting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
+  setSetting: db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`),
 };
 
 export const q = {
@@ -133,6 +140,9 @@ export const q = {
   upsertWebSubscription: (endpoint, festivalId, subscription) => s.upsertWebSubscription.run(endpoint, festivalId || null, JSON.stringify(subscription), iso()),
   deleteWebSubscription: endpoint => s.deleteWebSubscription.run(endpoint),
   webSubscriptionsFor: festivalId => s.webSubscriptionsFor.all(festivalId).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json) })),
+
+  setting: key => s.setting.get(key)?.value ?? null,
+  setSetting: (key, value) => s.setSetting.run(key, value),
 };
 
 function rowToIncident(r) {

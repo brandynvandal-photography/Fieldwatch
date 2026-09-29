@@ -101,8 +101,6 @@ One Node process with a disk. Run a single instance: the poller and the radar lo
    TICKETMASTER_KEY=your-key-if-you-have-one
    SEATGEEK_CLIENT_ID=your-client-id-if-you-have-one
    EDMTRAIN_KEY=your-key-if-you-have-one
-   VAPID_PUBLIC_KEY=from npm run vapid
-   VAPID_PRIVATE_KEY=from npm run vapid
    ```
 
    Railway sets `PORT` itself. `NWS_USER_AGENT` is required by the weather service and must carry a way to contact you. `CORS_ORIGIN` can be narrowed to the web build's origin (for GitHub Pages, `https://<user>.github.io`) once you are done trying it from other places; the API sets no cookies, so `*` is safe.
@@ -119,7 +117,7 @@ Deploys again on every push to `main` that touches `backend/`.
 
 Push is optional everywhere: leave the `APNS_*` lines out until there is a key, and the server starts without them (alerts are stored and served, just not pushed).
 
-**Web push** (warnings on a phone's Home Screen, no app store): run `npm run vapid` once, put the two lines it prints into the variables as `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`, and set `SITE_URL` to where the web build lives if it is not the GitHub Pages address. From then on every new warning, watch and staff post reaches every browser that switched warnings on for that festival; advisories are not pushed. Dead subscriptions are dropped on the next send. The switch is in the web build's home screen; on an iPhone it works once the site is on the Home Screen (iOS 16.4+).
+**Web push** (warnings on a phone's Home Screen, no app store) needs nothing: the server makes a VAPID key pair on first boot and keeps it in the database on the volume. To bring your own pair, run `npm run vapid` and set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`; set `SITE_URL` if the web build does not live at the GitHub Pages address. A subscription made against an earlier pair is dropped on the next send and the phone switches warnings on again. From then on every new warning, watch and staff post reaches every browser that switched warnings on for that festival; advisories are not pushed. Dead subscriptions are dropped on the next send. The switch is in the web build's home screen; on an iPhone it works once the site is on the Home Screen (iOS 16.4+).
 
 ## Radar
 
