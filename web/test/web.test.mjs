@@ -9,7 +9,7 @@ import { readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join, extname } from 'node:path';
 import { chromium } from 'playwright-core';
-import { alertFeature, points, hourly } from '../../backend/test/fixtures/nws.js';
+import { alertFeature, points, hourly, grid, daily } from '../../backend/test/fixtures/nws.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
@@ -23,6 +23,11 @@ const SHIFT = Date.now() - DAY - Date.parse(real.find(f => f.id === 'hulaween-20
 const shiftIso = t => new Date(Date.parse(t) + SHIFT).toISOString().replace(/\.\d{3}Z$/, 'Z');
 const FESTS = real.map(f => ({ ...f, startDate: shiftIso(f.startDate), endDate: shiftIso(f.endDate) }));
 const ymd = d => new Date(d).toISOString().slice(0, 10);
+// The 7-day forecast shifted with the festivals, keeping its Eastern offsets, so its days fall inside Hulaween.
+const DAYSHIFT = Math.round(SHIFT / DAY) * DAY;   // whole days, so a night stays with its day
+const shiftEastern = t => new Date(Date.parse(t) + DAYSHIFT - 4 * 3600000).toISOString().replace(/\.\d{3}Z$/, '-04:00');
+const dailyShifted = { properties: { ...daily.properties, periods: daily.properties.periods.map(p => ({ ...p, startTime: shiftEastern(p.startTime), endTime: shiftEastern(p.endTime) })) } };
+const easternWeekday = t => new Date(Date.parse(t) + DAYSHIFT).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'America/New_York' });
 const SHOTS = process.env.SHOTS;
 if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 const shot = (page, name) => SHOTS ? page.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: false }) : Promise.resolve();
@@ -49,7 +54,7 @@ async function newPage(opts = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
     timezoneId: 'America/New_York', locale: 'en-US', serviceWorkers: 'block', colorScheme: opts.dark ? 'dark' : 'light' });
   const page = await context.newPage();
-  const seen = { alerts: 0, points: 0, hourly: 0, frames: [], tiles: 0, fonts: 0, backend: 0, errors: [] };
+  const seen = { alerts: 0, points: 0, hourly: 0, grid: 0, daily: 0, frames: [], tiles: 0, fonts: 0, backend: 0, errors: [] };
   const live = { nws: true, iem: true };
   page.on('pageerror', e => seen.errors.push(String(e)));
   // Aborted requests log 'Failed to load resource'; that is the network, not the page, so only script errors count.
@@ -60,6 +65,8 @@ async function newPage(opts = {}) {
   await page.route(/api\.weather\.gov\/alerts\/active/, r => { seen.alerts++; live.nws ? r.fulfill(json({ type: 'FeatureCollection', features: [alertFeature()] })) : r.abort('failed'); });
   await page.route(/api\.weather\.gov\/points\//, r => { seen.points++; live.nws ? r.fulfill(json(points)) : r.abort('failed'); });
   await page.route(/gridpoints\/.*\/forecast\/hourly/, r => { seen.hourly++; live.nws ? r.fulfill(json(hourly)) : r.abort('failed'); });
+  await page.route(/gridpoints\/[^/]+\/[\d,]+\/forecast$/, r => { seen.daily++; live.nws ? r.fulfill(json(dailyShifted)) : r.abort('failed'); });
+  await page.route(/gridpoints\/[^/]+\/[\d,]+$/, r => { seen.grid++; live.nws ? r.fulfill(json(grid)) : r.abort('failed'); });
   await page.route(/mesonet\.agron\.iastate\.edu/, r => {
     seen.frames.push(new URL(r.request().url()).searchParams.get('TIME'));
     live.iem ? r.fulfill({ status: 200, contentType: 'image/png', body: PNG }) : r.abort('failed');
@@ -140,10 +147,30 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   assert.match(await page.textContent('.hours .hr.now .tp'), /84°/);
   assert.match(await page.textContent('#chart'), /CHANCE OF RAIN/, 'the fixture has rain chances, so the second panel is drawn');
   assert.match(await page.textContent('h1.title'), /Weather/);
-  assert.match(await page.textContent('.sub'), /Thunderstorms possible around/);
+  assert.match(await page.textContent('.sub'), /Thunder likely around .* Know your shelter/, 'the grid knows more than the wording does');
+  // Heat, wind and lightning panels over the same hours, one crosshair.
+  assert.equal(await page.getAttribute('#crew', 'data-panels'), 'heat,gust,thunder');
+  assert.equal(await page.getAttribute('#crew', 'data-n'), '24');
+  assert.deepEqual(await page.$$eval('#crew .peak', els => els.map(e => e.textContent)), ['96°', '34 mph', '60%']);
+  assert.match(await page.textContent('#crew'), /HEAT INDEX.*WIND GUSTS, MPH.*CHANCE OF THUNDER/s);
+  assert.match(await page.textContent('#crew'), /tents.*stages/s, 'gust guides for tents and stages');
+  await page.locator('#crew').scrollIntoViewIfNeeded();
+  const crewBox = await page.locator('#crew').boundingBox();
+  await page.mouse.move(crewBox.x + crewBox.width * 0.2, crewBox.y + crewBox.height * 0.3);   // about three hours in
+  await page.mouse.down();
+  assert.match(await page.textContent('#tip2'), /^\d+ [AP]M heat \d+° · gusts \d+ mph · thunder \d+%$/);
+  await page.mouse.up();
+  // Day by day, with a pack line.
+  const rows = await page.$$eval('.days .dayrow', els => els.map(e => e.textContent.replace(/\s+/g, ' ').trim()));
+  assert.ok(rows.length >= 3 && rows.length <= 5, `the festival's days through the day after, not the whole week: ${rows.length}`);
+  assert.match(rows[0], /88°66°40%/);
+  assert.equal(await page.textContent('#pack'), `Pack for cold nights, hot afternoons, rain ${easternWeekday('2026-10-24T10:00:00-04:00')} and wind.`);
+  assert.equal(seen.grid, 1); assert.equal(seen.daily, 1); assert.equal(seen.points, 1, 'one /points call feeds all three');
+  await shot(page, '13-weather-crew');
   const row = page.locator('button.alert:has-text("Severe Thunderstorm Warning")');
   assert.match(await row.textContent(), /Until .*3:00 PM/);
   // scrub the chart: the crosshair and tooltip follow the pointer
+  await page.locator('#chart').scrollIntoViewIfNeeded();
   const box = await page.locator('#chart').boundingBox();
   await page.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.4);
   await page.mouse.down();
@@ -253,6 +280,7 @@ function fakeBackend(list) {
         const f = { ...b, id: `sub-${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-abc123`, county: '', isPartner: false, feeds: [], site: [], origin: 'community', status: 'pending', featured: false };
         store.pending.push(f); return send(202, { id: f.id, pending: true });
       }
+      if (m === 'GET' && /^\/festivals\/[^/]+\/qr\.svg$/.test(path)) { res.writeHead(200, { ...cors, 'content-type': 'image/svg+xml' }); return res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21"><rect width="21" height="21" fill="#fff"/><path d="M1 1h7v7H1z" fill="#000"/></svg>'); }
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
@@ -421,4 +449,26 @@ test('with location on, the app opens the festival you are standing at, sorts th
   await page.waitForSelector('button.row:has-text("Use my location") .pill.on');
   assert.deepEqual(seen.errors, []);
   await context.close();
+});
+
+test('share: a link that opens on the festival, and a QR code from the backend to print at the gate', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026`);
+    await page.waitForSelector('.sky');
+    await page.click('button[aria-label="Share"]');
+    await page.waitForSelector('h1.title:has-text("Suwannee Hulaween")');
+    const src = await page.getAttribute('.qr img', 'src');
+    assert.equal(src, `${api}/festivals/hulaween-2026/qr.svg`);
+    await page.waitForFunction(() => document.querySelector('.qr img')?.naturalWidth > 0);
+    assert.ok(store.calls.includes('GET /festivals/hulaween-2026/qr.svg'));
+    assert.match(await page.textContent('.share-link'), /index\.html\?f=hulaween-2026$/);
+    await shot(page, '14-share');
+    await page.click('button.btn:has-text("Copy link")');
+    await page.waitForSelector('.toast.show:has-text("Link copied")');
+    assert.equal(await page.evaluate(() => navigator.clipboard.readText()), `${base}/index.html?f=hulaween-2026`);
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

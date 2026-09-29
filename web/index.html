@@ -23,7 +23,7 @@
   --glass:rgba(255,255,255,.66); --glass-2:rgba(255,255,255,.84); --glass-border:rgba(255,255,255,.85);
   --accent:#7B5CF5; --accent-ink:#FFFFFF; --grad:linear-gradient(135deg,#FF5FA8 0%,#9B7BFF 58%,#4FE3FF 135%);
   --ok:#17B37A; --ok-2:#0E9563; --watch:#FFB03B; --watch-2:#F0951C; --watch-ink:#2A1B00; --warn:#F43F5E; --warn-2:#D8264B;
-  --rain:#3FA9F5; --temp:#FF7A45; --map:#120F26;
+  --rain:#3FA9F5; --temp:#FF7A45; --wind:#1B9E77; --storm:#8B5CF6; --map:#120F26;
   --pink:#FF5FA8; --tang:#FFB03B; --lime:#B8F53D; --cyan:#4FE3FF; --violet:#9B7BFF; --orb-opacity:.62;
   --shadow:0 12px 40px rgba(76,52,150,.14); --shadow-2:0 2px 12px rgba(76,52,150,.09);
   --font-display:"Fraunces",Georgia,"Times New Roman",serif;
@@ -36,7 +36,7 @@
     --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08);
     --glass:rgba(22,18,42,.5); --glass-2:rgba(22,18,42,.78); --glass-border:rgba(255,255,255,.1);
     --accent:#B29CFF; --accent-ink:#0B0A16; --ok:#22C58A; --ok-2:#15A06E; --watch:#FFB847; --watch-2:#E89A22; --warn:#FF4D6D; --warn-2:#D8264B;
-    --rain:#5FB8FF; --temp:#FF8E5C; --orb-opacity:.85;
+    --rain:#2F8FD6; --temp:#E8682F; --wind:#1FA37A; --storm:#8560EA; --orb-opacity:.85;
     --shadow:0 14px 44px rgba(0,0,0,.45); --shadow-2:0 2px 12px rgba(0,0,0,.3);
     color-scheme:dark;
   }
@@ -45,7 +45,7 @@
   --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08);
   --glass:rgba(22,18,42,.5); --glass-2:rgba(22,18,42,.78); --glass-border:rgba(255,255,255,.1);
   --accent:#B29CFF; --accent-ink:#0B0A16; --ok:#22C58A; --ok-2:#15A06E; --watch:#FFB847; --watch-2:#E89A22; --warn:#FF4D6D; --warn-2:#D8264B;
-  --rain:#5FB8FF; --temp:#FF8E5C; --orb-opacity:.85;
+  --rain:#2F8FD6; --temp:#E8682F; --wind:#1FA37A; --storm:#8560EA; --orb-opacity:.85;
   --shadow:0 14px 44px rgba(0,0,0,.45); --shadow-2:0 2px 12px rgba(0,0,0,.3);
   color-scheme:dark;
 }
@@ -267,6 +267,15 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .pend .s{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.4}
 .pend .link{display:inline-block;margin-top:4px;font-size:14px}
 .acts{display:flex;gap:10px;justify-content:center;margin-top:12px}
+.days .dayrow{display:grid;grid-template-columns:52px 1fr auto auto;gap:12px;align-items:center;padding:12px 16px;text-align:left}
+.dayrow+.dayrow{border-top:1px solid var(--glass-border)}
+.dayrow .wd{font-weight:700;display:flex;align-items:center;gap:6px}.dayrow .wd svg{width:18px;height:18px;color:var(--muted)}
+.dayrow .fc{color:var(--muted);font-size:14px;line-height:1.3;min-width:0}
+.dayrow .hl{font-variant-numeric:tabular-nums;white-space:nowrap}.dayrow .hl b{font-size:17px}.dayrow .hl span{color:var(--muted);margin-left:6px}
+.dayrow .rn{color:var(--muted);font-weight:700;font-size:13px;min-width:34px;text-align:right;font-variant-numeric:tabular-nums}
+.qr{margin:22px auto 14px;width:264px;height:264px;border-radius:30px;display:grid;place-items:center;padding:12px}
+.qr img{width:240px;height:240px;display:block}
+.share-link{text-align:center;color:var(--muted);font-size:14px;word-break:break-all;margin:0 auto 18px;max-width:34ch}
 .pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
 .pill.on{background:var(--ok);color:#fff}
 
@@ -389,21 +398,56 @@ async function loadAlerts(f){
   const fc = await getJSON(`${NWS}/alerts/active?point=${pt(f)}`, GEO);
   return (fc.features || []).map(normalizeAlert);
 }
+// /points rarely changes; one request per festival per session feeds the hourly, the grid and the days.
+const POINTS = {};
+function pointFor(f){
+  if (!POINTS[f.id]) POINTS[f.id] = getJSON(`${NWS}/points/${pt(f)}`, GEO).then(r => r.properties).catch(e => { delete POINTS[f.id]; throw e; });
+  return POINTS[f.id];
+}
 async function loadHourly(f){
-  const point = await getJSON(`${NWS}/points/${pt(f)}`, GEO);
-  const fc = await getJSON(point.properties.forecastHourly, GEO);
+  const point = await pointFor(f);
+  const fc = await getJSON(point.forecastHourly, GEO);
   return fc.properties.periods.slice(0, 36).map(x => ({ startTime: x.startTime, temperature: x.temperature, shortForecast: x.shortForecast, windSpeed: x.windSpeed, precipChance: x.probabilityOfPrecipitation?.value ?? null }));
 }
+
+// The grid behind the forecast (/gridpoints/{wfo}/{x},{y}): heat index, wind gusts, chance of thunder. Values come as
+// an ISO interval with a duration, in metric; they are spread hour by hour and keyed by the hour so they line up with the forecast.
+const DURATION = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/;
+const hourKey = t => Math.floor(t / 3600000);
+function spread(series, convert){
+  const out = {};
+  for (const v of (series && series.values) || []) {
+    if (v.value == null) continue;
+    const [start, dur] = String(v.validTime).split('/'), m = DURATION.exec(dur || 'PT1H') || [];
+    const hours = Math.max(1, Number(m[1] || 0) * 24 + Number(m[2] || 0) + (Number(m[3] || 0) ? 1 : 0)), t0 = Date.parse(start);
+    if (Number.isNaN(t0)) continue;
+    for (let h = 0; h < hours && h < 72; h++) out[hourKey(t0 + h * 3600000)] = convert(v.value);
+  }
+  return out;
+}
+const cToF = c => c * 9 / 5 + 32, kmhToMph = k => k / 1.609;
+async function loadGrid(f){
+  const g = (await getJSON((await pointFor(f)).forecastGridData, GEO)).properties;
+  return { heat: spread(g.heatIndex, cToF), gust: spread(g.windGust, kmhToMph), thunder: spread(g.probabilityOfThunder, v => v) };
+}
+async function loadDaily(f){
+  const point = await pointFor(f), fc = await getJSON(point.forecast, GEO);
+  return { tz: point.timeZone, periods: fc.properties.periods.map(p => ({ name: p.name, startTime: p.startTime, isDaytime: p.isDaytime, temperature: p.temperature, precipChance: p.probabilityOfPrecipitation?.value ?? 0, windSpeed: p.windSpeed || '', shortForecast: p.shortForecast || '' })) };
+}
+const gridAt = (f, key, t) => { const g = data(f).grid; const v = g && g[key] ? g[key][hourKey(Date.parse(t))] : undefined; return v == null ? null : v; };
+/** The highest value of one grid series across these hours, and when. */
+function peak(f, key, hours){ let best = null; for (const h of hours) { const v = gridAt(f, key, h.startTime); if (v != null && (!best || v > best.v)) best = { v, t: h.startTime }; } return best; }
 
 /** Pull everything for the chosen festival. Whatever succeeds replaces the cache; whatever fails leaves the last good copy. */
 async function refresh(f){
   if (!f || S.busy) return;
   S.busy = true; render();
   const b = backend();
-  const [al, hr, po, inc] = await Promise.allSettled([
+  const [al, hr, po, inc, gr, dy] = await Promise.allSettled([
     loadAlerts(f), loadHourly(f),
     b ? getJSON(`${b}/festivals/${f.id}/posts`) : Promise.resolve(data(f).posts || []),
     b ? getJSON(`${b}/festivals/${f.id}/incidents`) : Promise.resolve(null),
+    loadGrid(f), loadDaily(f),
   ]);
   const next = { ...data(f) };
   let ok = false;
@@ -417,6 +461,8 @@ async function refresh(f){
   if (hr.status === 'fulfilled') { next.hourly = hr.value; ok = true; }
   if (po.status === 'fulfilled') next.posts = po.value;
   if (inc.status === 'fulfilled') next.incidents = inc.value;
+  if (gr.status === 'fulfilled') next.grid = gr.value;
+  if (dy.status === 'fulfilled') next.daily = dy.value;
   next.checkedAt = new Date().toISOString();
   if (ok) { next.at = next.checkedAt; next.error = null; }
   else next.error = (al.reason && al.reason.message) || (hr.reason && hr.reason.message) || 'unreachable';
@@ -675,12 +721,117 @@ function parseNWS(text){
 function outlook(f){
   const hr = (data(f).hourly || []).slice(0, 12); if (!hr.length) return '';
   const storm = hr.find(h => /thunder/i.test(h.shortForecast || ''));
+  const thunder = peak(f, 'thunder', hr), heat = peak(f, 'heat', hr), gust = peak(f, 'gust', hr);
+  if (thunder && thunder.v >= 50) return `Thunder likely around ${fmtHour(thunder.t)}. Know your shelter.`;
   if (storm) return `Thunderstorms possible around ${fmtHour(storm.startTime)}.`;
+  if (heat && heat.v >= 100) return `Heat index ${Math.round(heat.v)}° by ${fmtHour(heat.t)}. Water and shade, now.`;
+  if (gust && gust.v >= 40) return `Gusts to ${Math.round(gust.v)} mph around ${fmtHour(gust.t)}. Tie everything down.`;
   const wet = hr.find(h => (h.precipChance || 0) >= 50);
   if (wet) return `Rain likely around ${fmtHour(wet.startTime)}.`;
+  if (heat && heat.v >= 90) return `Heat index ${Math.round(heat.v)}° by ${fmtHour(heat.t)}. Drink water.`;
+  if (gust && gust.v >= 30) return `Gusts to ${Math.round(gust.v)} mph around ${fmtHour(gust.t)}.`;
   const some = hr.find(h => (h.precipChance || 0) >= 25);
   if (some) return `A chance of rain from ${fmtHour(some.startTime)}.`;
   return 'Dry for the next 12 hours.';
+}
+
+// ---- heat, wind, lightning: aligned single-measure panels over the same hours as the forecast ------------------
+function crewSVG(f, hours){
+  const W = 360, PADL = 34, PADR = 12, n = hours.length, x = i => PADL + (W - PADL - PADR) * (n === 1 ? 0 : i / (n - 1));
+  const pick = key => hours.map(h => gridAt(f, key, h.startTime));
+  const heat = pick('heat'), gust = pick('gust'), thunder = pick('thunder');
+  const has = arr => arr.some(v => v != null);
+  const panels = [];
+  if (has(heat) && Math.max(...heat.filter(v => v != null)) >= 80) panels.push({ key: 'heat', label: 'HEAT INDEX', kind: 'line', vals: heat, color: 'var(--temp)', unit: '°', guides: [[90, 'caution'], [103, 'danger']], floor: 5, h: 64 });
+  if (has(gust)) panels.push({ key: 'gust', label: 'WIND GUSTS, MPH', kind: 'line', vals: gust, color: 'var(--wind)', unit: ' mph', guides: [[25, 'tents'], [40, 'stages']], floor: 5, h: 64, zero: true });
+  if (has(thunder) && Math.max(...thunder.filter(v => v != null)) > 0) panels.push({ key: 'thunder', label: 'CHANCE OF THUNDER', kind: 'bar', vals: thunder, color: 'var(--storm)', unit: '%', h: 44 });
+  if (!panels.length) return '';
+  const TOP = 20, GAP = 30, BOT = 20;
+  let y0 = TOP, out = '', hover = hours.map((h, i) => ({ x: +x(i).toFixed(1), t: i === 0 ? 'Now' : fmtHour(h.startTime), parts: [], dots: [] }));
+  for (const p of panels) {
+    const present = p.vals.filter(v => v != null);
+    let lo = p.zero || p.kind === 'bar' ? 0 : Math.floor((Math.min(...present) - 3) / p.floor) * p.floor, hi = p.kind === 'bar' ? 100 : Math.ceil((Math.max(...present, ...(p.guides || []).map(g => g[0]).filter(g => g <= Math.max(...present) + 10)) + 3) / p.floor) * p.floor;
+    if (hi === lo) hi = lo + p.floor;
+    const y = v => y0 + p.h - (v - lo) / (hi - lo) * p.h;
+    out += `<text x="${PADL}" y="${y0 - 7}" font-size="10" font-weight="600" fill="var(--muted)">${p.label}</text>`;
+    out += `<line x1="${PADL}" x2="${W - PADR}" y1="${(y0 + p.h).toFixed(1)}" y2="${(y0 + p.h).toFixed(1)}" stroke="var(--line)"/>`;
+    for (const [g, name] of p.guides || []) if (g > lo && g < hi) out += `<line x1="${PADL}" x2="${W - PADR}" y1="${y(g).toFixed(1)}" y2="${y(g).toFixed(1)}" stroke="var(--muted)" stroke-opacity=".45" stroke-dasharray="3 4"/><text x="${PADL - 5}" y="${(y(g) + 3.5).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${g}</text><text x="${W - PADR}" y="${(y(g) - 3).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--muted)">${name}</text>`;
+    const iMax = p.vals.indexOf(Math.max(...present));
+    if (p.kind === 'line') {
+      const pts = p.vals.map((v, i) => (v == null ? null : [x(i), y(v)]));
+      let d = '', started = false;
+      for (const pt of pts) { if (!pt) { started = false; continue; } d += `${started ? ' L' : ' M'}${pt[0].toFixed(1)},${pt[1].toFixed(1)}`; started = true; }
+      out += `<path d="${d.trim()}" fill="none" stroke="${p.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+      out += `<circle cx="${x(iMax).toFixed(1)}" cy="${y(p.vals[iMax]).toFixed(1)}" r="4" fill="${p.color}" stroke="var(--surface)" stroke-width="2"/>`;
+      pts.forEach((pt, i) => { if (pt) hover[i].dots.push([+pt[0].toFixed(1), +pt[1].toFixed(1), p.color]); });
+    } else {
+      const bw = Math.max(3, (W - PADL - PADR) / n - 2);
+      p.vals.forEach((v, i) => { if (!v) return; const hh = Math.max(3, p.h * v / 100); out += `<rect x="${(x(i) - bw / 2).toFixed(1)}" y="${(y0 + p.h - hh).toFixed(1)}" width="${bw.toFixed(1)}" height="${hh.toFixed(1)}" rx="2" fill="${p.color}"/>`; });
+      hover.forEach((hv, i) => { if (p.vals[i]) hv.dots.push([hv.x, +(y0 + p.h - Math.max(3, p.h * p.vals[i] / 100)).toFixed(1), p.color]); });
+    }
+    const edge = iMax === 0 ? 'start' : iMax === n - 1 ? 'end' : 'middle', dx = iMax === 0 ? 8 : iMax === n - 1 ? -8 : 0;
+    out += `<text class="peak" x="${(x(iMax) + dx).toFixed(1)}" y="${(y(p.vals[iMax]) - 8).toFixed(1)}" text-anchor="${edge}" font-size="11" font-weight="600" fill="var(--ink)">${Math.round(p.vals[iMax])}${p.unit}</text>`;
+    p.vals.forEach((v, i) => { if (v != null) hover[i].parts.push(`${p.key === 'heat' ? 'heat' : p.key === 'gust' ? 'gusts' : 'thunder'} ${Math.round(v)}${p.unit}`); });
+    y0 += p.h + GAP;
+  }
+  const H = y0 - GAP + BOT;
+  const xlabels = hours.map((h, i) => (i % 3 === 0 ? `<text x="${x(i).toFixed(1)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : 'middle'}" font-size="10" fill="var(--muted)">${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</text>` : '')).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" id="crew" data-n="${n}" data-panels="${panels.map(p => p.key).join(',')}" data-hover="${esc(JSON.stringify(hover))}" role="img" aria-label="${panels.map(p => p.label.toLowerCase()).join(', ')} for the next ${n} hours">
+    ${out}${xlabels}
+    <g id="ch" style="display:none"><line id="ch-line" y1="${TOP - 6}" y2="${H - BOT + 4}" stroke="var(--ink)" stroke-opacity=".35" stroke-dasharray="3 3"/></g>
+  </svg>`;
+}
+function crewHover(){
+  const svgEl = document.getElementById('crew'), tip = document.getElementById('tip2'); if (!svgEl || !tip) return;
+  const hover = JSON.parse(svgEl.getAttribute('data-hover')), n = hover.length, W = 360, H = +svgEl.getAttribute('viewBox').split(' ')[3];
+  const at = clientX => { const r = svgEl.getBoundingClientRect(), fx = (clientX - r.left) / r.width * W; let best = 0; for (let i = 1; i < n; i++) if (Math.abs(hover[i].x - fx) < Math.abs(hover[best].x - fx)) best = i; return best; };
+  const show = e => {
+    const i = at(e.clientX), hv = hover[i], g = document.getElementById('ch'), r = svgEl.getBoundingClientRect();
+    g.style.display = ''; g.querySelectorAll('circle').forEach(c => c.remove());
+    document.getElementById('ch-line').setAttribute('x1', hv.x); document.getElementById('ch-line').setAttribute('x2', hv.x);
+    for (const [cx, cy, color] of hv.dots) { const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle'); c.setAttribute('cx', cx); c.setAttribute('cy', cy); c.setAttribute('r', 5); c.setAttribute('fill', color); c.setAttribute('stroke', 'var(--surface)'); c.setAttribute('stroke-width', 2); g.appendChild(c); }
+    tip.innerHTML = `<b>${esc(hv.t)}</b> ${esc(hv.parts.join(' · '))}`;
+    const top = hv.dots.length ? Math.min(...hv.dots.map(d => d[1])) : 20;
+    tip.style.display = 'block'; tip.style.left = `${(hv.x / W) * r.width + (r.left - svgEl.parentElement.getBoundingClientRect().left)}px`; tip.style.top = `${(top / H) * r.height + (r.top - svgEl.parentElement.getBoundingClientRect().top) - 34}px`;
+  };
+  const hide = () => { tip.style.display = 'none'; const g = document.getElementById('ch'); if (g) g.style.display = 'none'; };
+  svgEl.addEventListener('pointerdown', show); svgEl.addEventListener('pointermove', e => { if (e.pointerType === 'mouse' || e.buttons) show(e); });
+  svgEl.addEventListener('pointerup', hide); svgEl.addEventListener('pointerleave', hide); svgEl.addEventListener('pointercancel', hide);
+}
+
+// ---- day by day: the 7-day forecast folded into one row per festival day, and what to pack ---------------------
+const dateIn = (t, tz) => { try { return new Date(t).toLocaleDateString('en-CA', { timeZone: tz }); } catch(e) { return new Date(t).toISOString().slice(0, 10); } };
+const weekday = (k, long) => new Date(`${k}T12:00:00`).toLocaleDateString([], { weekday: long ? 'long' : 'short' });
+function festivalDays(f){
+  const dy = data(f).daily; if (!dy || !dy.periods || !dy.periods.length) return [];
+  const byDay = new Map();
+  for (const p of dy.periods) {
+    const k = String(p.startTime).slice(0, 10), d = byDay.get(k) || { date: k, high: null, low: null, rain: 0, forecast: '', wind: '' };
+    if (p.isDaytime) { d.high = p.temperature; d.forecast = p.shortForecast; d.wind = p.windSpeed; } else { d.low = p.temperature; if (!d.forecast) d.forecast = p.shortForecast; if (!d.wind) d.wind = p.windSpeed; }
+    d.rain = Math.max(d.rain, p.precipChance || 0); byDay.set(k, d);
+  }
+  const end = dateIn(closesAt(f) - 1, dy.tz);
+  return [...byDay.values()].filter(d => d.date <= end).slice(0, 7);
+}
+function packLine(days){
+  if (!days.length) return '';
+  const lows = days.map(d => d.low).filter(v => v != null), highs = days.map(d => d.high).filter(v => v != null), bits = [];
+  if (lows.length && Math.min(...lows) <= 45) bits.push('cold nights'); else if (lows.length && Math.min(...lows) <= 55) bits.push('cool nights');
+  if (highs.length && Math.max(...highs) >= 95) bits.push('serious heat'); else if (highs.length && Math.max(...highs) >= 88) bits.push('hot afternoons');
+  const wet = days.filter(d => d.rain >= 50);
+  if (wet.length >= 3) bits.push('rain most days'); else if (wet.length) bits.push(`rain ${wet.map(d => weekday(d.date, true)).join(' and ')}`);
+  if (days.some(d => /\b(2[5-9]|[3-9]\d) mph/.test(d.wind || ''))) bits.push('wind');
+  if (!bits.length) return 'Mild all the way through.';
+  return `Pack for ${bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits.at(-1)}` : bits[0]}.`;
+}
+function daysSection(f){
+  const days = festivalDays(f); if (!days.length) return '';
+  const row = d => `<div class="dayrow"><span class="wd">${esc(weekday(d.date))}</span><span class="fc">${esc(d.forecast)}</span><span class="hl num"><b>${d.high == null ? '–' : Math.round(d.high) + '°'}</b><span>${d.low == null ? '–' : Math.round(d.low) + '°'}</span></span><span class="rn">${d.rain ? d.rain + '%' : ''}</span></div>`;
+  return `<p class="h">Day by day</p><p class="sub" id="pack">${esc(packLine(days))}</p><div class="group glass days">${days.map(row).join('')}</div>`;
+}
+function crewSection(f, hours){
+  const svg = hours.length ? crewSVG(f, hours) : ''; if (!svg) return '';
+  return `<p class="h">Heat, wind, lightning</p><div class="chart glass">${svg}<div class="tip" id="tip2"></div></div>`;
 }
 
 // ---- screens ---------------------------------------------------------------------------------------------------
@@ -689,6 +840,7 @@ const hue = f => HUES[Math.max(0, FESTS.indexOf(f)) % HUES.length];
 const topbar = (l, m, r) => `<div class="topbar"><div class="side">${l || ''}</div><div class="mid">${m || ''}</div><div class="side r">${r || ''}</div></div>`;
 const backBtn = label => `<button class="tb glass ${label ? '' : 'icon'}" onclick="back()" aria-label="Back">${I.back}${label ? `<span>${esc(label)}</span>` : ''}</button>`;
 const gearBtn = () => `<button class="tb glass icon" onclick="go('settings')" aria-label="Settings">${I.gear}</button>`;
+const shareBtn = () => `<button class="tb glass icon" onclick="later(function(){ go('share') })" aria-label="Share">${I.share}</button>`;
 const refreshBtn = () => `<button class="tb glass icon ${S.busy ? 'spin' : ''}" onclick="refresh(fest())" aria-label="Refresh" ${S.busy ? 'disabled' : ''}>${I.refresh}</button>`;
 const orb = (label, icon, h, onclick, badge) => `<button class="orb" style="--hue:${h}" onclick="later(function(){ ${onclick} })"><i class="glow"></i><span class="glass">${icon}</span><span class="l">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
 function statusLine(f){
@@ -765,7 +917,7 @@ screens.home = () => {
         ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
         <span class="foot">${esc(statusLine(f))}</span>
       </span></button>`;
-  return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', refreshBtn() + gearBtn()) + `
+  return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', shareBtn() + refreshBtn() + gearBtn()) + `
     <span class="eyebrow num">${esc(fmtRange(f))} · ${esc(phase(f).text)}</span>
     <h1 class="title">${esc(f.name)}</h1>
     <p class="sub">${esc(f.location)}</p>
@@ -814,6 +966,8 @@ screens.weather = () => {
     ${alerts}
     <p class="h">Forecast</p>
     ${chart}
+    ${crewSection(f, hr)}
+    ${daysSection(f)}
     <p class="note">National Weather Service · ${esc(statusLine(f))}</p>`;
 };
 
@@ -927,6 +1081,28 @@ screens.review = () => topbar(backBtn(), '', '') + `
     : !S.pending.length ? `<div class="empty"><b>Nothing waiting</b>New festivals land here.</div>`
     : `<div class="group glass" style="margin-top:22px">${S.pending.map(f => `<div class="pend"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div><div class="s num">${esc(fmtRange(f))}</div>${f.website ? `<a class="link" href="${esc(f.website)}" target="_blank" rel="noopener">${esc(f.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>` : ''}${f.note ? `<div class="s">${esc(f.note)}</div>` : ''}<div class="acts"><button class="btn small" onclick="decide('${esc(f.id)}', true)">Approve</button><button class="btn quiet small" onclick="decide('${esc(f.id)}', false)">Remove</button></div></div>`).join('')}</div>`}
   <p class="note">Approved festivals are listed while they are on.</p>`;
+
+screens.share = () => {
+  const f = fest(); if (!f) return screens.picker();
+  const b = backend(), url = shareURL(f);
+  return topbar(backBtn(), '', '') + `
+    <span class="eyebrow">Share</span>
+    <h1 class="title">${esc(f.name)}</h1>
+    <p class="sub">Scan it, or send the link. It opens right here.</p>
+    <div class="qr glass">${b ? `<img src="${esc(b)}/festivals/${encodeURIComponent(f.id)}/qr.svg" alt="QR code that opens Fieldwatch on ${esc(f.name)}" width="240" height="240">` : `<div class="empty"><b>No QR code</b>It needs the backend.</div>`}</div>
+    <p class="share-link num">${esc(url.replace(/^https?:\/\//, ''))}</p>
+    <button class="btn" onclick="shareFestival()">${navigator.share ? 'Share' : 'Copy link'}</button>
+    <p class="note">Print it at the gate. Put it on the screens.</p>`;
+};
+const shareURL = f => `${location.origin}${location.pathname}?f=${encodeURIComponent(f.id)}`;
+async function shareFestival(){
+  const f = fest(); if (!f) return;
+  const url = shareURL(f);
+  try{
+    if (navigator.share) await navigator.share({ title: `${f.name} on Fieldwatch`, text: 'Weather warnings, forecast and radar for the grounds.', url });
+    else { await navigator.clipboard.writeText(url); toast('Link copied'); }
+  }catch(e){ if (!e || e.name !== 'AbortError') toast("Couldn't share on this device"); }
+}
 
 screens.settings = () => topbar(backBtn(), '', '') + `
   <h1 class="title">Settings</h1>
@@ -1110,7 +1286,7 @@ function render(rev){
   const fn = screens[S.screen] || screens.picker;
   app.innerHTML = `<div class="screen in ${rev ? 'rev' : ''}">${fn(S.param)}</div>`;
   if (S.screen === 'radar') { fitStage(); showFrame(); updatePlay(); updateRadarNote(); }
-  if (S.screen === 'weather') chartHover();
+  if (S.screen === 'weather') { chartHover(); crewHover(); }
 }
 
 async function boot(){

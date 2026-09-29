@@ -9,6 +9,7 @@ import { buildPack } from './pack.js';
 import { pollFestival, polledRecently } from './poller.js';
 import { pushAlert } from './push.js';
 import { pushWeb, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
+import QRCode from 'qrcode';
 import { RADAR_DIR, noteInterest, radarLoop, refreshRadarSoon } from './radar.js';
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
@@ -100,6 +101,14 @@ app.get('/health', (req, res) => res.json({ ok: true, at: iso() }));
 app.get('/festivals', (req, res) => { const all = q.publishedFestivals(); res.json(req.query.all ? all : all.filter(f => isLive(f))); });
 app.get('/festivals/pending', requireAdmin, (req, res) => res.json(q.pendingFestivals()));
 app.get('/festivals/:id', loadFestival, (req, res) => res.json(req.festival));
+
+// A QR code that opens the web build straight on this festival: print it at the gate, put it on the screens.
+const SITE_URL = (process.env.SITE_URL || 'https://brandynvandal-photography.github.io/Fieldwatch/').replace(/\/?$/, '/');
+export const festivalLink = id => `${SITE_URL}?f=${encodeURIComponent(id)}`;
+app.get('/festivals/:id/qr.svg', loadFestival, wrap(async (req, res) => {
+  const svg = await QRCode.toString(festivalLink(req.festival.id), { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#1A1533ff', light: '#00000000' } });
+  res.set('Cache-Control', 'public, max-age=86400').type('image/svg+xml').send(svg);
+}));
 
 // Anyone can add a festival; it waits for an admin, and nothing a stranger sends becomes a partner feed or a site map.
 const suggestTimes = new Map();

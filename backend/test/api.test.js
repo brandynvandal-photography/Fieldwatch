@@ -394,3 +394,18 @@ test('web push: a browser subscribes to a festival and gets warnings and staff p
   assert.deepEqual((await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Bye', body: 'See you next year.' } })).json.web, { sent: 0 });
   nwsState.features = [alertFeature()];
 });
+
+test('the QR code for a festival opens the web build on that festival', async () => {
+  const { festivalLink } = await import('../src/app.js');
+  const r = await api('GET', `/festivals/${FEST}/qr.svg`);
+  assert.equal(r.status, 200); assert.match(r.headers.get('content-type'), /image\/svg\+xml/);
+  assert.match(r.json, /^<svg/, 'an SVG, so it prints at any size');
+  assert.equal((await api('GET', '/festivals/nope/qr.svg')).status, 404);
+  // Decode what the same encoder draws as pixels, to prove the link inside is right.
+  const { default: QRCode } = await import('qrcode');
+  const { PNG } = await import('pngjs');
+  const { default: jsQR } = await import('jsqr');
+  const png = PNG.sync.read(await QRCode.toBuffer(festivalLink(FEST), { errorCorrectionLevel: 'M', margin: 1, scale: 4 }));
+  const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
+  assert.equal(decoded?.data, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}`);
+});
