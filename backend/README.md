@@ -85,7 +85,7 @@ One Node process with a disk. Run a single instance: the poller and the radar lo
 ### Railway, from a phone
 
 1. railway.com, New Project, Deploy from GitHub repo, pick `Fieldwatch`.
-2. Service, Settings, Source: set Root Directory to `backend`. Railway finds the Dockerfile there.
+2. Service, Settings, Source: set Root Directory to `backend`. Railway finds the Dockerfile there. (If it is left unset, the `Dockerfile` at the repository root builds the same image, so a build never falls back to Railpack and fails on the root folder.)
 3. Add a Volume to the project and attach it to the service with mount path `/data`.
 4. Service, Variables, Raw Editor, paste (fill in your own keys and contact):
 
