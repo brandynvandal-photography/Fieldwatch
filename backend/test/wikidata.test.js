@@ -22,20 +22,20 @@ test('SPARQL results become candidates: WKT coordinates, one per item, no label 
   assert.deepEqual(c[2], { qid: 'Q9003', name: 'Moonrise Fest', latitude: 35.49, longitude: -93.83, website: 'https://moonrisefest.example/', place: 'Mulberry Mountain, Ozark' });
   assert.equal(c[0].website, null); assert.equal(c[1].place, 'Wendover');
   const odd = parseCandidates(sparqlResult([
-    wdItem({ qid: 'Q1', label: 'Q1', lat: 1, lon: 2 }),                                   // the label service hands the id back when there is no label
-    wdItem({ qid: 'Q2', label: 'Two', lat: 1, lon: 2, website: 'https://two.example/' }),
-    wdItem({ qid: 'Q2', label: 'Two', lat: 1, lon: 2, website: 'https://two.example/other' }),   // a second website row for the same item
-    wdItem({ qid: 'Q3', label: 'Three', lat: 1, lon: 2, website: 'https://two.example/' }),      // another item on the same site: one festival, not two
-    { ...wdItem({ qid: 'Q4', label: 'Four', lat: 1, lon: 2 }), coord: { type: 'literal', value: 'nonsense' } },
-    wdItem({ qid: 'Q5', label: 'Five', lat: 1, lon: 2, website: 'javascript:alert(1)' }),
-    wdItem({ qid: 'Q30', label: 'Thirty', lat: 1, lon: 2, website: 'https://shared.example/' }),   // the lower id keeps a shared site, whichever the endpoint lists first
-    wdItem({ qid: 'Q20', label: 'Twenty', lat: 1, lon: 2, website: 'https://shared.example/' }),
-    wdItem({ qid: 'Q7', label: 'Loopback', lat: 1, lon: 2, website: 'http://127.0.0.1:3000/' }),  // a private address is not a site we read
-    wdItem({ qid: 'Q8', label: 'Printer', lat: 1, lon: 2, website: 'https://printer.local/' }),
-    wdItem({ qid: 'Q9', label: 'Nine', lat: 1, lon: 2, website: 'https://[::1]/' }),
+    wdItem({ qid: 'Q1', label: 'Q1', lat: 39.5, lon: -105.1 }),                                   // the label service hands the id back when there is no label
+    wdItem({ qid: 'Q2', label: 'Two', lat: 39.5, lon: -105.1, website: 'https://two.example/' }),
+    wdItem({ qid: 'Q2', label: 'Two', lat: 39.5, lon: -105.1, website: 'https://two.example/other' }),   // a second website row for the same item
+    wdItem({ qid: 'Q3', label: 'Three', lat: 39.5, lon: -105.1, website: 'https://two.example/' }),      // another item on the same site: one festival, not two
+    { ...wdItem({ qid: 'Q4', label: 'Four', lat: 39.5, lon: -105.1 }), coord: { type: 'literal', value: 'nonsense' } },
+    wdItem({ qid: 'Q5', label: 'Five', lat: 39.5, lon: -105.1, website: 'javascript:alert(1)' }),
+    wdItem({ qid: 'Q30', label: 'Thirty', lat: 39.5, lon: -105.1, website: 'https://shared.example/' }),   // the lower id keeps a shared site, whichever the endpoint lists first
+    wdItem({ qid: 'Q20', label: 'Twenty', lat: 39.5, lon: -105.1, website: 'https://shared.example/' }),
+    wdItem({ qid: 'Q7', label: 'Loopback', lat: 39.5, lon: -105.1, website: 'http://127.0.0.1:3000/' }),  // a private address is not a site we read
+    wdItem({ qid: 'Q8', label: 'Printer', lat: 39.5, lon: -105.1, website: 'https://printer.local/' }),
+    wdItem({ qid: 'Q9', label: 'Nine', lat: 39.5, lon: -105.1, website: 'https://[::1]/' }),
   ]));
   assert.deepEqual(odd.map(x => [x.qid, x.website]), [['Q2', 'https://two.example/'], ['Q5', null], ['Q20', 'https://shared.example/'], ['Q7', null], ['Q8', null], ['Q9', null]]);
-  assert.deepEqual(parseCandidates(sparqlResult([wdItem({ qid: 'Q2', label: 'Two', lat: 1, lon: 2, website: 'https://two.example/other' }), wdItem({ qid: 'Q2', label: 'Two', lat: 1, lon: 2, website: 'https://two.example/' })])).map(x => x.website),
+  assert.deepEqual(parseCandidates(sparqlResult([wdItem({ qid: 'Q2', label: 'Two', lat: 39.5, lon: -105.1, website: 'https://two.example/other' }), wdItem({ qid: 'Q2', label: 'Two', lat: 39.5, lon: -105.1, website: 'https://two.example/' })])).map(x => x.website),
     ['https://two.example/'], 'the shortest of an item\'s sites is its homepage, in any order');
   assert.deepEqual(parseCandidates({}), []); assert.deepEqual(parseCandidates(null), []);
   for (const s of ['wd:Q868557', 'wd:Q132241', 'wdt:P279*']) assert.ok(CLASSES_SPARQL.includes(s), s);
@@ -140,7 +140,7 @@ test('listings take the page geo only when near the Wikidata point, fold by name
   ]);
   assert.deepEqual(listingsFor(te, []), []);
   // Two groups whose names slug alike would share an id: one record.
-  const l = (name, key, start) => ({ key, name, place: 'X', lat: 1, lon: 2, start, end: '2026-10-04T08:00:00Z', url: 'https://a.example/', qid: 'Q1' });
+  const l = (name, key, start) => ({ key, name, place: 'X', lat: 39.5, lon: -105.1, start, end: '2026-10-04T08:00:00Z', url: 'https://a.example/', qid: 'Q1' });
   assert.equal(festivalsFrom([l('Fest & Co', 'a|Q1', '2026-10-01T16:00:00Z'), l('Fest and Co', 'b|Q1', '2026-10-03T16:00:00Z')], '2026-09-28').length, 1);
 });
 
@@ -320,7 +320,7 @@ test('sites never seen are read first, then the longest unchecked; a private add
   assert.equal(r.festivals, 1); assert.ok(q.festival('wd-q9003-moonrise-fest-2026'));
   // A candidate whose site is a private address gets no request and no cache row, and is no error.
   fetched.length = 0;
-  serve.items = [...items, wdItem({ qid: 'Q9008', label: 'Loopback Fest', lat: 1, lon: 2, website: 'http://127.0.0.1:3000/' }), wdItem({ qid: 'Q9009', label: 'Printer Fest', lat: 1, lon: 2, website: 'https://printer.local/' })];
+  serve.items = [...items, wdItem({ qid: 'Q9008', label: 'Loopback Fest', lat: 39.5, lon: -105.1, website: 'http://127.0.0.1:3000/' }), wdItem({ qid: 'Q9009', label: 'Printer Fest', lat: 39.5, lon: -105.1, website: 'https://printer.local/' })];
   const p = await importWikidata({ ...opts, now: NOW + 5 * DAY, maxSites: 0 });
   assert.equal(p.candidates, 7); assert.equal(p.errors, 0); assert.equal(p.sitesChecked, 0);
   assert.ok(fetched.every(u => u.includes('wikidata.org')));
@@ -350,4 +350,21 @@ test('a listing that vanished from its site before it started is pruned on a cle
   assert.equal(q.festival('wd-q9003-moonrise-fest-2026'), null, 'the page no longer announces it: cancelled');
   assert.equal(q.festival('wd-old-days-2026'), null);
   assert.equal(cache()['https://moonrisefest.example/'].ok, false);
+});
+
+
+test('events on the festival\'s own site that never carry its name are its events, and the festival is what the site is about', () => {
+  const cherry = parseCandidates(sparqlResult([wdItem({ qid: 'Q535568', label: 'National Cherry Blossom Festival', lat: 38.8853, lon: -77.0386, website: 'https://cherry.example/', admin: 'Washington, D.C.' })]))[0];
+  const ld = { '@context': 'https://schema.org', '@graph': [
+    { '@type': 'Event', name: 'Pink Tie Party', startDate: '2027-03-12T19:00:00-05:00', endDate: '2027-03-12T23:00:00-05:00', location: { '@type': 'Place', name: 'Tidal Basin' } },
+    { '@type': 'Event', name: 'Opening Ceremony', startDate: '2027-03-20T17:00:00-04:00', endDate: '2027-03-20T18:30:00-04:00', location: { '@type': 'Place', name: 'Tidal Basin' } },
+    { '@type': 'Festival', name: 'BloomFest at the Tidal Basin', startDate: '2027-03-20', endDate: '2027-04-11', location: { '@type': 'Place', name: 'Tidal Basin' } },
+  ] };
+  const evs = eventsFrom(`<html><head><script type="application/ld+json">${JSON.stringify(ld)}</script></head><body></body></html>`, NOW);
+  assert.equal(evs.length, 3);
+  const ls = listingsFor(cherry, evs);
+  assert.deepEqual([...new Set(ls.map(l => l.name))], ['National Cherry Blossom Festival'], 'the gala, the ceremony and BloomFest are the festival');
+  const out = festivalsFrom(ls, '2026-09-28');
+  assert.equal(out.length, 1); assert.equal(out[0].name, 'National Cherry Blossom Festival');
+  assert.equal(out[0].startDate.slice(0, 10), '2027-03-13'); assert.equal(out[0].endDate.slice(0, 10), '2027-04-12');
 });

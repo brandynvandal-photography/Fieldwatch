@@ -115,7 +115,20 @@ app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
 
 // ---- Festivals: the list itself ------------------------------------------
 // What is on: grounds open through the day after the end (festivals.js). ?all=1 for everything published.
-app.get('/festivals', (req, res) => { const all = q.publishedFestivals(); res.json(req.query.all ? all : all.filter(f => isLive(f))); });
+app.get('/festivals', (req, res) => {
+  // ?all=1 is the whole published list; with the admin key, ?hidden=1 adds what staff hid, so it can be unhidden.
+  if (req.query.all && req.query.hidden && isAdmin(req)) return res.json(q.allFestivals().filter(f => ['published', 'hidden'].includes(f.status || 'published')));
+  const all = q.publishedFestivals(); res.json(req.query.all ? all : all.filter(f => isLive(f)));
+});
+// A listing the importers got wrong (a concert, a tour, a car show) goes out of sight; an import keeps it hidden.
+const setStatus = status => (req, res) => {
+  const f = q.festival(req.params.id);
+  if (!f) return res.status(404).json({ error: 'no such festival' });
+  q.upsertFestival({ ...f, status });
+  res.json({ ok: true, id: f.id, status });
+};
+app.post('/festivals/:id/hide', requireAdmin, setStatus('hidden'));
+app.post('/festivals/:id/unhide', requireAdmin, setStatus('published'));
 app.get('/festivals/pending', requireAdmin, (req, res) => res.json(q.pendingFestivals()));
 app.get('/festivals/:id', loadFestival, (req, res) => res.json(req.festival));
 

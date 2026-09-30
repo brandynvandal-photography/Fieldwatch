@@ -248,13 +248,13 @@ test('anyone can suggest a festival; it is hidden until an admin approves it, an
   assert.equal((await api('GET', `/festivals/${id}`, { headers: admin })).status, 404);
 
   // Three an hour from one address, valid or not.
-  assert.equal((await api('POST', '/festivals', { body: { name: 'Two', location: 'L', latitude: 1, longitude: 2, startDate: '2026-12-01', endDate: '2026-12-02' } })).status, 202);
+  assert.equal((await api('POST', '/festivals', { body: { name: 'Two', location: 'L', latitude: 30.3, longitude: -82.9, startDate: '2026-12-01', endDate: '2026-12-02' } })).status, 202);
   assert.equal((await api('POST', '/festivals', { body: { name: 'Three' } })).status, 429);
 });
 
 test('the list is what is on: a week before gates for early entry and crews, through the day after; and an admin can run the imports', async () => {
   const DAY = 86_400_000, at = d => new Date(Date.now() + d * DAY).toISOString().replace(/\.\d{3}Z$/, 'Z');
-  const base = { location: 'L', latitude: 1, longitude: 2, county: '', isPartner: false, feeds: [], site: [], status: 'published' };
+  const base = { location: 'L', latitude: 39.5, longitude: -105.1, county: '', isPartner: false, feeds: [], site: [], status: 'published' };
   q.upsertFestival({ ...base, id: 'old-days-2026', name: 'Old Days', startDate: at(-5), endDate: at(-2) });
   q.upsertFestival({ ...base, id: 'wrap-up-2026', name: 'Wrap Up', startDate: at(-3), endDate: at(-0.5) });
   q.upsertFestival({ ...base, id: 'crew-week-2026', name: 'Crew Week', startDate: at(5), endDate: at(8) });
@@ -275,6 +275,17 @@ test('the list is what is on: a week before gates for early entry and crews, thr
   assert.equal(radarWanted({ id: 'crew-week-2026', featured: false }, Date.now() + 25 * 3_600_000), false);
   for (const id of ['old-days-2026', 'wrap-up-2026', 'crew-week-2026', 'next-month-2026', 'big-build-2026']) q.deleteFestival(id);
 
+  // Staff hide a listing that is not a festival; it leaves every public list, stays for the admin to unhide, and an import keeps it hidden.
+  const junk = (await api('GET', '/festivals?all=1')).json[0];
+  assert.equal((await api('POST', `/festivals/${junk.id}/hide`)).status, 401);
+  assert.deepEqual((await api('POST', `/festivals/${junk.id}/hide`, { headers: admin })).json, { ok: true, id: junk.id, status: 'hidden' });
+  assert.ok(!(await api('GET', '/festivals?all=1')).json.some(f => f.id === junk.id), 'gone from the public list');
+  assert.equal((await api('GET', `/festivals/${junk.id}`)).status, 404);
+  assert.equal((await api('GET', '/festivals?all=1&hidden=1')).json.some(f => f.id === junk.id), false, 'no key, no hidden ones');
+  assert.equal((await api('GET', '/festivals?all=1&hidden=1', { headers: admin })).json.find(f => f.id === junk.id)?.status, 'hidden');
+  assert.equal((await api('POST', `/festivals/${junk.id}/unhide`, { headers: admin })).json.status, 'published');
+  assert.ok((await api('GET', '/festivals?all=1')).json.some(f => f.id === junk.id));
+  assert.equal((await api('POST', '/festivals/nope/hide', { headers: admin })).status, 404);
   const h = (await api('GET', '/health')).json;
   assert.equal(h.ok, true); assert.equal(typeof h.uptimeSeconds, 'number'); assert.equal(h.adminKey, true); assert.equal(typeof h.festivals, 'number');
   assert.deepEqual({ ...h.sources, wikidata: typeof h.sources.wikidata }, { ticketmaster: false, seatgeek: false, edmtrain: false, wikidata: 'string', feeds: false }, 'no keys in tests; wikidata says why it is off');

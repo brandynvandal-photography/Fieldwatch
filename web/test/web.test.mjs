@@ -275,7 +275,11 @@ function fakeBackend(list) {
       store.calls.push(`${m} ${path}`);
       const send = (status, body) => { res.writeHead(status, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
       if (m === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
-      if (m === 'GET' && path === '/festivals') return send(200, store.list.filter(f => isLive(f)));
+      if (m === 'GET' && path === '/festivals') {
+        const u = new URL(req.url, 'http://x');
+        if (u.searchParams.get('all')) return send(200, u.searchParams.get('hidden') && key === 'k-admin' ? store.list : store.list.filter(f => f.status !== 'hidden'));
+        return send(200, store.list.filter(f => isLive(f) && f.status !== 'hidden'));
+      }
       if (m === 'POST' && path === '/festivals') {
         const b = JSON.parse(raw);
         const f = { ...b, id: `sub-${b.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-abc123`, county: '', isPartner: false, feeds: [], site: [], origin: 'community', status: 'pending', featured: false };
@@ -289,6 +293,8 @@ function fakeBackend(list) {
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
       if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' });
+      const hide = path.match(/^\/festivals\/([^/]+)\/(hide|unhide)$/);
+      if (m === 'POST' && hide) { const f = store.list.find(x => x.id === hide[1]); if (!f) return send(404, {}); f.status = hide[2] === 'hide' ? 'hidden' : 'published'; return send(200, { ok: true, id: f.id, status: f.status }); }
       const post = path.match(/^\/festivals\/([^/]+)\/posts$/);
       if (m === 'POST' && post) { const b = JSON.parse(raw); store.posts.push({ festival: post[1], key, ...b }); return send(201, { id: String(store.posts.length), push: { sent: 0, skipped: true }, web: { sent: 2, gone: 0, failed: 0 } }); }
       const pend = path.match(/^\/festivals\/([^/]+)\/incidents\/pending$/);
@@ -379,6 +385,22 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     const checked = await page.textContent('#app');
     assert.match(checked, /Up, build 4356d78, 14 festivals, data on a volume/);
     assert.match(checked, /Sources on: Edmtrain\. NWS_USER_AGENT is not set\. Last import .*Admin key matches\./);
+
+    // The whole list: search it, hide a listing that is not a festival, unhide it.
+    await page.click('button.row:has-text("All festivals")');
+    await page.waitForSelector('#catalogQuery');
+    assert.match(await page.textContent('.sub'), /\d+ listed/);
+    await page.fill('#catalogQuery', 'hulaween');
+    await page.waitForSelector('#catalogList .pend:has-text("Suwannee Hulaween")');
+    assert.equal(await page.locator('#catalogList .pend').count(), 1, 'the search narrows the list');
+    await page.click('#catalogList .pend:has-text("Suwannee Hulaween") button:has-text("Hide")');
+    await page.waitForSelector('#catalogList .pend.dim:has-text("hidden")');
+    assert.equal(store.list.find(f => f.id === 'hulaween-2026').status, 'hidden');
+    await page.click('#catalogList .pend button:has-text("Unhide")');
+    await page.waitForSelector('#catalogList .pend:not(.dim) button:has-text("Hide")');
+    assert.equal(store.list.find(f => f.id === 'hulaween-2026').status, 'published');
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('#admin');
 
     // A key that does not match says so, instead of blaming the network.
     await page.fill('#admin', 'k-wrong'); await page.locator('#admin').blur();

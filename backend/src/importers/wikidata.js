@@ -297,10 +297,16 @@ export function listingsFor(c, events) {
   if (!starts.length) return [];
   const cutoff = Math.min(...starts) + CLUSTER_DAYS * DAY;
   const label = normalizeName(c.name);
-  return events.filter(ev => Date.parse(ev.start) <= cutoff).map(ev => {
+  const carries = n => n.includes(label) || (n.length >= 3 && label.includes(n));
+  const inWindow = events.filter(ev => Date.parse(ev.start) <= cutoff);
+  // A block named after the festival is the festival, and a differently named block beside it is its own night.
+  // When nothing on the site carries the name (a gala, an opening ceremony, a "BloomFest"), those are the
+  // festival's own events, and the festival is what the site is about.
+  const anyLabelled = inWindow.some(ev => carries(normalizeName(ev.name || '')));
+  return inWindow.map(ev => {
     const near = ev.lat !== undefined && distanceKm({ latitude: c.latitude, longitude: c.longitude }, { latitude: ev.lat, longitude: ev.lon }) <= GEO_KM;
     const n = normalizeName(ev.name || '');
-    const own = n && !n.includes(label) && !(n.length >= 3 && label.includes(n)) ? displayName(ev.name) : '';
+    const own = anyLabelled && n && !carries(n) ? displayName(ev.name) : '';
     const name = own || c.name;
     return { key: listingKey(name, c.qid), name, place: c.place || ev.place || 'United States', lat: near ? ev.lat : c.latitude, lon: near ? ev.lon : c.longitude, start: ev.start, end: ev.end, url: c.website, qid: c.qid };
   });

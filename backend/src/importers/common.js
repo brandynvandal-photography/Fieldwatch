@@ -2,22 +2,19 @@
 // "Aftershock 3 Day Pass", "Aftershock Parking") into festivals, and writing them into the table
 // without stepping on another source's record.
 import { db, q } from '../db.js';
-import { normalizeFestival, sameFestival, slug } from '../festivals.js';
+import { normalizeFestival, sameFestival, sameNamedNearby, slug } from '../festivals.js';
+import { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName } from '../names.js';
 import { iso } from '../util.js';
+export { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName };
 
 /** What went wrong, with the cause Node's fetch hides behind "fetch failed" (ENOTFOUND, ECONNREFUSED, a TLS error). */
 export const errorText = e => { const c = e?.cause; return `${e?.message || e}${c ? ` (${c.code || c.message || c})` : ''}`; };
 
-const DAY = 86_400_000;
-export const ADD_ON = /\b(parking|shuttle|camping|campsite|campground|locker|merch|payment plan|layaway|upgrade|add[- ]?on|glamping|rv pass|car pass|bus pass)\b/i;
+const DAY = 86_400_000, HOUR = 3_600_000;
 export const VENUE_NAMED_FESTIVAL = /\bfestival (pier|hall|park|theat\w*|grounds|stage|field|plaza|centre|center)\b/i;
 export const FESTY = /\bfest(ival)?s?\b|fest$/i;
-const NOISE = /\b(20\d\d|(mon|tues|wednes|thurs|fri|satur|sun)day|weekend \d|day \d|\d[- ]?day|(one|two|three|four|single|multi)[- ]day|pass(es)?|vip|ga|general admission|admission|ticket(s)?|presale|early bird|tier \d|late night|after ?party|official|only)\b/gi;
-const SUFFIX = /\s*[-:|–—(]\s*(?:(?:mon|tues|wednes|thurs|fri|satur|sun)day|weekend \d|day \d|\d[- ]?day|(?:one|two|three|four|single|multi)[- ]day|vip|ga\b|general admission|pass(?:es)?|presale|early bird|tier \d|late night|after ?party)[^-:|–—(]*\)?\s*$/i;
-
-/** What two listings of the same festival share once the day and ticket words are gone. */
-export const normalizeName = n => String(n).replace(/[-:|–—(),.!&+/'"]+/g, ' ').replace(NOISE, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-export const displayName = n => { let s = String(n).trim(); for (let i = 0; i < 3; i++) s = s.replace(SUFFIX, '').trim(); return s.replace(/\s+20\d\d$/, '').replace(/[-:|–—,]+$/, '').trim(); };
+/** The festival's own name, as the app shows it: no day, pass, lineup or year. */
+export const displayName = n => cleanName(n);
 /** A listing with only a date starts mid-afternoon UTC and runs into the small hours after that day. */
 export const dayStart = d => `${String(d).slice(0, 10)}T16:00:00Z`;
 export const dayEnd = d => iso(new Date(Date.parse(`${String(d).slice(0, 10)}T00:00:00Z`) + 32 * 3_600_000));
@@ -41,11 +38,16 @@ export function groupListings(listings, { origin, prefix, today = iso().slice(0,
     const first = g[0];
     const name = g.map(x => x.name).filter(Boolean).sort((a, b) => a.length - b.length)[0];
     if (!name) continue;
-    const endDate = iso(new Date(Math.max(...g.map(x => Date.parse(x.end || dayEnd(x.start))))));
+    // A listing that ends within two hours of starting was given a placeholder end; the day is the festival's.
+    const endDate = iso(new Date(Math.max(...g.map(x => Date.parse(x.end && Date.parse(x.end) - Date.parse(x.start) > 2 * HOUR ? x.end : dayEnd(x.start))))));
     const { festival } = normalizeFestival(
       { name, location: first.place, latitude: first.lat, longitude: first.lon, startDate: first.start, endDate, source: first.url, website: first.url, verifiedOn: today },
       { origin, status: 'published', id: `${prefix}-${slug(name)}-${first.start.slice(0, 4)}` });
-    if (festival) out.push(festival);
+    if (!festival) continue;
+    // "Country In The Park" and "Country In The Park 2", same weekend, same grounds: one festival, the longer stay.
+    const twin = out.find(f => sameNamedNearby(f, festival));
+    if (twin) { twin.startDate = Date.parse(festival.startDate) < Date.parse(twin.startDate) ? festival.startDate : twin.startDate; twin.endDate = Date.parse(festival.endDate) > Date.parse(twin.endDate) ? festival.endDate : twin.endDate; }
+    else out.push(festival);
   }
   return out;
 }

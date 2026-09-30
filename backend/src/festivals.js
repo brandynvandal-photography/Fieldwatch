@@ -1,6 +1,7 @@
 // One festival record: the shape every source must produce and every client expects.
 // Curated JSON, Ticketmaster, a feed URL and a stranger's phone all pass through normalizeFestival.
 import { iso } from './util.js';
+import { sameCore } from './names.js';
 
 export const slug = s => String(s).toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
   .replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48);
@@ -35,6 +36,7 @@ export function normalizeFestival(input = {}, { base = null, origin = 'curated',
   const latitude = num(f.latitude, 90), longitude = num(f.longitude, 180);
   if (latitude === null) return { error: 'latitude must be a number in range' };
   if (longitude === null) return { error: 'longitude must be a number in range' };
+  if (!inNwsArea(latitude, longitude)) return { error: 'outside the National Weather Service area (the US and its territories), so no alerts are possible' };
   const startDate = BARE_DATE.test(f.startDate) ? dayStart(f.startDate) : validIso(f.startDate);
   const endDate = BARE_DATE.test(f.endDate) ? dayEnd(f.endDate) : validIso(f.endDate);
   if (!startDate) return { error: 'startDate must be ISO 8601' };
@@ -76,4 +78,10 @@ export function distanceKm(a, b) {
 }
 const overlap = (a, b) => Date.parse(a.startDate) <= Date.parse(b.endDate) + 24 * HOUR && Date.parse(b.startDate) <= Date.parse(a.endDate) + 24 * HOUR;
 /** Same grounds on overlapping dates, or the same name: one festival listed twice. */
-export const sameFestival = (a, b) => overlap(a, b) && (distanceKm(a, b) < 3 || slug(a.name) === slug(b.name));
+export const sameFestival = (a, b) => overlap(a, b) && (distanceKm(a, b) < 3 || slug(a.name) === slug(b.name) || sameNamedNearby(a, b));
+/** Overlapping dates, the same name once day and pass words are gone, within the sprawl of one set of grounds. */
+export const sameNamedNearby = (a, b) => overlap(a, b) && distanceKm(a, b) < 8 && sameCore(a.name, b.name);
+
+// The National Weather Service covers the fifty states, DC and the territories; a festival elsewhere can get no alerts here.
+const NWS_AREAS = [[24.3, 49.6, -125.1, -66.8], [51, 71.6, -180, -129], [51, 55, 170, 180], [18.8, 22.5, -160.5, -154.6], [17.5, 18.7, -68, -64.4], [13.1, 13.8, 144.5, 145.1], [14, 20.6, 144.8, 146.2], [-14.6, -13.9, -171.2, -168.1]];
+export const inNwsArea = (lat, lon) => NWS_AREAS.some(([s, n, w, e]) => lat >= s && lat <= n && lon >= w && lon <= e);

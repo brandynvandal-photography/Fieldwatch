@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tmEvent, tmVenue, tmPage } from './fixtures/ticketmaster.js';
+import { sgEvent, sgVenue } from './fixtures/seatgeek.js';
 
 process.env.DB_PATH = ':memory:';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
@@ -174,20 +175,21 @@ test('isLive: grounds open a week out, or when the festival says, through the da
   assert.equal(isLive(f, t('2026-10-27T05:00:00Z')), false);
   const g = { ...f, groundsOpen: '2026-10-08T12:00:00Z' };
   assert.equal(opensAt(g), t('2026-10-08T12:00:00Z')); assert.equal(isLive(g, t('2026-10-09T00:00:00Z')), true, 'a two-week build is on from when the festival says');
-  const { festival } = normalizeFestival({ name: 'X', location: 'Y', latitude: 1, longitude: 2, startDate: '2026-10-22', endDate: '2026-10-25', groundsOpen: '2026-10-19' });
+  const { festival } = normalizeFestival({ name: 'X', location: 'Y', latitude: 39.5, longitude: -105.1, startDate: '2026-10-22', endDate: '2026-10-25', groundsOpen: '2026-10-19' });
   assert.equal(festival.groundsOpen, '2026-10-19T12:00:00Z');
-  assert.equal(normalizeFestival({ name: 'X', location: 'Y', latitude: 1, longitude: 2, startDate: '2026-10-22', endDate: '2026-10-25', groundsOpen: '2026-10-23' }).festival.groundsOpen, undefined, 'grounds cannot open after gates');
+  assert.equal(normalizeFestival({ name: 'X', location: 'Y', latitude: 39.5, longitude: -105.1, startDate: '2026-10-22', endDate: '2026-10-25', groundsOpen: '2026-10-23' }).festival.groundsOpen, undefined, 'grounds cannot open after gates');
 });
 
 test('normalizeFestival is the one gate: defaults, ranges, urls, and what a base record keeps', () => {
   assert.deepEqual(normalizeFestival({}), { error: 'name required' });
   assert.deepEqual(normalizeFestival({ name: 'X', location: 'Y', latitude: 91, longitude: 0, startDate: '2026-10-01', endDate: '2026-10-02' }), { error: 'latitude must be a number in range' });
-  assert.deepEqual(normalizeFestival({ name: 'X', location: 'Y', latitude: 1, longitude: 2, startDate: '2026-10-03', endDate: '2026-10-02' }), { error: 'endDate is before startDate' });
+  assert.deepEqual(normalizeFestival({ name: 'X', location: 'Y', latitude: 39.5, longitude: -105.1, startDate: '2026-10-03', endDate: '2026-10-02' }), { error: 'endDate is before startDate' });
+  assert.match(normalizeFestival({ name: 'X', location: 'Y', latitude: 1, longitude: 2, startDate: '2026-10-01', endDate: '2026-10-02' }).error, /outside the National Weather Service area/);
   const { festival } = normalizeFestival({ name: '  Dusk Ridge ', location: 'Somewhere, CO', latitude: '39.5', longitude: '-105.1', startDate: '2026-10-01', endDate: '2026-10-01', website: 'javascript:alert(1)' });
   assert.equal(festival.id, 'dusk-ridge-2026'); assert.equal(festival.name, 'Dusk Ridge'); assert.equal(festival.latitude, 39.5);
   assert.equal(festival.website, undefined, 'only http(s) links are kept');
   assert.equal(festival.featured, true, 'curated is featured unless told otherwise');
-  const base = { id: 'keep-me', origin: 'community', status: 'pending', name: 'Old', location: 'L', latitude: 1, longitude: 2, startDate: '2026-10-01T12:00:00Z', endDate: '2026-10-02T08:00:00Z' };
+  const base = { id: 'keep-me', origin: 'community', status: 'pending', name: 'Old', location: 'L', latitude: 39.5, longitude: -105.1, startDate: '2026-10-01T12:00:00Z', endDate: '2026-10-02T08:00:00Z' };
   const edited = normalizeFestival({ name: 'New name', county: 'Some County' }, { base }).festival;
   assert.equal(edited.id, 'keep-me'); assert.equal(edited.origin, 'community'); assert.equal(edited.status, 'pending'); assert.equal(edited.name, 'New name'); assert.equal(edited.featured, false);
   assert.ok(sameFestival(base, { ...base, latitude: 1.01 }), 'a kilometre apart on the same days is the same festival');
@@ -295,4 +297,36 @@ test('Edmtrain: one request, festivals only, US only, the event link kept as giv
   assert.deepEqual(await importEdmtrain({ key: '', fetchImpl }), { skipped: 'EDMTRAIN_KEY not set' });
   // Aftershock is curated on the same grounds a month earlier: different dates, so Beyond Wonderland is its own festival.
   assert.equal(q.publishedFestivals().filter(f => f.origin === 'edmtrain').length, 2);
+});
+
+
+test('what is not a festival stays out: SeatGeek concerts, tours and tributes, cancelled shows, listings outside the weather service area', async () => {
+  const { candidate: sg, festivalsFrom: sgFestivals } = await import('../src/importers/seatgeek.js');
+  const today = '2026-09-30';
+  assert.equal(sg(sgEvent({ title: 'Tracy Byrd', datetime_utc: '2026-10-03T23:45:00', enddatetime_utc: '2026-10-04T00:45:00', performers: [{ name: 'Tracy Byrd' }] })), null, 'an evening show filed under music_festival');
+  assert.equal(sg(sgEvent({ title: 'Morrissey - Live in Concert', performers: [{ name: 'Morrissey' }] })), null);
+  assert.equal(sg(sgEvent({ title: 'The Concert: A Tribute To ABBA' })), null);
+  assert.equal(sg(sgEvent({ title: 'Los Lonely Boys: Rockpango Fest 2026 - canceled' })), null);
+  assert.equal(sg(sgEvent({ title: 'Official 2026 ACL Fest Nights: Bleachers' })), null, 'a side show sold beside the festival');
+  assert.equal(sg(sgEvent({ title: 'Get Freaky', time_tbd: true, datetime_local: '2026-10-23T03:30:00', datetime_utc: '2026-10-23T09:30:00' }))?.start, '2026-10-23T16:00:00Z', 'the placeholder time a multi-day event gets');
+  assert.equal(sg(sgEvent({ title: 'John Summit (18+)', performers: [{ name: 'Experts Only Festival' }] }))?.name, 'Experts Only Festival', 'sold under the festival it is');
+  assert.equal(sg(sgEvent({ title: 'Michigan Renaissance Festival' }))?.name, 'Michigan Renaissance Festival');
+  const oneHour = sgFestivals([sgEvent({ title: 'Absolution Fest', datetime_utc: '2026-10-01T22:00:00', enddatetime_utc: '2026-10-01T23:00:00' })], today);
+  assert.equal(oneHour[0].endDate, '2026-10-02T08:00:00Z', 'an end an hour after the start is a placeholder: the day is the festival\'s');
+  assert.equal(sgFestivals([sgEvent({ title: 'Corona Capital', venue: sgVenue({ name: 'Autódromo Hermanos Rodríguez - Redirect', city: 'Temple City', state: 'CA', location: { lat: 19.40345, lon: -99.08878 } }) })], today).length, 0, 'Mexico City with a US placeholder venue');
+  const bill = [{ name: 'Bailey Zimmerman' }, { name: 'Ella Langley' }, { name: 'Sam Barber' }];
+  assert.equal(sg(sgEvent({ title: 'Country In The Park', performers: bill.slice(0, 2) })), null, 'two acts on an afternoon: a show');
+  const merged = sgFestivals([sgEvent({ title: 'Country In The Park', datetime_utc: '2026-10-23T19:00:00', performers: bill }), sgEvent({ title: 'Country In The Park 2 with Bailey Zimmerman and more', datetime_utc: '2026-10-23T21:00:00', performers: bill })], today);
+  assert.deepEqual(merged.map(f => [f.name, f.startDate, f.endDate]), [['Country In The Park', '2026-10-23T19:00:00Z', '2026-10-24T08:00:00Z']], 'same grounds, same day, one name with a word on the end: one festival');
+  const passes = sgFestivals(['Rock The South - 4 Day Pass - with Jason Aldean and more (Rescheduled from 06/11-06/13)', 'Rock The South - Thursday - with Zach Top', 'Rock The South - Friday - with Jason Aldean', 'Rock The South - Sunday - with Riley Green']
+    .map((title, i) => sgEvent({ title, datetime_utc: `2026-10-0${1 + i}T18:00:00` })), today);
+  assert.deepEqual(passes.map(f => [f.name, f.startDate, f.endDate]), [['Rock The South', '2026-10-01T18:00:00Z', '2026-10-05T08:00:00Z']], 'day passes fold into the festival');
+
+  assert.equal(candidate(tmEvent({ name: 'MOVEMENTS - HAPPIER NOW USA TOUR', _embedded: { venues: [tmVenue({ name: 'Observatory Festival Grounds' })], attractions: [{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }] } })), null, 'a tour with openers at a venue named for a festival');
+  assert.equal(candidate(tmEvent({ name: 'Rockpango Fest', dates: { start: { localDate: '2026-10-10', dateTime: '2026-10-11T01:00:00Z' }, status: { code: 'cancelled' } } })), null);
+  assert.equal(candidate(tmEvent({ name: 'FORM Arcosanti Festival Car Registration' })), null);
+  assert.ok(candidate(tmEvent({ name: 'Vans Warped Tour Orlando' }), { trusted: true }), 'Front Gate sells it: a festival whatever the name says');
+  assert.equal(candidate(tmEvent({ name: 'Vans Warped Tour Orlando' })), null, 'the same name unvouched is a tour');
+  assert.deepEqual(festivalsFrom([tmEvent({ name: '2-Day Palm Tree Music Festival' }), tmEvent({ name: 'Palm Tree Music Festival - FRI 10/2' }), tmEvent({ name: 'Palm Tree Music Festival - SAT 10/3', dates: { start: { localDate: '2026-10-10', dateTime: '2026-10-10T22:00:00Z' } } })], today).map(f => [f.name, f.startDate, f.endDate]),
+    [['Palm Tree Music Festival', '2026-10-09T17:00:00Z', '2026-10-11T08:00:00Z']], 'a two-day pass and two day tickets are one festival');
 });

@@ -1,7 +1,7 @@
 // SeatGeek Platform API: a free client id (seatgeek.com/account/develop) and a music_festival
 // taxonomy, which reaches a lot of ticketing Ticketmaster does not carry, including smaller
 // independents. Listings fold into festivals exactly as Ticketmaster's do (common.js).
-import { ADD_ON, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, errorText } from './common.js';
+import { ADD_ON, CANCELLED, NOT_A_FESTIVAL, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, looksLikeFestival, errorText } from './common.js';
 import { iso } from '../util.js';
 
 const API = 'https://api.seatgeek.com/2/events';
@@ -13,10 +13,19 @@ const utc = s => (s && !/Z$|[+-]\d\d:\d\d$/.test(s) ? `${s}Z` : s);
 /** One listing reduced to what matters, or null if it is not a festival we can place on a map. */
 export function candidate(ev) {
   if (!ev) return null;
-  const name = ev.title || ev.short_title || '';
-  if (!name || ADD_ON.test(name) || ev.date_tbd) return null;
+  let name = ev.title || ev.short_title || '';
+  if (!name || ADD_ON.test(name) || CANCELLED.test(name) || ev.date_tbd) return null;
   const festival = ev.type === 'music_festival' || (ev.taxonomies || []).some(t => t.name === 'music_festival');
   if (!festival) return null;
+  // SeatGeek files plenty of plain concerts under music_festival. A festival says so in its name, or in the
+  // performer it is sold under ("John Summit" at the Gorge is Experts Only Festival), or has the placeholder
+  // start time a multi-day event gets, or bills three acts or more; a single evening with none of those is a show.
+  const performers = (ev.performers || []).map(p => p?.name || '').filter(Boolean);
+  const billed = performers.find(p => /\bfest(ival)?s?\b/i.test(p));
+  if (NOT_A_FESTIVAL.test(name) && !/fest/i.test(name)) return null;
+  const dayTicket = /\b(?:mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(?:day)?\b|\b(?:\d+|one|two|three|four)[- ]day\b|\bday \d|\bnight \d|\bpass(?:es)?\b/i.test(name);   // a day of something longer
+  if (!looksLikeFestival(name) && !billed && !ev.time_tbd && !dayTicket && performers.length < 3) return null;
+  if (billed && !/fest/i.test(name)) name = billed;
   const v = ev.venue;
   const lat = Number(v?.location?.lat), lon = Number(v?.location?.lon);
   if (!v || !Number.isFinite(lat) || !Number.isFinite(lon) || (lat === 0 && lon === 0)) return null;

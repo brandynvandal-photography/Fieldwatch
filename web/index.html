@@ -261,6 +261,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .field input[type=date]::-webkit-date-and-time-value{text-align:right}
 .btn[disabled]{opacity:.45;pointer-events:none}
 .btn.small{min-height:44px;width:auto;padding:8px 22px;font-size:15px}
+.pend.dim{opacity:.55}
 .pend{padding:16px;text-align:center}
 .pend+.pend{border-top:1px solid var(--glass-border)}
 .pend .t{font-weight:600;font-size:18px;line-height:1.25}
@@ -603,6 +604,7 @@ function go(name, param, opts){
   if (name === 'report') locate();
   if (name === 'moderate') loadQueue();
   if (name === 'sources') loadSources();
+  if (name === 'catalog') loadCatalog();
 }
 function back(){
   stopRadar();
@@ -1174,6 +1176,44 @@ screens.sources = () => {
     <button class="btn quiet" ${S.sourcesBusy ? 'disabled' : ''} onclick="runSources()">${S.sourcesBusy ? 'Running' : 'Run now'}</button>
     <p class="note">Keys go in the backend's variables: TICKETMASTER_KEY, SEATGEEK_CLIENT_ID, EDMTRAIN_KEY.</p>`;
 };
+// ---- the whole list, for staff: search it, hide a listing the importers got wrong, unhide one hidden by mistake ----
+async function loadCatalog(){
+  const b = backend(); if (!b || !S.admin) { S.catalog = null; return; }
+  S.catalogBusy = true; render();
+  try{ S.catalog = await getJSON(`${b}/festivals?all=1&hidden=1`, adminHeaders()); S.catalogErr = null; }catch(e){ S.catalog = null; S.catalogErr = e; }
+  S.catalogBusy = false; render();
+}
+const catalogMatches = () => {
+  const qy = (S.catalogQuery || '').trim().toLowerCase();
+  const all = (S.catalog || []).filter(f => !qy || `${f.name} ${f.location} ${f.origin}`.toLowerCase().includes(qy));
+  return all.sort((a, b) => Date.parse(a.startDate) - Date.parse(b.startDate));
+};
+const catalogRows = () => {
+  const list = catalogMatches(), shown = list.slice(0, 150);
+  if (!list.length) return `<div class="empty"><b>Nothing matches</b></div>`;
+  return shown.map(f => `<div class="pend${f.status === 'hidden' ? ' dim' : ''}"><div class="t">${esc(f.name)}</div><div class="s">${esc(fmtDay(f.startDate))} to ${esc(fmtDay(f.endDate))} · ${esc(f.location)}</div><div class="s num">${esc(f.origin || 'curated')}${f.status === 'hidden' ? ' · hidden' : ''}</div><div class="acts">${f.status === 'hidden' ? `<button class="btn small" onclick="hideFestival('${esc(f.id)}', false)">Unhide</button>` : `<button class="btn quiet small" onclick="hideFestival('${esc(f.id)}', true)">Hide</button>`}</div></div>`).join('')
+    + (list.length > shown.length ? `<p class="note">${list.length - shown.length} more. Narrow the search.</p>` : '');
+};
+function catalogFilter(v){ S.catalogQuery = v; const el = document.getElementById('catalogList'); if (el) el.innerHTML = catalogRows(); }
+async function hideFestival(id, hide){
+  const b = backend(); if (!b || !S.admin) return;
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(id)}/${hide ? 'hide' : 'unhide'}`, { method: 'POST', headers: adminHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const f = (S.catalog || []).find(x => x.id === id); if (f) f.status = hide ? 'hidden' : 'published';
+    S.fests = null; syncFestivals();
+    toast(hide ? 'Hidden' : 'Back in the list'); catalogFilter(S.catalogQuery || '');
+  }catch(e){ toast(e.message === 'HTTP 401' ? 'Wrong admin key' : "Couldn't change it"); }
+}
+screens.catalog = () => {
+  const c = S.catalog, hidden = (c || []).filter(f => f.status === 'hidden').length;
+  return topbar(backBtn(), '', '') + `
+    <h1 class="title">All festivals</h1>
+    <p class="sub">${c ? `${c.length} listed${hidden ? `, ${hidden} hidden` : ''}` : S.catalogBusy ? 'Checking' : esc(staffFail(S.catalogErr))}</p>
+    ${c ? `<div class="group glass"><label class="field"><span class="k">Find</span><input id="catalogQuery" value="${esc(S.catalogQuery || '')}" placeholder="name, place or source" autocapitalize="off" autocorrect="off" oninput="catalogFilter(this.value)"></label></div>
+    <div class="group glass" id="catalogList" style="margin-top:14px">${catalogRows()}</div>` : ''}`;
+};
+
 async function loadSources(){
   const b = backend(); if (!b || !S.admin) { S.sources = null; return; }
   S.sourcesBusy = true; render();
@@ -1228,7 +1268,7 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up, and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at, and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
   <p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button>` : ''}</div>
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported; hide what is not a festival</div></div>${I.chev}</button>` : ''}</div>
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
   <p class="note">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. Listings: Ticketmaster, SeatGeek, Edmtrain and people here. No account, no login.</p>`;
