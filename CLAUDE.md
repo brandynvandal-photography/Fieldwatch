@@ -15,6 +15,7 @@ This repo was scaffolded in a chat session on a phone, then worked over in a Cla
 | `prototype/index.html` | Tap-through HTML prototype of every screen. Source of truth for UX | done |
 | `docs/decisions.md` | Why the product is shaped this way, including the legal lines | read this first |
 | `docs/roadmap.md` | Open items in priority order | |
+| `docs/feature-set.md` | The complete feature set: live, next, later, not doing | |
 
 ## Commands
 
