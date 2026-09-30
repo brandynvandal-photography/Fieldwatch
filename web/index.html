@@ -1135,15 +1135,18 @@ screens.moderate = () => {
   return topbar(backBtn(), '', '') + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Reports</h1>
-    ${q === null ? `<div class="card glass" style="margin-top:22px"><h3>${S.queueBusy ? 'Checking' : 'Cannot reach the backend'}</h3>${S.queueBusy ? '' : '<p>Check the address and the admin key in Settings.</p>'}</div>`
+    ${q === null ? `<div class="card glass" style="margin-top:22px"><h3>${S.queueBusy ? 'Checking' : esc(staffFail(S.queueErr))}</h3>${S.queueBusy ? '' : `<p>${esc(staffHint(S.queueErr) || 'Check the address and the admin key in Settings.')}</p>`}</div>`
       : !q.length ? `<div class="empty"><b>Nothing waiting</b>Reports land here before they go out.</div>`
       : `<div class="group glass" style="margin-top:22px">${q.map(i => `<div class="pend"><div class="t">${esc(i.category)}</div><div class="s">${esc(i.summary)}</div><div class="s num">${esc(fmtFull(i.occurredAt))}${i.location ? ' · ' + esc(i.location) : ''}${i.source ? ' · ' + esc(i.source) : ''}</div><div class="acts"><button class="btn small" onclick="decideReport('${esc(i.id)}', true)">Publish</button><button class="btn quiet small" onclick="decideReport('${esc(i.id)}', false)">Remove</button></div></div>`).join('')}</div>`}
     <p class="note">Published reports reach every phone here as an alert.</p>`;
 };
+/** What to say when a staff call fails: the admin key, a backend that is down or restarting, or the address. */
+const staffFail = e => !e ? 'Cannot reach the backend' : e.message === 'HTTP 401' ? 'Wrong admin key' : /HTTP 5/.test(e.message) ? 'The backend is restarting or down' : 'Cannot reach the backend';
+const staffHint = e => !e ? '' : e.message === 'HTTP 401' ? 'The key in Settings must match ADMIN_KEY in the backend\'s variables.' : /HTTP 5/.test(e.message) ? 'Check its deploy log, then try again in a minute.' : 'Check the address in Settings and whether the backend is up.';
 async function loadQueue(){
   const f = fest(), b = backend(); if (!f || f.id === 'here' || !b || !S.admin) { S.queue = null; return; }
   S.queueBusy = true; render();
-  try{ S.queue = await getJSON(`${b}/festivals/${encodeURIComponent(f.id)}/incidents/pending`, adminHeaders()); }catch(e){ S.queue = null; }
+  try{ S.queue = await getJSON(`${b}/festivals/${encodeURIComponent(f.id)}/incidents/pending`, adminHeaders()); S.queueErr = null; }catch(e){ S.queue = null; S.queueErr = e; }
   S.queueBusy = false; render();
 }
 async function decideReport(id, ok){
@@ -1162,7 +1165,8 @@ screens.sources = () => {
   const line = (k, v) => !v ? '' : v.skipped ? 'No key' : v.error ? `Failed: ${v.error}` : `${v.added || 0} added, ${v.updated || 0} updated${v.duplicates ? `, ${v.duplicates} already listed` : ''}${v.errors ? `, ${v.errors} errors` : ''}`;
   return topbar(backBtn(), '', '') + `
     <h1 class="title">Festival sources</h1>
-    <p class="sub">${r && r.startedAt ? `Last run ${esc(fmtFull(r.startedAt))}` : r && r.never ? 'No import has run yet' : S.sourcesBusy ? 'Checking' : 'Cannot reach the backend'}</p>
+    <p class="sub">${r && r.startedAt ? `Last run ${esc(fmtFull(r.startedAt))}` : r && r.never ? 'No import has run yet' : S.sourcesBusy ? 'Checking' : esc(staffFail(S.sourcesErr))}</p>
+    ${!r && !S.sourcesBusy && staffHint(S.sourcesErr) ? `<p class="note">${esc(staffHint(S.sourcesErr))}</p>` : ''}
     ${r && !r.never ? `<div class="group glass">${Object.keys(SOURCE_NAMES).filter(k => r[k]).map(k => `<div class="row"><div class="main"><div class="t">${SOURCE_NAMES[k]}</div><div class="s">${esc(line(k, r[k]))}</div></div><span class="pill ${r[k].skipped || r[k].error ? '' : 'on'}">${r[k].skipped ? 'Off' : r[k].error ? 'Error' : 'On'}</span></div>`).join('')}</div>` : ''}
     <button class="btn quiet" ${S.sourcesBusy ? 'disabled' : ''} onclick="runSources()">${S.sourcesBusy ? 'Running' : 'Run now'}</button>
     <p class="note">Keys go in the backend's variables: TICKETMASTER_KEY, SEATGEEK_CLIENT_ID, EDMTRAIN_KEY.</p>`;
@@ -1170,7 +1174,7 @@ screens.sources = () => {
 async function loadSources(){
   const b = backend(); if (!b || !S.admin) { S.sources = null; return; }
   S.sourcesBusy = true; render();
-  try{ S.sources = await getJSON(`${b}/admin/import`, adminHeaders()); }catch(e){ S.sources = null; }
+  try{ S.sources = await getJSON(`${b}/admin/import`, adminHeaders()); S.sourcesErr = null; }catch(e){ S.sources = null; S.sourcesErr = e; }
   S.sourcesBusy = false; render();
 }
 /** Starts a run on the backend and watches it finish; a run can take minutes when it reads festival sites. */

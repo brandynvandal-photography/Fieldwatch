@@ -365,6 +365,17 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     await page.click('button:has-text("Run now")');
     await page.waitForSelector('.toast.show:has-text("Imported")');
     assert.equal(store.imports, 1);
+
+    // A key that does not match says so, instead of blaming the network.
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('#admin');
+    await page.fill('#admin', 'k-wrong'); await page.locator('#admin').blur();
+    await page.click('button:has-text("Festival sources")');
+    await page.waitForSelector('.sub:has-text("Wrong admin key")');
+    assert.match(await page.textContent('#app'), /must match ADMIN_KEY/);
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('#admin');
+    await page.fill('#admin', 'k-admin'); await page.locator('#admin').blur();
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
