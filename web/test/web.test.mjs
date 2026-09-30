@@ -516,7 +516,7 @@ test('right where you are: alerts, forecast, radar and warnings for the phone\'s
     await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('h1.title'), 'Right here');
     await page.waitForFunction(() => /Denver, Colorado/.test(document.querySelector('.sub')?.textContent || ''));
-    assert.match(await page.textContent('.eyebrow'), /Your location/);
+    assert.match(await page.textContent('.eyebrow'), /Your location · (just now|\d+ (min|hr) ago)/);
     assert.ok(seen.alertUrls.some(u => /point=39\.739\d?,-104\.990\d?/.test(u)), 'the weather service is asked about your spot');
     assert.equal(await page.$('button.row:has-text("Report a hazard")'), null, 'no festival, no festival rows');
     assert.equal(await page.$('button[aria-label="Share"]'), null);

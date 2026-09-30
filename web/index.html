@@ -932,7 +932,7 @@ screens.home = () => {
       </span></button>`;
   const here = f.id === 'here';
   return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', (here ? '' : shareBtn()) + refreshBtn() + gearBtn()) + `
-    <span class="eyebrow num">${here ? `Your location${f.at ? ' · ' + esc(ago(f.at)) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
+    <span class="eyebrow num">${here ? `Your location${f.at ? ' · ' + esc(ago(new Date(f.at).toISOString())) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
     <h1 class="title">${esc(f.name)}</h1>
     <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
     ${sky}
