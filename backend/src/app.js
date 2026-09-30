@@ -15,6 +15,7 @@ import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './i
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
+import { lightningFor, lightningOn, lightningStatus } from './lightning.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -107,6 +108,7 @@ app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
   adminKey: Boolean(process.env.ADMIN_KEY),
   nwsUserAgent: !process.env.NWS_USER_AGENT || /example\.com/.test(process.env.NWS_USER_AGENT) ? 'placeholder' : 'set',
   sources: { ticketmaster: Boolean(process.env.TICKETMASTER_KEY), seatgeek: Boolean(process.env.SEATGEEK_CLIENT_ID), edmtrain: Boolean(process.env.EDMTRAIN_KEY), wikidata: wikidataSkipped() || 'on', feeds: Boolean(process.env.FESTIVAL_FEEDS) },
+  lightning: lightningStatus(),
   imports: { running: imports.running, lastStartedAt: imports.last?.startedAt || null, lastFinishedAt: imports.last?.finishedAt || null,
     // Per source, what the last run managed and the last error it hit, so a failing key or a blocked host shows here.
     sources: Object.fromEntries(Object.entries(imports.last || {}).filter(([, v]) => v && typeof v === 'object')
@@ -120,12 +122,14 @@ app.get('/festivals', (req, res) => {
   if (req.query.all && req.query.hidden && isAdmin(req)) return res.json(q.allFestivals().filter(f => ['published', 'hidden'].includes(f.status || 'published')));
   const all = q.publishedFestivals(); res.json(req.query.all ? all : all.filter(f => isLive(f)));
 });
-// The home page: every current alert at every festival that is on, grouped by festival, the worst first.
+// The home page: every current alert at every festival that is on, grouped by festival, the worst first. Lightning within
+// 15 miles (code red or orange) puts a festival on the page too; red is an alert already, orange is its own row.
 const RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
 app.get('/alerts', (req, res) => {
   const on = festivalsInWindow(), rank = a => RANK[String(a.severity || '').toLowerCase()] || 0;
-  const items = on.map(f => ({ festival: f, alerts: q.activeAlerts(f.id).sort((a, b) => rank(b) - rank(a)) })).filter(i => i.alerts.length);
-  items.sort((a, b) => rank(b.alerts[0]) - rank(a.alerts[0]) || Date.parse(a.festival.startDate) - Date.parse(b.festival.startDate));
+  const items = on.map(f => ({ festival: f, alerts: q.activeAlerts(f.id).sort((a, b) => rank(b) - rank(a)), lightning: lightningFor(f.id) })).filter(i => i.alerts.length || ['red', 'orange'].includes(i.lightning?.code));
+  const top = i => Math.max(i.alerts[0] ? rank(i.alerts[0]) : 0, i.lightning?.code === 'red' ? 3 : i.lightning?.code === 'orange' ? 2 : 0);
+  items.sort((a, b) => top(b) - top(a) || Date.parse(a.festival.startDate) - Date.parse(b.festival.startDate));
   res.set('Cache-Control', 'no-store').json({ at: iso(), on: on.length, items });
 });
 // A listing the importers got wrong (a concert, a tour, a car show) goes out of sight; an import keeps it hidden.
@@ -185,6 +189,9 @@ app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
   noteInterest(req.festival.id); refreshRadarSoon(req.festival);
   res.json(await buildPack(req.festival));
 }));
+
+/** Lightning near the festival right now (lightning.js): the code, the nearest flash, counts by ring, the all-clear time. */
+app.get('/festivals/:id/lightning', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(lightningFor(req.festival.id) || { code: 'none', at: iso(), on: lightningOn(), source: 'GOES GLM' }));
 
 /** The radar loop: what's on disk right now, with a refresh kicked off in the background if it's due. */
 app.get('/festivals/:id/radar', loadFestival, (req, res) => {

@@ -133,6 +133,10 @@ Push is optional everywhere: leave the `APNS_*` lines out until there is a key, 
 
 The manifest (also inside the pack as `radar`) mirrors `RadarLoop` in Swift: `bounds` in degrees, `frames` oldest first with relative URLs, `attribution` that the app must display. Newest frame is at least ten minutes old; that is how long the composite takes to land.
 
+## Lightning
+
+`lightning.js` grades lightning at every festival that is on from the GOES-R Geostationary Lightning Mapper. NOAA publishes every 20-second flash file (`GLM-L2-LCFA`) on public S3 buckets (`GLM_BUCKETS`, default `noaa-goes19,noaa-goes18`: GOES-East and GOES-West, no key, no signing) a minute or two after the fact. Every `LIGHTNING_SECONDS` (60) the server lists the current hour on each bucket, fetches the files it has not seen (newest first, 30 at most per pass), reads `flash_lat`, `flash_lon` and `flash_time_offset_of_first_event` with h5wasm (NetCDF-4 is HDF5; no native build), keeps the flashes within 40 miles of a live festival for 30 minutes, and grades: **red** a flash within 8 miles in the last 30 minutes (all clear 30 minutes after the last one; stale data never clears a red), **orange** nearest flash in the last 15 minutes 8 to 15 miles out, **yellow** 15 to 30, **green** nothing within 30 miles in the last 15 minutes, **none** no data in the last 5 minutes. A turn to red is stored and pushed as a severe alert (`channel: "lightning"`, id `lightning-<festival>-<minute>`) whose `expiresAt` moves out with every new flash within 8 miles. `GET /festivals/:id/lightning` returns the grade (also in the pack as `lightning` and on each `/alerts` item), `/health` has `lightning` with per-bucket counts and the last error. Nothing runs while no festival is on; `LIGHTNING=false` turns it off. The mapper sees cloud tops at about 8 km and misses some flashes under a thick anvil, so the app says the festival's own lightning vendor is the authority.
+
 ## Incidents
 
 Scanner traffic and attendee reports, filtered down to hazards.

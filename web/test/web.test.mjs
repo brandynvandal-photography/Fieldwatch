@@ -274,7 +274,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null };
+  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {} };
   // What the home page shows: the fixture's warning at Hulaween, an advisory at the next festival that is on.
   const p = alertFeature().properties, toAlert = over => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null, severity: String(p.severity || 'Unknown').toLowerCase(), area: p.areaDesc ?? '', source: p.senderName ?? 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0, ...over });
   const other = store.list.find(f => isLive(f) && f.id !== 'hulaween-2026');
@@ -299,7 +299,9 @@ function fakeBackend(list) {
       if (m === 'GET' && /^\/festivals\/[^/]+\/qr\.svg$/.test(path)) { res.writeHead(200, { ...cors, 'content-type': 'image/svg+xml' }); return res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21"><rect width="21" height="21" fill="#fff"/><path d="M1 1h7v7H1z" fill="#000"/></svg>'); }
       const rep = path.match(/^\/festivals\/([^/]+)\/reports$/);
       if (m === 'POST' && rep) { const b = JSON.parse(raw); if (!b.summary || b.summary.length < 8) return send(400, { error: 'summary required' }); store.reports.push({ festival: rep[1], ...b }); return send(202, { id: `rep-${store.reports.length}`, queued: true }); }
-      if (m === 'GET' && path === '/alerts') return send(200, { at: new Date().toISOString(), on: store.list.filter(f => isLive(f) && f.status !== 'hidden').length, items: (store.feed || []).map(x => ({ festival: store.list.find(f => f.id === x.festivalId), alerts: x.alerts })).filter(i => i.festival) });
+      if (m === 'GET' && path === '/alerts') return send(200, { at: new Date().toISOString(), on: store.list.filter(f => isLive(f) && f.status !== 'hidden').length, items: (store.feed || []).map(x => ({ festival: store.list.find(f => f.id === x.festivalId), alerts: x.alerts, lightning: store.lightning[x.festivalId] || null })).filter(i => i.festival) });
+      const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
+      if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
       if (m === 'GET' && path === '/health') return send(200, { ok: true, at: '2026-10-23T09:00:00Z', build: '4356d78', uptimeSeconds: 61, database: { path: '/data/fieldwatch.db', onVolume: true }, festivals: 14, push: { web: true }, adminKey: true, nwsUserAgent: 'placeholder', sources: { ticketmaster: false, seatgeek: false, edmtrain: true, wikidata: 'NWS_USER_AGENT not set', feeds: false }, imports: { running: false, lastStartedAt: '2026-10-23T09:00:00Z', lastFinishedAt: '2026-10-23T09:01:00Z' } });
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
@@ -712,4 +714,53 @@ test('storms on the way: a countdown on the festival page with the first things 
   await page.waitForSelector('.headsup');
   assert.deepEqual(seen.errors, []);
   await context.close();
+});
+
+test('lightning codes: a red on the festival page with the all-clear countdown, the screen behind it, and the code on the home page', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  const minutesAgo = n => new Date(Date.now() - n * 60000).toISOString(), allClearAt = new Date(Date.now() + 27 * 60000).toISOString();
+  store.lightning['hulaween-2026'] = { code: 'red', nearestMi: 3.6, nearestAt: minutesAgo(3), within: { 8: 2, 15: 4, 30: 9 }, lastNearMi: 3.6, lastNearAt: minutesAgo(3), allClearAt, at: minutesAgo(0), dataAt: minutesAgo(1), source: 'GOES GLM' };
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.waitForSelector('h1.title:has-text("1 warning")');
+    assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Code red', 'the code sits on the festival\'s card on the home page');
+    await page.click('.feedfest .alert:has-text("Severe Thunderstorm Warning")');
+    await page.waitForSelector('.alerthead');
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('.bolt.red');
+    assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code red');
+    assert.match(await page.textContent('.bolt .s'), /^Shelter now · all clear in 2[67] min$/);
+    assert.ok(await page.$('.sky.warn'), 'the warning stays on the sky; lightning is its own tile');
+    await shot(page, '23-lightning-home');
+    await page.click('.bolt');
+    await page.waitForSelector('h1.title:has-text("Lightning")');
+    assert.equal(await page.textContent('.codehead h2'), 'Code red');
+    assert.match(await page.textContent('.codehead p'), /^Nearest flash 3\.6 mi, \d+:\d\d [AP]M$/);
+    assert.match(await page.textContent('.codehead b'), /^2[67] min$/);
+    assert.match(await page.textContent('.code.now .t'), /Code red · Within 8 miles/);
+    assert.deepEqual(await page.$$eval('.kv .v', els => els.slice(0, 3).map(e => e.textContent)), ['2', '4', '9']);
+    assert.match(await page.textContent('.note'), /lightning vendor|safety staff are the authority/);
+    await shot(page, '24-lightning');
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('.bolt.red');
+    // A minute later, green: the tile says so, without a reload.
+    store.lightning['hulaween-2026'] = { code: 'green', nearestMi: null, nearestAt: null, within: { 8: 0, 15: 0, 30: 0 }, lastNearMi: null, lastNearAt: null, allClearAt: null, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' };
+    await page.evaluate(() => loadLightning(fest()));
+    await page.waitForSelector('.bolt.green');
+    assert.equal(await page.textContent('.bolt .t'), 'No lightning within 30 mi · Code green');
+    // Orange with no alert at all still puts a festival on the home page, as its own row.
+    const other = FESTS.find(f => isLive(f) && f.id !== 'hulaween-2026');
+    store.feed = [{ festivalId: other.id, alerts: [] }];
+    store.lightning = { [other.id]: { code: 'orange', nearestMi: 11.2, nearestAt: minutesAgo(2), within: { 8: 0, 15: 1, 30: 3 }, lastNearMi: null, lastNearAt: null, allClearAt: null, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' } };
+    await page.click('button:has-text("Change")');
+    await page.waitForSelector('h1.title:has-text("1 advisory")');
+    assert.equal(await page.textContent('.feedfest .alert .t'), 'Lightning 11.2 mi');
+    assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code orange');
+    await page.click('.feedfest .alert');
+    await page.waitForSelector('.codehead.orange');
+    assert.equal(await page.textContent('h1.title'), 'Lightning');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

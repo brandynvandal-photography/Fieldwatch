@@ -55,6 +55,7 @@ struct AlertDetailView: View {
         case .relay: "From \(alert.relayCount) phone\(alert.relayCount == 1 ? "" : "s") nearby"
         case .incident: "Incident feed"
         case .headsup: "Fieldwatch, from the forecast"
+        case .lightning: "Fieldwatch, from the GOES lightning mapper"
         }
     }
 

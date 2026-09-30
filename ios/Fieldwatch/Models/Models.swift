@@ -55,6 +55,7 @@ enum AlertSeverity: String, Codable, Comparable, CaseIterable {
 enum AlertChannel: String, Codable {
     case weather, official, relay, incident
     case headsup   // the backend's own alert, hours before the forecast turns (backend/src/incoming.js)
+    case lightning // a flash within 8 miles, from the GOES lightning mapper (backend/src/lightning.js)
 }
 
 struct SafetyAlert: Codable, Identifiable, Hashable {

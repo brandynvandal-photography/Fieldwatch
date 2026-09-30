@@ -211,6 +211,32 @@ button.row:active{background:rgba(255,255,255,.35)}
 .tl .k{flex:none;width:96px;font-weight:700;font-size:13px;color:var(--muted);padding-top:2px}
 .tl.now{background:rgba(255,176,59,.16)}.tl.now .k{color:var(--watch-2)}
 
+/* Lightning: the code on the festival page, and the screen behind it. */
+.bolt{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;min-height:62px;border-radius:var(--radius);margin:12px 0 4px;text-align:left;color:var(--ink);position:relative}
+.bolt .lead{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;background:var(--ok)}
+.bolt.orange .lead{background:#FF7A1A} .bolt.yellow .lead{background:var(--watch);color:var(--watch-ink)}
+.bolt .lead svg{width:20px;height:20px}
+.bolt .main{flex:1;min-width:0} .bolt .t{font-weight:600;font-size:17px;line-height:1.25} .bolt .s{color:var(--muted);font-size:14px;margin-top:2px;line-height:1.3}
+.bolt.red{background:linear-gradient(160deg,var(--warn),var(--warn-2));color:#fff;border-color:transparent;box-shadow:0 12px 34px rgba(244,63,94,.32)}
+.bolt.red .lead{background:rgba(255,255,255,.22)} .bolt.red .s{color:rgba(255,255,255,.85)} .bolt.red .chev{color:#fff;opacity:.9}
+.codehead{border-radius:32px;padding:26px 20px 22px;margin-bottom:14px;text-align:center;color:#fff;background:linear-gradient(160deg,var(--ok),var(--ok-2));box-shadow:0 16px 44px rgba(23,179,122,.3)}
+.codehead.red{background:linear-gradient(160deg,var(--warn),var(--warn-2));box-shadow:0 16px 44px rgba(244,63,94,.35)}
+.codehead.orange{background:linear-gradient(160deg,#FF7A1A,#E85D04);box-shadow:0 16px 44px rgba(255,122,26,.35)}
+.codehead.yellow{background:linear-gradient(160deg,var(--watch),var(--watch-2));color:var(--watch-ink);box-shadow:0 16px 44px rgba(255,176,59,.35)}
+.codehead.none{background:var(--glass);color:var(--ink);box-shadow:var(--shadow-2);border:1px solid var(--glass-border)}
+.codehead .eyebrow{color:inherit;opacity:.8;margin:0 0 8px}
+.codehead h2{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:34px;line-height:1.04;font-weight:600;letter-spacing:-.012em}
+.codehead p{margin-top:8px;font-size:15px;opacity:.9}
+.codehead b{display:block;margin-top:14px;font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:44px;line-height:1;font-weight:600;letter-spacing:-.02em}
+.codehead .s{display:block;font-size:13px;opacity:.85;margin-top:6px}
+.code{display:flex;gap:12px;align-items:flex-start;padding:12px 16px;position:relative}
+.code+.code::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
+.code .dot{flex:none;width:14px;height:14px;border-radius:50%;margin-top:4px;background:var(--ok)}
+.code.red .dot{background:var(--warn)} .code.orange .dot{background:#FF7A1A} .code.yellow .dot{background:var(--watch)}
+.code .main{flex:1;min-width:0} .code .t{font-weight:600;font-size:15px;line-height:1.3} .code .s{color:var(--muted);font-size:14px;margin-top:2px;line-height:1.35}
+.code.now{background:rgba(26,21,51,.05)}
+.pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)}
+.feedfest .fh{display:flex;align-items:center;gap:10px} .feedfest .fh .main{flex:1;min-width:0}
 /* Alerts */
 .alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative;align-items:center}
 .alert+.alert::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
@@ -489,11 +515,12 @@ async function refresh(f){
   if (!f || S.busy) return;
   S.busy = true; render();
   const b = backend();
-  const [al, hr, po, inc, gr, dy] = await Promise.allSettled([
+  const [al, hr, po, inc, gr, dy, lt] = await Promise.allSettled([
     loadAlerts(f), loadHourly(f),
     b ? getJSON(`${b}/festivals/${f.id}/posts`) : Promise.resolve(data(f).posts || []),
     b ? getJSON(`${b}/festivals/${f.id}/incidents`) : Promise.resolve(null),
     loadGrid(f), loadDaily(f),
+    b ? getJSON(`${b}/festivals/${f.id}/lightning`) : Promise.resolve(null),
   ]);
   const next = { ...data(f) };
   let ok = false;
@@ -510,6 +537,7 @@ async function refresh(f){
   if (inc.status === 'fulfilled') next.incidents = inc.value;
   if (gr.status === 'fulfilled') next.grid = gr.value;
   if (dy.status === 'fulfilled') next.daily = dy.value;
+  if (lt.status === 'fulfilled') next.lightning = lt.value;
   next.checkedAt = new Date().toISOString();
   if (ok) { next.at = next.checkedAt; next.error = null; }
   else next.error = (al.reason && al.reason.message) || (hr.reason && hr.reason.message) || 'unreachable';
@@ -679,6 +707,7 @@ const I = {
   snow: svg('<path d="M17.5 16a4.5 4.5 0 0 0 .5-9 7 7 0 0 0-13.4 2A4 4 0 0 0 6 16z"/><path d="M8 19h.01M12 21h.01M16 19h.01M10 21h.01M14 19h.01"/>'),
   fog: svg('<path d="M4 10h16M6 14h12M8 18h8"/>'),
   wind: svg('<path d="M3 8h10a3 3 0 1 0-3-3"/><path d="M3 12h15a3 3 0 1 1-3 3"/><path d="M3 16h7a2 2 0 1 1-2 2"/>'),
+  bolt: svg('<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>'),
   check: svg('<path d="M5 12l5 5L20 7"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
@@ -785,6 +814,29 @@ function outlook(f){
   const some = hr.find(h => (h.precipChance || 0) >= 25);
   if (some) return `A chance of rain from ${fmtHour(some.startTime)}.`;
   return 'Dry for the next 12 hours.';
+}
+
+// ---- lightning codes (the backend grades them from the GOES lightning mapper, lightning.js; the phone only reads) ----
+const CODE = { red: { label: 'Code red', text: 'Shelter now' }, orange: { label: 'Code orange', text: 'Head for shelter' }, yellow: { label: 'Code yellow', text: 'Watch it, know your shelter' }, green: { label: 'Code green', text: 'None within 30 miles' } };
+/** Lightning moves faster than the five-minute refresh: the grade is read every minute while a festival is open. A turn to red pulls the alerts too, and the new warning buzzes. */
+async function loadLightning(f){
+  const b = backend(); if (!b || !f) return;
+  try{
+    const l = await getJSON(`${b}/festivals/${f.id}/lightning`), was = data(f).lightning;
+    S.cache[f.id] = { ...data(f), lightning: l }; save();
+    const changed = !was || was.code !== l.code || was.nearestMi !== l.nearestMi || was.allClearAt !== l.allClearAt;
+    if (l.code === 'red' && (!was || was.code !== 'red') && !S.busy) refresh(f);
+    else if (changed && ['home', 'lightning', 'weather'].includes(S.screen)) render();
+  }catch(e){}
+}
+/** The tile under the sky: the nearest flash, the code, and the all-clear countdown when it is red. */
+function lightningTile(f){
+  const l = data(f).lightning, c = l && CODE[l.code]; if (!c) return '';
+  const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 30 mi';
+  const n = l.within ? l.within[30] : 0;
+  const sub = l.code === 'red' ? `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`
+    : l.code === 'green' ? `${esc(c.text)} in the last 15 min` : `${esc(c.text)} · ${n} flash${n === 1 ? '' : 'es'} within 30 mi in 15 min`;
+  return `<button class="bolt glass ${esc(l.code)}" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(head)} · ${esc(c.label)}</div><div class="s">${sub}</div></div>${I.chev}</button>`;
 }
 
 // ---- what is coming (mirrors backend/src/incoming.js: keep the thresholds, the camp lists and the timing lines the same) ----
@@ -1048,7 +1100,7 @@ async function loadFeed(){
       if (on.length && got.every(r => r.status === 'rejected')) throw new Error('no signal');   // the last feed stays up, marked as old
       feed = { at: new Date().toISOString(), on: live().length, items: got.filter(r => r.status === 'fulfilled').map(r => r.value), partial: on.length < live().length };
     }
-    feed.items = feed.items.map(i => ({ ...i, alerts: (i.alerts || []).filter(isActive).sort((x, y) => sevRank(y) - sevRank(x)) })).filter(i => i.festival && i.alerts.length);
+    feed.items = feed.items.map(i => ({ ...i, alerts: (i.alerts || []).filter(isActive).sort((x, y) => sevRank(y) - sevRank(x)) })).filter(i => i.festival && (i.alerts.length || ['red', 'orange'].includes(i.lightning && i.lightning.code)));
     S.feed = feed; S.feedErr = null;
   }catch(e){ S.feedErr = e; }
   S.feedBusy = false; save(); render();
@@ -1057,23 +1109,25 @@ async function loadFeed(){
 function openFeedAlert(fid, aid){
   const item = (S.feed && S.feed.items || []).find(i => i.festival.id === fid); if (!item) return;
   if (!FESTS.find(f => f.id === fid)) FESTS.push(item.festival);
-  S.fest = fid; S.cache[fid] = { ...(S.cache[fid] || {}), alerts: item.alerts, at: S.feed.at }; save();
+  S.fest = fid; S.cache[fid] = { ...(S.cache[fid] || {}), alerts: item.alerts, lightning: item.lightning || (S.cache[fid] || {}).lightning || null, at: S.feed.at }; save();
   stopRadar();
-  S.stack = [{ name: 'feed', param: null }, { name: 'home', param: null }]; S.screen = 'alert'; S.param = aid;
+  S.stack = [{ name: 'feed', param: null }, { name: 'home', param: null }]; S.screen = aid ? 'alert' : 'lightning'; S.param = aid || null;
   render(false); window.scrollTo(0, 0);
   refresh(fest()); resubscribePush();
 }
 const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin' : ''}" onclick="loadFeed()" aria-label="Refresh" ${S.feedBusy ? 'disabled' : ''}>${I.refresh}</button>`;
 screens.feed = () => {
   const fd = S.feed, f = fest();
-  const items = (fd && fd.items || []).slice().sort((a, b) => (sevRank(b.alerts[0]) - sevRank(a.alerts[0])) || (S.here ? away(a.festival) - away(b.festival) : 0));
-  const warns = items.filter(i => isWarning(i.alerts[0])).length, on = fd && fd.on != null ? fd.on : live().length;
+  const top = i => Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, i.lightning && i.lightning.code === 'red' ? 3 : i.lightning && i.lightning.code === 'orange' ? 2 : 0);
+  const items = (fd && fd.items || []).slice().sort((a, b) => (top(b) - top(a)) || (S.here ? away(a.festival) - away(b.festival) : 0));
+  const warns = items.filter(i => i.alerts[0] && isWarning(i.alerts[0])).length, on = fd && fd.on != null ? fd.on : live().length;
   const head = !fd ? (S.feedBusy ? 'Checking' : 'No signal') : warns ? `${warns} warning${warns > 1 ? 's' : ''}` : items.length ? `${items.length} advisor${items.length > 1 ? 'ies' : 'y'}` : 'All clear';
   const sub = fd ? `${items.length ? `${items.length} of ${on}` : on} festival${on === 1 ? '' : 's'} on now${items.length ? ' with alerts' : ', no alerts'}${fd.partial ? ', nearest dozen checked' : ''}`
     : S.feedErr ? staffFail(S.feedErr) : 'Every warning and advisory at every festival that is on';
   const lv = f && data(f).alerts ? level(f) : null;
   const mine = f ? `<div class="group glass"><button class="row" onclick="later(function(){ go('home', null, { reset: true }); refresh(fest()) })"><span class="lead">${I.pin}</span><div class="main"><div class="t">${esc(f.id === 'here' ? 'Right where you are' : f.name)}</div><div class="s">${esc(lv === 'warn' ? skyAlerts(f).find(isWarning).event : lv === 'watch' ? `${skyAlerts(f).length} advisor${skyAlerts(f).length > 1 ? 'ies' : 'y'}` : lv === 'ok' ? 'All clear' : (f.id === 'here' ? 'Your spot' : f.location))}</div></div><span class="pill ${lv === 'warn' ? 'warn' : lv === 'ok' ? 'on' : ''}">${lv === 'warn' ? 'Warning' : lv === 'watch' ? 'Advisory' : lv === 'ok' ? 'Clear' : 'Yours'}</span></button></div>` : '';
-  const card = i => `<div class="group glass feedfest"><div class="fh"><div class="t">${esc(i.festival.name)}</div><div class="s">${esc(i.festival.location)}${S.here && away(i.festival) != null ? ' · ' + esc(fmtDist(away(i.festival))) : ''}</div></div>${i.alerts.map(a => `<button class="alert" onclick="openFeedAlert('${esc(i.festival.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
+  const boltRow = i => { const l = i.lightning; return l && (l.code === 'orange' || l.code === 'yellow') ? `<button class="alert" onclick="openFeedAlert('${esc(i.festival.id)}','')"><span class="bar watch"></span><div class="main"><div class="t">Lightning ${l.nearestMi != null ? esc(l.nearestMi) + ' mi' : 'near'}</div><div class="s">${esc(CODE[l.code].label)} · ${esc(CODE[l.code].text)}</div></div>${I.chev}</button>` : ''; };
+  const card = i => `<div class="group glass feedfest"><div class="fh"><div class="main"><div class="t">${esc(i.festival.name)}</div><div class="s">${esc(i.festival.location)}${S.here && away(i.festival) != null ? ' · ' + esc(fmtDist(away(i.festival))) : ''}</div></div>${i.lightning && CODE[i.lightning.code] && i.lightning.code !== 'green' ? `<span class="pill ${esc(i.lightning.code)}">${esc(CODE[i.lightning.code].label)}</span>` : ''}</div>${boltRow(i)}${i.alerts.map(a => `<button class="alert" onclick="openFeedAlert('${esc(i.festival.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
   return topbar('', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
     <h1 class="title">${esc(head)}</h1>
@@ -1142,6 +1196,7 @@ screens.home = () => {
     <h1 class="title">${esc(f.name)}</h1>
     <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
     ${sky}
+    ${lightningTile(f)}
     ${headsUpCard(f)}
     <div class="orbrow">
       ${orb('Radar', I.radar, 262, "go('radar')")}
@@ -1185,6 +1240,7 @@ screens.weather = () => {
     <h1 class="title">Weather</h1>
     <p class="sub">${esc(outlook(f) || statusLine(f))}</p>
     <div class="group glass"><button class="row" onclick="later(function(){ go('radar') })"><span class="lead">${I.radar}</span><div class="main"><div class="t">Radar</div><div class="s">Last ${HOURS} hours</div></div>${I.chev}</button></div>
+    ${lightningTile(f)}
     ${headsUpCard(f)}
     ${alerts}
     <p class="h">Forecast</p>
@@ -1226,9 +1282,10 @@ screens.alert = id => {
   const warn = isWarning(a), hu = a.channel === 'headsup', { sections, paragraphs } = parseNWS(a.body);
   const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim();
   return topbar(backBtn(), '', `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>`) + `
-    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p>${hu && a.onset ? 'Expected ' + esc(fmtFull(a.onset)) : a.expiresAt ? 'Until ' + esc(fmtFull(a.expiresAt)) : esc(a.area)}</p></div>
+    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p>${hu && a.onset ? 'Expected ' + esc(fmtFull(a.onset)) : a.expiresAt ? 'Until ' + esc(fmtFull(a.expiresAt)) : esc(a.area)}</p></div>
     ${instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${hu ? 'Solidify camp' : 'What to do'}</div><p>${esc(instruction)}</p></div></div>` : ''}
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
+    ${a.channel === 'lightning' ? `<div class="group glass"><button class="row" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Lightning right now</div><div class="s">The code, the nearest flash, the all-clear</div></div>${I.chev}</button></div>` : ''}
     ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'AirDrop reaches phones nearby with no signal. Ask them to set AirDrop to Everyone for 10 minutes.' : 'Nearby share reaches phones with no signal. Or text it.'}</p>` : ''}
     ${sections.length ? `<div class="group glass">${sections.map(s => `<div class="kv"><span class="k">${esc(s.label)}</span><span class="v">${esc(s.text)}</span></div>`).join('')}</div>` : ''}
     ${paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('')}
@@ -1266,6 +1323,26 @@ screens.prep = () => {
     <p class="h">Pack for shelter</p>
     <div class="group glass steps">${SHELTER_PACK.map(s => `<div class="step"><span class="n"></span><span>${esc(s)}</span></div>`).join('')}</div>
     <p class="note">${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : 'Read from the National Weather Service forecast'}${d.at ? `, checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
+};
+screens.lightning = () => {
+  const f = fest(); if (!f) return screens.picker();
+  const l = data(f).lightning, c = l && CODE[l.code], live = Boolean(c);
+  const rings = [['red', 'Within 8 miles', 'Shelter now: a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter. The all-clear is thirty minutes after the last flash within 8 miles.'],
+    ['orange', '8 to 15 miles', 'Head for shelter. A storm moving at 30 mph covers 8 miles in 15 minutes.'], ['yellow', '15 to 30 miles', 'Watch it, decide where you will shelter, and pack what you will carry.'], ['green', 'None within 30 miles', 'In the last 15 minutes. Not an all-clear from your safety team.']];
+  const head = live ? c.label : backend() ? 'No lightning data' : 'Needs the Fieldwatch backend';
+  const line = live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi, ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 30 miles in the last 15 minutes')
+    : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'The mapper has not been read yet, or nothing is on') : 'Lightning codes come from the backend, which reads the GOES lightning mapper every minute';
+  const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
+  return topbar(backBtn(), '', refreshBtn()) + `
+    <span class="eyebrow">${esc(f.name)}</span>
+    <h1 class="title">Lightning</h1>
+    <p class="sub">${live ? esc(c.text) : esc(statusLine(f))}</p>
+    <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>
+      ${live && l.code === 'red' && l.allClearAt ? `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">until the all-clear, unless it strikes again</span>` : ''}</div>
+    ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 15 mi', l.within[15])}${kv('Within 30 mi', l.within[30])}${kv('Last within 8 mi', l.lastNearAt ? esc(fmtTime(l.lastNearAt)) : 'none in 30 min')}${kv('Data', l.dataAt ? esc(ago(l.dataAt)) : 'none')}</div>` : ''}
+    <p class="h">The codes</p>
+    <div class="group glass">${rings.map(([k, t, s]) => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(t)}</div><div class="s">${esc(s)}</div></div></div>`).join('')}</div>
+    <p class="note">Read every minute from the GOES satellites' lightning mapper (NOAA, public), which sees cloud tops at about 8 km and can miss flashes under a thick anvil. The festival's own lightning detection and its safety staff are the authority. Carrier emergency alerts still arrive on their own.</p>`;
 };
 
 
@@ -1727,6 +1804,7 @@ async function boot(){
   syncFestivals();
   ensurePush();
   setInterval(tickCountdowns, 30000);
+  setInterval(() => { if (document.visibilityState === 'visible' && fest() && backend()) loadLightning(fest()); }, 60000);
   setInterval(() => { if (document.visibilityState !== 'visible') return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;

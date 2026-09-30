@@ -102,6 +102,8 @@ test('pack carries festival, normalized NWS alerts, forecast, posts and incident
   assert.deepEqual(pack.incidents, []);
   assert.equal(pack.radar.festivalId, FEST);
   assert.ok(Array.isArray(pack.radar.frames));
+  assert.equal(pack.lightning, null, 'no lightning grade until the mapper has been read');
+  assert.deepEqual((await api('GET', `/festivals/${FEST}/lightning`)).json, { code: 'none', at: (await api('GET', `/festivals/${FEST}/lightning`)).json.at, on: true, source: 'GOES GLM' });
   assert.match(pack.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'no fractional seconds');
 });
 
@@ -291,6 +293,7 @@ test('the list is what is on: a week before gates for early entry and crews, thr
   assert.equal(h.ok, true); assert.equal(typeof h.uptimeSeconds, 'number'); assert.equal(h.adminKey, true); assert.equal(typeof h.festivals, 'number');
   assert.deepEqual({ ...h.sources, wikidata: typeof h.sources.wikidata }, { ticketmaster: false, seatgeek: false, edmtrain: false, wikidata: 'string', feeds: false }, 'no keys in tests; wikidata says why it is off');
   assert.equal(h.imports.running, false);
+  assert.equal(h.lightning.on, true); assert.deepEqual(h.lightning.buckets.map(b => b.bucket), ['noaa-goes19', 'noaa-goes18']); assert.equal(h.lightning.files, 0, 'the mapper is never read in tests');
   assert.equal((await api('POST', '/admin/import')).status, 401);
   const kick = await api('POST', '/admin/import', { headers: admin });
   assert.equal(kick.status, 202); assert.equal(kick.json.started, true);

@@ -1,0 +1,165 @@
+// Lightning near each festival that is on, from the GOES-R Geostationary Lightning Mapper. NOAA publishes every
+// 20-second flash file (GLM-L2-LCFA) on public S3 buckets a minute or two after the fact; each is NetCDF-4, which is
+// HDF5, which h5wasm reads in Node with no native build. Every minute: list the current hour on each satellite, fetch
+// the files not seen yet, keep the flashes within reach of a live festival for thirty minutes, and grade each festival:
+//   red      a flash within 8 miles in the last 30 minutes: shelter now; all clear 30 minutes after the last one
+//   orange   nearest flash in the last 15 minutes 8 to 15 miles out: head for shelter
+//   yellow   15 to 30 miles: watch, plan the walk
+//   green    nothing within 30 miles in the last 15 minutes
+//   none     no data in the last 5 minutes (off, nothing is on, or the buckets are unreachable)
+// A turn to red is stored and pushed like a warning (channel 'lightning') and ends with the all-clear. The web build
+// shows the code on the festival page and explains it. The festival's own lightning vendor is the authority; the
+// mapper sees cloud tops at about 8 km resolution and misses some flashes under a thick anvil.
+import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { q } from './db.js';
+import { clock } from './incoming.js';
+import { point } from './nws.js';
+import { festivalsInWindow } from './poller.js';
+import { pushAlert } from './push.js';
+import { pushWeb } from './webpush.js';
+import { iso } from './util.js';
+
+const MIN = 60_000, MI = 1609.344, J2000 = Date.UTC(2000, 0, 1, 12);   // GOES-R clocks count seconds from noon on 1 January 2000
+export const RINGS = { red: 8, orange: 15, yellow: 30 };
+export const RECENT_MS = 15 * MIN, ALL_CLEAR_MS = 30 * MIN, STALE_MS = 5 * MIN, REACH_MI = 40;
+export const lightningOn = () => !/^(false|0|no|off)$/i.test(process.env.LIGHTNING || 'true');
+// GOES-East is GOES-19 since April 2025 (GOES-16 is in storage orbit and its bucket stops), GOES-West is GOES-18. Together they see all of the US.
+const buckets = () => (process.env.GLM_BUCKETS || 'noaa-goes19,noaa-goes18').split(',').map(s => s.trim()).filter(Boolean);
+
+export function milesBetween(lat1, lon1, lat2, lon2) {
+  const r = Math.PI / 180, dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(a)) / MI;
+}
+/** OR_GLM-L2-LCFA_G19_s20262731405000_e..._c....nc: the start time is year, day of year, hour, minute, second, tenth. */
+export const keyTime = key => { const m = /_s(\d{4})(\d{3})(\d{2})(\d{2})(\d{2})\d/.exec(key); return m ? Date.UTC(+m[1], 0, 1) + (+m[2] - 1) * 86_400_000 + (+m[3] * 3600 + +m[4] * 60 + +m[5]) * 1000 : NaN; };
+/** The bucket prefix for the hour: GLM-L2-LCFA/YYYY/DDD/HH/. */
+export function hourPrefix(t) {
+  const d = new Date(t), doy = Math.floor((Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - Date.UTC(d.getUTCFullYear(), 0, 1)) / 86_400_000) + 1;
+  return `GLM-L2-LCFA/${d.getUTCFullYear()}/${String(doy).padStart(3, '0')}/${String(d.getUTCHours()).padStart(2, '0')}/`;
+}
+export const parseListing = xml => Array.from(String(xml).matchAll(/<Key>([^<]+)<\/Key>/g), m => m[1]);
+
+// h5wasm is loaded on first use: the wasm takes a moment, and a process that never grades lightning should not pay for it.
+let h5;
+async function h5wasm() { if (!h5) { const m = await import('h5wasm/node'); await m.default.ready; h5 = m.default; } return h5; }
+const num = v => (Array.isArray(v) || ArrayBuffer.isView(v)) ? Number(v[0]) : Number(v);
+/** A dataset's values with its NetCDF packing undone (scale_factor and add_offset, when it has them). */
+function unpack(ds) {
+  if (!ds || (ds.shape && ds.shape[0] === 0)) return [];
+  const raw = ds.value, arr = ArrayBuffer.isView(raw) ? Array.from(raw) : Array.isArray(raw) ? raw : [raw];
+  const sf = ds.attrs?.scale_factor?.value, ao = ds.attrs?.add_offset?.value, s = sf == null ? 1 : num(sf), o = ao == null ? 0 : num(ao);
+  return s === 1 && o === 0 ? arr : arr.map(x => x * s + o);
+}
+/** The flashes in one LCFA file as { t, lat, lon }: product_time (seconds since J2000) plus each flash's packed offset. */
+export async function readFlashes(bytes) {
+  const H5 = await h5wasm();
+  const dir = join(tmpdir(), 'fieldwatch-glm'); mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.nc`);
+  writeFileSync(path, bytes);
+  try {
+    const f = new H5.File(path, 'r');
+    try {
+      const pt = num(unpack(f.get('product_time'))), lat = unpack(f.get('flash_lat')), lon = unpack(f.get('flash_lon')), off = unpack(f.get('flash_time_offset_of_first_event'));
+      const out = [];
+      for (let i = 0; i < lat.length; i++) if (Number.isFinite(lat[i]) && Number.isFinite(lon[i])) out.push({ t: Math.round(J2000 + (pt + (off[i] ?? 0)) * 1000), lat: lat[i], lon: lon[i] });
+      return out;
+    } finally { f.close(); }
+  } finally { try { unlinkSync(path); } catch {} }
+}
+
+/** One festival's grade from the flashes in the buffer. `lastFileAt` says whether the data is fresh enough to call anything green. */
+export function assess(f, flashes, now = Date.now(), lastFileAt = null) {
+  const near = flashes.map(x => ({ ...x, mi: milesBetween(f.latitude, f.longitude, x.lat, x.lon) })).filter(x => x.mi <= RINGS.yellow);
+  const recent = near.filter(x => now - x.t <= RECENT_MS);
+  const nearest = recent.reduce((b, x) => (!b || x.mi < b.mi ? x : b), null);
+  const lastNear = near.filter(x => x.mi <= RINGS.red).reduce((b, x) => (!b || x.t > b.t ? x : b), null);
+  const red = Boolean(lastNear && now - lastNear.t < ALL_CLEAR_MS), stale = lastFileAt == null || now - lastFileAt > STALE_MS;
+  const code = red ? 'red' : stale ? 'none' : !nearest ? 'green' : nearest.mi <= RINGS.orange ? 'orange' : 'yellow';
+  const within = r => recent.filter(x => x.mi <= r).length, mi = x => Math.round(x.mi * 10) / 10;
+  return { code, nearestMi: nearest ? mi(nearest) : null, nearestAt: nearest ? iso(nearest.t) : null, within: { 8: within(8), 15: within(15), 30: within(30) },
+    lastNearMi: lastNear ? mi(lastNear) : null, lastNearAt: lastNear ? iso(lastNear.t) : null, allClearAt: red ? iso(lastNear.t + ALL_CLEAR_MS) : null,
+    at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
+}
+
+const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, lastFileAt: null, lastTickAt: null };
+export const lightningFor = id => state.per.get(id) || null;
+export const lightningStatus = () => ({ on: lightningOn(), lastTickAt: state.lastTickAt ? iso(state.lastTickAt) : null, lastFileAt: state.lastFileAt ? iso(state.lastFileAt) : null,
+  files: state.files, flashes: state.flashes.length, buckets: buckets().map(b => ({ bucket: b, files: 0, lastFileAt: null, lastError: null, ...state.buckets[b] })) });
+/** Tests start from nothing. */
+export function resetLightning() { state.flashes = []; state.seen.clear(); state.per.clear(); state.buckets = {}; state.episodes.clear(); state.files = 0; state.lastFileAt = state.lastTickAt = null; }
+const errorText = e => `${e?.message || e}${e?.cause?.code ? ` (${e.cause.code})` : ''}`;
+
+/** One pass: list, fetch what is new, trim the buffer, grade every festival that is on, announce a turn to red. */
+export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.fetch, festivals = festivalsInWindow(now), maxFiles = 30 } = {}) {
+  state.lastTickAt = now;
+  if (!festivals.length) { state.flashes = []; state.per.clear(); return { skipped: 'nothing is on' }; }
+  const prefixes = [...new Set([hourPrefix(now - ALL_CLEAR_MS), hourPrefix(now)])];
+  const wanted = [];
+  for (const bucket of buckets()) {
+    const b = state.buckets[bucket] ||= { files: 0, lastFileAt: null, lastError: null };
+    for (const prefix of prefixes) {
+      try {
+        const res = await fetchImpl(`https://${bucket}.s3.amazonaws.com/?list-type=2&prefix=${encodeURIComponent(prefix)}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status} listing ${prefix}`);
+        for (const key of parseListing(await res.text())) { const t = keyTime(key); if (t >= now - ALL_CLEAR_MS && t <= now + MIN && !state.seen.has(key)) wanted.push({ bucket, key, t }); }
+        b.lastError = null;
+      } catch (e) { b.lastError = errorText(e); b.errorAt = iso(now); }
+    }
+  }
+  wanted.sort((a, b) => b.t - a.t);   // newest first, so a catch-up after an outage grades on fresh data first
+  let got = 0;
+  for (const w of wanted.slice(0, maxFiles)) {
+    const b = state.buckets[w.bucket];
+    try {
+      const res = await fetchImpl(`https://${w.bucket}.s3.amazonaws.com/${w.key}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status} for ${w.key}`);
+      const flashes = await readFlashes(Buffer.from(await res.arrayBuffer()));
+      state.seen.set(w.key, w.t);
+      state.flashes.push(...flashes.filter(x => festivals.some(f => milesBetween(f.latitude, f.longitude, x.lat, x.lon) <= REACH_MI)));
+      b.files++; state.files++; got++;
+      if (!b.lastFileAt || w.t > b.lastFileAt) b.lastFileAt = w.t;
+      if (!state.lastFileAt || w.t > state.lastFileAt) state.lastFileAt = w.t;
+    } catch (e) { b.lastError = errorText(e); b.errorAt = iso(now); }
+  }
+  state.flashes = state.flashes.filter(x => now - x.t <= ALL_CLEAR_MS);
+  for (const [k, t] of state.seen) if (t < now - 2 * 3_600_000) state.seen.delete(k);
+  for (const f of festivals) {
+    const prev = state.per.get(f.id), a = assess(f, state.flashes, now, state.lastFileAt);
+    state.per.set(f.id, a);
+    try { await announce(f, prev, a, now); } catch (e) { console.error(`[${f.id}] lightning alert failed:`, errorText(e)); }
+  }
+  for (const id of state.per.keys()) if (!festivals.some(f => f.id === id)) state.per.delete(id);
+  return { files: got, wanted: wanted.length, flashes: state.flashes.length };
+}
+
+/** Red is an alert: pushed once when it starts, its end moved out with every new flash within 8 miles. */
+async function announce(f, prev, a, now) {
+  const wasRed = prev?.code === 'red';
+  if (a.code === 'red' && !wasRed) {
+    const tz = await point(f.latitude, f.longitude).then(p => p.timeZone).catch(() => null);
+    const id = `lightning-${f.id}-${Math.floor(now / MIN)}`;
+    const alert = {
+      id, event: 'Lightning within 8 miles', headline: `Lightning ${a.lastNearMi} mi away at ${clock(a.lastNearAt, tz)}. Shelter now.`,
+      body: 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter. The all-clear is thirty minutes after the last flash within 8 miles; this alert ends with it.',
+      instruction: 'Get to shelter now and stay until the all-clear. Do not go back for anything.', severity: 'severe', area: f.location, source: 'GOES lightning mapper, via Fieldwatch',
+      issuedAt: iso(now), onset: a.lastNearAt, expiresAt: a.allClearAt, channel: 'lightning', relayCount: 0, nearestMi: a.lastNearMi,
+    };
+    if (q.alert(id)) q.updateAlert(alert); else q.insertAlert(f.id, alert);
+    state.episodes.set(f.id, id);
+    const r = await pushAlert(q.tokensFor(f.id), f, alert), w = await pushWeb(f, alert);
+    console.log(`[${f.id}] lightning: red, ${a.lastNearMi} mi push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
+  } else if (a.code === 'red') {
+    const id = state.episodes.get(f.id), old = id && q.alert(id);
+    if (old && old.expiresAt !== a.allClearAt) q.updateAlert({ ...old, expiresAt: a.allClearAt, nearestMi: a.lastNearMi });
+  } else if (wasRed) { state.episodes.delete(f.id); console.log(`[${f.id}] lightning: all clear`); }
+}
+
+export function startLightning(seconds = Number(process.env.LIGHTNING_SECONDS || 60)) {
+  if (!lightningOn()) return false;
+  const run = () => lightningTick().catch(e => console.error('lightning failed:', errorText(e)));
+  run(); setInterval(run, seconds * 1000);
+  return true;
+}
