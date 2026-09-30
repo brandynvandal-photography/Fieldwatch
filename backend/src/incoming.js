@@ -5,7 +5,14 @@
 const HOUR = 3600000;
 // Lines the forecast has to cross: chance of thunder (%), gusts (mph), rain in the window (inches) with the chance of
 // rain (%) standing in when the grid has no amount, hourly rain that counts as raining (inches), heat index (°F).
-const THRESHOLDS = { thunder: 30, gustMph: 35, precip: 60, rainIn: 0.25, rainInHr: 0.02, heatF: 100 };
+const THRESHOLDS = { thunder: 30, gustMph: 30, precip: 60, rainIn: 0.25, rainInHr: 0.02, heatF: 100 };
+// Gust lines by what is standing: inflatables come down at 20 mph, pop-up canopies fail around 30, stages and rigging hold to 40.
+const WIND_LINES = { inflatables: 20, canopies: 30, stage: 40 };
+const WIND_LABEL = { inflatables: 'inflatables line', canopies: 'canopy line', stage: 'stage hold line' };
+/** The gust that matters here: the lowest line among what is standing (canopies, when nothing is known). */
+const windLine = ground => Math.min(...((ground && Array.isArray(ground.structures) && ground.structures.length ? ground.structures : ['canopies']).map(s => WIND_LINES[s] || WIND_LINES.canopies)));
+/** "the canopy line", "the inflatables and canopy lines". */
+const lineWords = crossed => { const l = crossed.map(s => WIND_LABEL[s]).filter(Boolean); return !l.length ? '' : l.length === 1 ? `the ${l[0]}` : `the ${l.slice(0, -1).map(x => x.replace(/ line$/, '')).join(', ')} and ${l[l.length - 1].replace(/ line$/, ' lines')}`; };
 const PRIORITY = ['tornado', 'storms', 'hail', 'wind', 'flood', 'rain', 'heat'];
 const ALERT_HAZARD = [[/tornado/i, 'tornado'], [/thunderstorm|lightning/i, 'storms'], [/hail/i, 'hail'], [/wind|gale/i, 'wind'], [/flood/i, 'flood'], [/heat/i, 'heat'], [/rain|storm/i, 'rain']];
 const LABEL = { tornado: 'Tornado', storms: 'Storms', hail: 'Hail', wind: 'Strong wind', flood: 'Flooding', rain: 'Heavy rain', heat: 'Dangerous heat' };
@@ -46,13 +53,13 @@ const alertHazard = event => (ALERT_HAZARD.find(([re]) => re.test(event || '')) 
  * when it does not. A watch or warning with an onset still ahead wins when it comes first.
  */
 function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date.now(), hours = 12 } = {}) {
-  const end = now + hours * HOUR;
+  const end = now + hours * HOUR, gustLine = windLine(ground), standing = ground && Array.isArray(ground.structures) && ground.structures.length ? ground.structures : ['canopies'];
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
       const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
-      if (gust >= THRESHOLDS.gustMph) hazards.push('wind');
+      if (gust >= gustLine) hazards.push('wind');
       if (heat >= THRESHOLDS.heatF) hazards.push('heat');
       return { t, hazards, thunder, gust, heat, precip, rain, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
@@ -75,6 +82,7 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date
     forecast = { hazard: PRIORITY.find(p => all.has(p)), startsAt: new Date(Math.max(now, marks[i].t)).toISOString(), endsAt: new Date(marks[j].t + HOUR).toISOString(),
       source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100 } };
     if (rainIn != null && all.has('rain')) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
+    if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)) };
   }
   let watch = null;
   for (const a of alerts) {
@@ -116,7 +124,7 @@ function groundWords(ground = {}) {
   return `${s}${soil}${ground.low ? ', low ground' : ''}`;
 }
 // How long each camp task takes, so a start-by time can be worked back from the arrival. Anything not listed takes ten minutes.
-const TASK_MIN = [['Anything that must leave', 90], ['Move the car', 60], ['Move the tent', 45], ['Park a vehicle upwind', 20], ['Guy lines and sandbags', 20], ['Shade over the tent', 20], ['Tarp over the tent floor', 20],
+const TASK_MIN = [['Anything that must leave', 90], ['Move the car', 60], ['Move the tent', 45], ['Deflate and tie down', 30], ['Stage: clear the deck', 20], ['Park a vehicle upwind', 20], ['Guy lines and sandbags', 20], ['Shade over the tent', 20], ['Tarp over the tent floor', 20],
   ['Pack what you can carry', 20], ['Stake every loop', 15], ['Tarp over, not under', 15], ['Drop pop-up canopies', 5], ['Seal a dry set', 5], ['Leave the camp', 5], ['Get to the shelter', 5],
   ['Head down', 0], ['Freeze water bottles', 0], ['Rest between', 0], ['Check on neighbours', 0], ['Expect fields', 0], ['Know the route', 0], ['Rain shell', 0], ['Plan the walk', 0], ['Stay out of', 0], ['Watch your footing', 0], ['Leave the car', 0]];
 const taskMinutes = t => (TASK_MIN.find(([k]) => t.startsWith(k)) || [null, 10])[1];
@@ -124,7 +132,10 @@ const taskMinutes = t => (TASK_MIN.find(([k]) => t.startsWith(k)) || [null, 10])
 function campFor(inc) {
   const own = inc.hazard === 'rain' && inc.mud ? TIER[inc.mud.tier].camp : (PREP[inc.hazard] || PREP.storms).camp;
   const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? TIER[inc.mud.tier].camp.filter(t => /^(Anything that must leave|Move the car|Move the tent)/.test(t)) : [];
-  return [...ground, ...own.filter(t => !ground.includes(t))];
+  const crossed = (inc.wind && inc.wind.crossed) || [], standing = [];
+  if (crossed.includes('stage')) standing.push('Stage: clear the deck, drop the scrim and the banners');
+  if (crossed.includes('inflatables')) standing.push('Deflate and tie down the inflatables');
+  return [...standing, ...ground, ...own.filter(t => !ground.includes(t))];
 }
 /** Each task with when to start it: the arrival less how long it takes less ten minutes, earliest start first. Late means it should have started already. */
 function deadlines(startsAt, tasks, now = Date.now()) {
@@ -167,13 +178,13 @@ function timing(hazard, m) {
 // ==== shared: end ====
 
 // ---- backend only: the wording of a push, in the festival's own clock ----
-export { THRESHOLDS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, campFor, deadlines, taskMinutes, timing };
+export { THRESHOLDS, WIND_LINES, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, campFor, deadlines, taskMinutes, timing };
 export const clock = (t, tz) => { try { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz || 'UTC' }).format(new Date(t)); } catch { return new Date(t).toISOString().slice(11, 16) + 'Z'; } };
 /** One line for a notification: what, and when. */
 export function headline(inc, tz) {
   const at = inc.minutes <= 0 ? 'now' : `around ${clock(inc.startsAt, tz)}`;
   if (inc.source === 'alert') return `${inc.event} ${inc.minutes <= 0 ? 'in effect now' : `begins ${clock(inc.startsAt, tz)}`}`;
-  if (inc.hazard === 'wind') return `Gusts to ${Math.round(inc.peak.gust)} mph expected ${at}`;
+  if (inc.hazard === 'wind') return `Gusts to ${Math.round(inc.peak.gust)} mph${inc.wind && inc.wind.crossed.length ? `, past ${lineWords(inc.wind.crossed)},` : ''} expected ${at}`;
   if (inc.hazard === 'heat') return `Heat index near ${Math.round(inc.peak.heat)}° expected ${at}`;
   if (inc.hazard === 'rain' && inc.mud) return `${TIER[inc.mud.tier].label} expected ${at}`;
   return `${LABEL[inc.hazard] || 'Weather'} expected ${at}`;
@@ -197,12 +208,13 @@ export function headsUpAlert(festival, inc, tz, now = Date.now(), ground = {}) {
   const mud = inc.mud && inc.mud.tier !== 'wet' ? mudWords(inc, ground) : '';
   // What the forecast says, as a sentence: "The forecast has a 60% chance of thunder, gusts to 45 mph and 0.6 in of rain." The mud sentence carries the rain when there is one.
   const raining = pk.rainIn != null ? pk.rainIn >= THRESHOLDS.rainIn : pk.precip >= THRESHOLDS.precip;
+  const crossed = (inc.wind && inc.wind.crossed) || [];
   const bits = inc.source === 'alert' ? [] : [inc.hazard === 'storms' && pk.thunder != null ? `a ${Math.round(pk.thunder)}% chance of thunder` : '',
-    pk.gust >= THRESHOLDS.gustMph ? `gusts to ${Math.round(pk.gust)} mph` : '', raining && !mud ? rainWords(pk) : '',
+    crossed.length ? `gusts to ${Math.round(pk.gust)} mph past ${lineWords(crossed)}` : pk.gust >= THRESHOLDS.gustMph ? `gusts to ${Math.round(pk.gust)} mph` : '', raining && !mud ? rainWords(pk) : '',
     pk.heat >= THRESHOLDS.heatF ? `a heat index near ${Math.round(pk.heat)}°` : ''].filter(Boolean);
   const detail = bits.length ? `The forecast has ${bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits[bits.length - 1]}` : bits[0]}.` : '';
-  // The notification's second line: the forecast, the first thing to do and when, what the rain does to the ground. The push keeps whole sentences up to its limit.
-  const lead = [detail, first, mud].filter(Boolean).join(' ') || p.timing;
+  // The notification's second line: the first thing to do and when, then the forecast, then what the rain does to the ground. The push keeps whole sentences up to its limit.
+  const lead = [first, detail, mud].filter(Boolean).join(' ') || p.timing;
   return {
     id: `headsup-${festival.id}-${hourKey(Date.parse(inc.startsAt))}`, event: head, headline: lead,
     body: `${lead} ${p.timing} ${p.shelter}`, instruction: plan.length ? `${plan.map(d => taskLine(d, tz)).join('. ')}.` : null,
