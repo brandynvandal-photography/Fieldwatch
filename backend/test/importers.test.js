@@ -129,6 +129,11 @@ test('the import walks a year in monthly windows with three nets, skips what is 
   serve = url => (url.searchParams.get('keyword') === 'festival' ? { status: 500 } : tmPage([]));
   const r3 = await importTicketmaster({ key: 'k-test', fetchImpl, now: NOW, pauseMs: 0, log: { error: () => {} } });
   assert.equal(r3.errors, 12); assert.equal(r3.pruned, 0); assert.match(r3.lastError, /500/, 'the report says what went wrong');
+  assert.equal(r3.gaveUp, undefined, 'one net failing among two that work is not a dead host');
+
+  // A host that is down is not asked 36 times.
+  const dead = await importTicketmaster({ key: 'k-test', fetchImpl: async () => { throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect timeout'), { code: 'UND_ERR_CONNECT_TIMEOUT' }) }); }, now: NOW, pauseMs: 0, log: { error: () => {} } });
+  assert.deepEqual({ errors: dead.errors, gaveUp: dead.gaveUp, lastError: dead.lastError, pruned: dead.pruned }, { errors: 6, gaveUp: true, lastError: 'fetch failed (UND_ERR_CONNECT_TIMEOUT)', pruned: 0 });
   assert.ok(q.festival('tm-moonrise-fest-2026'), 'kept through a bad run');
 
   // Without a key the source is skipped, and the error line never carries the key.

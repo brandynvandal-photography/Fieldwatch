@@ -9,6 +9,7 @@ import { iso } from '../util.js';
 export { normalizeName };
 const API = 'https://app.ticketmaster.com/discovery/v2/events.json';
 const WINDOW_DAYS = 30, WINDOWS = 12, PAGE = 200, MAX_PAGES = 5;   // the API refuses to page past 1,000 results per query
+const REQUEST_TIMEOUT_MS = 20_000, GIVE_UP_AFTER = 6;   // a host that is down or refusing us is not asked 36 times
 const DAY = 86_400_000;
 
 /**
@@ -51,7 +52,7 @@ async function* pages(params, key, fetchImpl, pauseMs) {
   for (let page = 0; page < MAX_PAGES; page++) {
     const u = new URL(API);
     for (const [k, v] of Object.entries({ ...params, size: PAGE, page, apikey: key })) u.searchParams.set(k, v);
-    const res = await fetchImpl(u, { headers: { Accept: 'application/json' } });
+    const res = await fetchImpl(u, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`Ticketmaster ${res.status} for ${describe(u)}`);   // the key is never in a log line
     const body = await res.json();
     yield body._embedded?.events || [];
@@ -64,8 +65,8 @@ export async function importTicketmaster({ key = process.env.TICKETMASTER_KEY, f
   pauseMs = Number(process.env.TICKETMASTER_PAUSE_MS ?? 250), log = console } = {}) {
   if (!key) return { skipped: 'TICKETMASTER_KEY not set' };
   const events = new Map(), trusted = new Set();
-  let calls = 0, errors = 0, lastError = null;
-  for (let w = 0; w < WINDOWS; w++) {
+  let calls = 0, errors = 0, lastError = null, streak = 0, gaveUp = false;
+  windows: for (let w = 0; w < WINDOWS; w++) {
     const range = { countryCode: 'US', startDateTime: iso(new Date(now + w * WINDOW_DAYS * DAY)), endDateTime: iso(new Date(now + (w + 1) * WINDOW_DAYS * DAY)), sort: 'date,asc' };
     // Three nets: music events with "festival" in their text, anything Ticketmaster itself styles a
     // festival, and everything Front Gate sells (the first two already span every source, including Universe).
@@ -77,12 +78,15 @@ export async function importTicketmaster({ key = process.env.TICKETMASTER_KEY, f
     for (const params of nets) {
       try {
         for await (const batch of pages(params, key, fetchImpl, pauseMs)) {
-          calls++;
+          calls++; streak = 0;
           for (const ev of batch) if (ev?.id) { events.set(ev.id, ev); if (params.source === 'frontgate') trusted.add(ev.id); }
         }
-      } catch (e) { errors++; lastError = errorText(e); log.error(`ticketmaster: ${lastError}`); }
+      } catch (e) {
+        errors++; lastError = errorText(e); log.error(`ticketmaster: ${lastError}`);
+        if (++streak >= GIVE_UP_AFTER) { gaveUp = true; log.error(`ticketmaster: ${streak} failures in a row, giving up on this run`); break windows; }
+      }
     }
   }
   const found = festivalsFrom([...events.values()], iso(new Date(now)).slice(0, 10), trusted);
-  return { calls, errors, ...(lastError && { lastError }), events: events.size, frontgate: trusted.size, hosts: hosts(found), ...applyImport({ origin: 'ticketmaster', found, now, errors }) };
+  return { calls, errors, ...(lastError && { lastError }), ...(gaveUp && { gaveUp: true }), events: events.size, frontgate: trusted.size, hosts: hosts(found), ...applyImport({ origin: 'ticketmaster', found, now, errors }) };
 }

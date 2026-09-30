@@ -34,7 +34,7 @@ export async function importEdmtrain({ key = process.env.EDMTRAIN_KEY, fetchImpl
   try {
     const u = new URL(API);
     for (const [k, v] of Object.entries({ festivalInd: 'true', startDate: iso(new Date(now)).slice(0, 10), endDate: iso(new Date(now + 365 * DAY)).slice(0, 10), client: key })) u.searchParams.set(k, v);
-    const res = await fetchImpl(u, { headers: { Accept: 'application/json' } });
+    const res = await fetchImpl(u, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(30_000) });
     calls++;
     if (!res.ok) throw new Error(`Edmtrain ${res.status}`);   // the key is never in a log line
     const body = await res.json();
