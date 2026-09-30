@@ -8,7 +8,7 @@ import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { pollFestival, polledRecently } from './poller.js';
 import { pushAlert } from './push.js';
-import { pushWeb, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
+import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
 import QRCode from 'qrcode';
 import { RADAR_DIR, noteInterest, radarLoop, refreshRadarSoon } from './radar.js';
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
@@ -266,14 +266,15 @@ app.delete('/devices/:token', (req, res) => { q.deleteDevice(req.params.token); 
 // ---- Web push: the web build's warnings, same alerts as APNs -------------
 
 app.get('/push/vapid', (req, res) => (webPushEnabled() ? res.json({ key: vapidPublicKey() }) : res.status(404).json({ error: 'web push not configured' })));
-app.post('/push/subscribe', (req, res) => {
+app.post('/push/subscribe', wrap(async (req, res) => {
   if (!webPushEnabled()) return res.status(404).json({ error: 'web push not configured' });
   const { subscription, festivalId } = req.body || {};
   if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys is required' });
   if (festivalId && !q.festival(festivalId)) return res.status(404).json({ error: 'no such festival' });
-  q.upsertWebSubscription(subscription.endpoint, festivalId || null, { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } });
-  res.json({ ok: true });
-});
+  const clean = { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } };
+  q.upsertWebSubscription(subscription.endpoint, festivalId || null, clean);
+  res.json({ ok: true, welcome: festivalId ? await pushWelcome(clean, q.festival(festivalId)) : { sent: 0 } });
+}));
 app.delete('/push/subscribe', (req, res) => {
   const endpoint = req.body?.endpoint || req.query.endpoint;
   if (!endpoint) return res.status(400).json({ error: 'endpoint required' });

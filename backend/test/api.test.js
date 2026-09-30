@@ -358,9 +358,14 @@ test('web push: a browser subscribes to a festival and gets warnings and staff p
   assert.equal((await api('GET', '/push/vapid')).json.key, process.env.VAPID_PUBLIC_KEY);
   assert.equal((await api('POST', '/push/subscribe', { body: { subscription: { endpoint: 'nope' } } })).status, 400);
   assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: 'nope' } })).status, 404);
-  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: FEST } })).json.ok, true);
+  const first = await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: FEST } });
+  assert.deepEqual(first.json, { ok: true, welcome: { sent: 1 } });
+  assert.equal(sent.length, 1, 'subscribing sends one notification straight back, so the chain is seen to work');
+  assert.equal(sent[0].endpoint, 'https://push.example.test/a'); assert.equal(sent[0].payload.title, 'Warnings are on');
+  assert.match(sent[0].payload.body, /^Suwannee Hulaween\./); assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}`);
   assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('b'), festivalId: FEST } })).json.ok, true);
   assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: FEST } })).json.ok, true, 'subscribing again is fine');
+  sent.length = 0;
 
   // A new warning from NWS reaches both browsers; an advisory reaches neither.
   nwsState.features = [

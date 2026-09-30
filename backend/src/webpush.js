@@ -33,6 +33,17 @@ export const setWebPushTransport = fn => { transport = fn; };
 
 const worthPushing = a => a.channel !== 'weather' || ['extreme', 'severe', 'moderate'].includes(a.severity);
 
+/** One notification to the browser that just subscribed, so the person sees the chain work before any warning does. */
+export async function pushWelcome(subscription, festival) {
+  if (!enabled || !festival) return { sent: 0 };
+  const payload = JSON.stringify({
+    title: 'Warnings are on', body: `${festival.name}. Warnings, watches and staff posts will show up here, even with the app closed.`,
+    tag: 'welcome', urgent: false, url: `${SITE}?f=${encodeURIComponent(festival.id)}`,
+  });
+  try { await transport(subscription, payload, { TTL: 600, urgency: 'normal' }); return { sent: 1 }; }
+  catch (e) { return { sent: 0, error: e?.statusCode || e?.message || String(e) }; }
+}
+
 /** One notification to every browser subscribed to this festival. Dead subscriptions are dropped. */
 export async function pushWeb(festival, alert) {
   if (!enabled) return { sent: 0, skipped: true };

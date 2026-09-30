@@ -1292,7 +1292,7 @@ async function togglePush(){
     const sub = cur || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64url(key) });
     const r = await postJSON(`${b}/push/subscribe`, { subscription: sub.toJSON(), festivalId: S.fest });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    S.push = { endpoint: sub.endpoint, fest: S.fest }; save(); toast(`Warnings on for ${fest().name}`);
+    S.push = { endpoint: sub.endpoint, fest: S.fest }; save(); toast(`On for ${fest().name}. A test notification is on its way.`, 4000);
   }catch(e){ toast(/404/.test(e.message) ? 'The backend has no push keys yet' : "Couldn't turn warnings on"); }
   render();
 }
