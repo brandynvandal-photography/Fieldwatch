@@ -61,6 +61,7 @@ curl -X POST localhost:3000/festivals/dusk-ridge-2026/posts \
 2. For each, it calls `api.weather.gov/alerts/active?point=lat,lon` and normalizes the GeoJSON into the same `SafetyAlert` shape the app uses.
 3. New alert ids get stored and pushed. Alerts NWS stops listing get an `expiresAt` of now, so phones drop them on their next refresh.
 4. The push payload carries the full alert as JSON, so a tapped notification opens the detail screen even with no network.
+5. Every 20 minutes it also reads each live festival's hourly forecast and grid (`incoming.js`). When the next twelve hours turn stormy (thunder 30%+), windy (gusts 35 mph+), wet (rain 60%+) or dangerously hot (heat index 100+) and the start is within `HEADS_UP_HOURS` (default 3), it stores a heads-up of its own (`channel: "headsup"`, severity moderate, `onset` = when it starts, expires when the window ends) and pushes it once per window: "Storms expected around 5:00 PM", then what to do with the time there is and where to shelter. A watch or warning NWS already issued for the same thing is left to speak for itself. NWS never lists our heads-ups, so the poller does not end them; they end with the window.
 
 The phone also polls `/alerts` when it's open, and falls back to NWS directly if this server is down.
 

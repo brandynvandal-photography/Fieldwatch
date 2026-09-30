@@ -15,6 +15,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - Warn people near you: on a warning, the alert text and link go to the share sheet, so AirDrop reaches phones with nothing installed and no signal.
 - Home card: NWS alerts and a 6-hour strip.
 - Forecast: temperature and rain, heat index, gust and thunder panels, day rows with a pack line.
+- On the way: when the next twelve hours turn stormy, windy, wet or dangerously hot, a card under the sky with a live countdown to when it starts, what to do first, and a prep screen behind it (where to shelter, how to solidify camp, a timeline you are somewhere on, what to pack for shelter). The backend pushes the same heads-up up to three hours ahead, once per window.
 - 12-hour radar loop with your position.
 - Web push warnings (VAPID, keys made on first boot) for a festival or for a spot, with a test notification the moment you switch on; deep links; share with a QR and a plain link.
 - Hazard reports into a moderated queue.

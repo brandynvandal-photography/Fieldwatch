@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { alertFeature, points, hourly } from './fixtures/nws.js';
+import { alertFeature, points, hourly, grid } from './fixtures/nws.js';
 
 // Everything below must be set before the app is imported: db.js opens DB_PATH at import time.
 const audioDir = mkdtempSync(join(tmpdir(), 'fieldwatch-audio-'));
@@ -36,13 +36,14 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.includes('/alerts/active')) return jsonResponse({ type: 'FeatureCollection', features: nwsState.features });
   if (url.includes('/points/')) return jsonResponse(points);
   if (url.includes('/forecast/hourly')) return jsonResponse(hourly);
+  if (/gridpoints\/[^/]+\/[\d,]+$/.test(url)) return jsonResponse(grid);
   if (url.includes('n0q-t.cgi')) return new Response(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'), { status: 200, headers: { 'content-type': 'image/png' } });
   return jsonResponse({ detail: 'not found' }, 404);
 };
 
 const { app } = await import('../src/app.js');
 const { q } = await import('../src/db.js');
-const { pollFestival, pollPoint } = await import('../src/poller.js');
+const { pollFestival, pollPoint, headsUp } = await import('../src/poller.js');
 const { refreshRadar, radarWanted, noteInterest } = await import('../src/radar.js');
 const { setWebPushTransport } = await import('../src/webpush.js');
 setWebPushTransport(async () => {});
@@ -485,4 +486,28 @@ test('the home page feed: every current alert at every festival that is on, the 
   await pollFestival(q.festival('feed-test-2026'));
   assert.ok(!(await api('GET', '/alerts')).json.items.some(i => i.festival.id === 'feed-test-2026'), 'cleared alerts leave the feed');
   q.deleteFestival('feed-test-2026');
+});
+
+test('a heads-up goes out hours before the forecast turns: once per window, pushed like a warning, listed with the alerts, and not NWS\'s to end', async () => {
+  const sent = [];
+  setWebPushTransport(async (sub, payload, opts) => { sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload), opts }); });
+  const sub = { endpoint: 'https://push.example.test/h', expirationTime: null, keys: { p256dh: 'p-h', auth: 'a-h' } };
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub, festivalId: FEST, quiet: true } })).json.ok, true);
+  const now = Date.UTC(2026, 9, 23, 18, 30);   // the fixture forecast turns stormy at 21:00Z, 5 PM in Live Oak
+  const a = await headsUp(q.festival(FEST), { now });
+  assert.equal(a.channel, 'headsup'); assert.equal(a.event, 'Storms expected around 5:00 PM'); assert.equal(a.minutes, 150); assert.equal(a.severity, 'moderate');
+  assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'stored with the festival\'s alerts');
+  assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Storms expected around 5:00 PM'); assert.equal(sent[0].opts.urgency, 'normal');
+  assert.equal(sent[0].payload.body, 'Suwannee Hulaween. Thunder chance 60%. Secure camp now, charge phones, fill water, and decide where you will shelter.');
+  assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&alert=${encodeURIComponent(a.id)}`);
+  assert.equal(await headsUp(q.festival(FEST), { now: now + 25 * 60_000 }), null, 'the same window is not announced twice');
+  assert.equal(sent.length, 1);
+  const listed = (await api('GET', `/festivals/${FEST}/alerts`)).json.find(x => x.id === a.id);
+  assert.equal(listed.channel, 'headsup'); assert.equal(listed.onset, a.onset); assert.match(listed.instruction, /^Drop pop-up canopies/);
+  const before = nwsState.features; nwsState.features = [];
+  await pollFestival(q.festival(FEST));
+  assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'NWS not listing it does not end it: it is ours, and it ends with the window');
+  nwsState.features = before;
+  q.updateAlert({ ...a, expiresAt: new Date().toISOString() });
+  assert.equal((await api('DELETE', '/push/subscribe', { body: { endpoint: sub.endpoint } })).json.ok, true);
 });

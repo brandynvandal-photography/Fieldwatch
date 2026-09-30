@@ -672,3 +672,44 @@ test('the home page is every current alert at every festival that is on: the wor
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
+
+test('storms on the way: a countdown on the festival page with the first things to do, and the step-by-step prep screen behind it', async () => {
+  const { page, context, seen } = await newPage();
+  // The fixture forecast, moved so that its storm window (thunder 40% from hour 3) starts in two to three hours.
+  const H = 3600000, offset = Math.floor(Date.now() / H) * H - Date.UTC(2026, 9, 23, 18);
+  const shiftT = t => new Date(Date.parse(t) + offset).toISOString();
+  const hourlyNow = { properties: { ...hourly.properties, periods: hourly.properties.periods.map(p => ({ ...p, startTime: shiftT(p.startTime), endTime: shiftT(p.endTime) })) } };
+  const shiftSeries = s => ({ ...s, values: s.values.map(v => { const [a, d] = v.validTime.split('/'); return { ...v, validTime: `${shiftT(a)}/${d}` }; }) });
+  const gridNow = { properties: { ...grid.properties, heatIndex: shiftSeries(grid.properties.heatIndex), windGust: shiftSeries(grid.properties.windGust), probabilityOfThunder: shiftSeries(grid.properties.probabilityOfThunder) } };
+  await page.route(/gridpoints\/.*\/forecast\/hourly/, r => r.fulfill(json(hourlyNow)));
+  await page.route(/gridpoints\/[^/]+\/[\d,]+$/, r => r.fulfill(json(gridNow)));
+  await pickHulaween(page);
+  await page.waitForSelector('.headsup');
+  assert.equal(await page.textContent('.headsup h3'), 'Storms');
+  assert.match(await page.textContent('.headsup .eyebrow'), /On the way/);
+  assert.match(await page.textContent('.hu-when'), /^in [23] h \d+ m$|^in 3 h 0 m$/, 'the countdown, two to three hours out');
+  assert.match(await page.textContent('.headsup p'), /^Around \d+:00 [AP]M until \d+:00 [AP]M · thunder 60%$/);
+  const steps = await page.$$eval('.hu-steps .st', els => els.map(e => e.textContent));
+  assert.deepEqual(steps, ['Secure camp now, charge phones, fill water, and decide where you will shelter.', 'Drop pop-up canopies and flags', 'Stake every loop, tie guy lines, weigh the legs']);
+  assert.equal(await page.textContent('.sky h2'), 'Severe Thunderstorm Warning', 'the warning already in effect stays on the sky; the heads-up is its own card');
+  await shot(page, '21-headsup');
+  // The countdown ticks on its own; a minute makes no visible difference here, but the element is live.
+  assert.equal(await page.evaluate(() => { tickCountdowns(); return document.querySelectorAll('[data-countdown]').length; }), 1);
+
+  await page.click('.headsup');
+  await page.waitForSelector('h1.title:has-text("Storms")');
+  assert.match(await page.textContent('.countdown b'), /^[23] h \d+ m$/);
+  assert.match(await page.textContent('.countdown .s'), /^Secure camp now/);
+  assert.match(await page.textContent('.todo'), /Where to shelter.*hard-topped vehicle/s);
+  const camp = await page.$$eval('.steps .step', els => els.map(e => e.textContent));
+  assert.ok(camp.includes('Drop pop-up canopies and flags') && camp.includes('Unplug and bag electronics'), 'the camp list');
+  assert.ok(camp.includes('Phone and a battery pack'), 'and what to pack for shelter');
+  assert.deepEqual(await page.$$eval('.tl .k', els => els.map(e => e.textContent)), ['Earlier', 'Three hours out', 'One hour out', 'Twenty minutes out', 'While it is here', 'After']);
+  assert.equal(await page.textContent('.tl.now .k'), 'Three hours out', 'the timeline knows where you are on it');
+  assert.match(await page.textContent('.tl:last-child'), /thirty minutes after the last thunder/);
+  await shot(page, '22-prep');
+  await page.click('button[aria-label="Back"]');
+  await page.waitForSelector('.headsup');
+  assert.deepEqual(seen.errors, []);
+  await context.close();
+});

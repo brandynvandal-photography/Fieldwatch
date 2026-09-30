@@ -21,6 +21,7 @@ export function normalizeAlert(feature) {
     area: p.areaDesc ?? '',
     source: p.senderName ?? 'National Weather Service',
     issuedAt: p.effective,
+    onset: p.onset ?? null,
     expiresAt: p.ends ?? p.expires ?? null,
     channel: 'weather',
     relayCount: 0,
@@ -38,6 +39,13 @@ export async function point(lat, lon) {
   const key = `${fmt(lat)},${fmt(lon)}`;
   if (!points.has(key)) points.set(key, (await nws(`https://api.weather.gov/points/${key}`)).properties);
   return points.get(key);
+}
+
+/** The grid behind the forecast: heat index, gusts and the chance of thunder, as NWS serves them (intervals, metric). */
+export async function gridpoint(lat, lon) {
+  const p = await point(lat, lon);
+  const g = (await nws(p.forecastGridData)).properties;
+  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder };
 }
 
 export async function hourly(lat, lon) {

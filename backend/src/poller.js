@@ -1,6 +1,7 @@
 import './env.js';
 import { q } from './db.js';
-import { activeAlerts } from './nws.js';
+import { activeAlerts, gridpoint, hourly, point } from './nws.js';
+import { headsUpAlert, incoming, spreadGrid } from './incoming.js';
 import { pushAlert } from './push.js';
 import { pushWeb } from './webpush.js';
 import { isLive } from './festivals.js';
@@ -24,9 +25,9 @@ export async function pollFestival(f) {
     if (q.alert(a.id)) q.updateAlert(a);
     else { q.insertAlert(f.id, a); brandNew.push(a); }
   }
-  // Anything we had as active that NWS no longer lists has ended.
+  // Anything we had as active that NWS no longer lists has ended. A staff post or a forecast heads-up is not NWS's to end.
   for (const id of q.activeAlertIds(f.id)) {
-    if (!seenNow.has(id)) { const a = q.alert(id); if (a) q.updateAlert({ ...a, expiresAt: iso() }); }
+    if (!seenNow.has(id)) { const a = q.alert(id); if (a && (a.channel || 'weather') === 'weather') q.updateAlert({ ...a, expiresAt: iso() }); }
   }
 
   if (brandNew.length) {
@@ -67,9 +68,31 @@ export async function pollPoint(p) {
   return brandNew;
 }
 
+// A heads-up a few hours before the forecast turns stormy, windy, wet or dangerously hot: pushed once per window, listed
+// with the alerts, and never for what a watch or warning already announced. The forecast is read every twenty minutes.
+const HEADS_UP_HOURS = Number(process.env.HEADS_UP_HOURS || 3), HEADS_UP_EVERY_MS = 20 * 60_000;
+const headsUpAt = new Map();
+export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS } = {}) {
+  if ((headsUpAt.get(f.id) || 0) > now - every) return null;
+  headsUpAt.set(f.id, now);
+  const [periods, g, p] = await Promise.all([hourly(f.latitude, f.longitude), gridpoint(f.latitude, f.longitude), point(f.latitude, f.longitude)]);
+  const inc = incoming({ hourly: periods, grid: spreadGrid(g), alerts: q.activeAlerts(f.id), now });
+  if (!inc || inc.source === 'alert' || inc.minutes > HEADS_UP_HOURS * 60 || inc.minutes < 10) return null;
+  const key = `headsup:${f.id}`, prev = JSON.parse(q.setting(key) || 'null');
+  if (prev && prev.hazard === inc.hazard && Math.abs(Date.parse(prev.startsAt) - Date.parse(inc.startsAt)) < 90 * 60_000 && now - Date.parse(prev.at) < 6 * 3_600_000) return null;
+  const a = headsUpAlert(f, inc, p.timeZone, now);
+  q.setSetting(key, JSON.stringify({ hazard: inc.hazard, startsAt: inc.startsAt, at: new Date(now).toISOString() }));
+  if (q.alert(a.id)) q.updateAlert(a); else q.insertAlert(f.id, a);
+  const r = await pushAlert(q.tokensFor(f.id), f, a);
+  const w = await pushWeb(f, a);
+  console.log(`[${f.id}] heads-up: ${a.event} in ${inc.minutes} min push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
+  return a;
+}
+
 export async function pollOnce() {
   for (const f of festivalsInWindow()) {
     try { await pollFestival(f); } catch (e) { console.error(`[${f.id}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
+    try { await headsUp(f); } catch (e) { console.error(`[${f.id}] heads-up failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   }
   for (const p of q.webSubscriptionPoints()) {
     try { await pollPoint(p); } catch (e) { console.error(`[pt:${p.latitude},${p.longitude}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
