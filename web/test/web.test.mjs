@@ -941,3 +941,32 @@ test('the screen rises once, on a move: data landing later swaps in place with n
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
+
+test('the search box is left alone while you type: the list under it redraws, the caret stays, words match in any order, Return opens the first hit', async () => {
+  const { page, context, seen } = await newPage();
+  try {
+    await enter(page);
+    await page.click('#q'); await page.keyboard.type('hula');
+    assert.deepEqual(await page.$$eval('button.row .t', els => els.map(e => e.textContent)), ['Suwannee Hulaween', 'Right where you are']);
+    // The box itself survives a keystroke: same element, focus kept, and an edit in the middle leaves the caret there.
+    await page.evaluate(() => { const q = document.getElementById('q'); q.__same = true; q.setSelectionRange(1, 1); });
+    await page.keyboard.type('x');
+    assert.deepEqual(await page.evaluate(() => { const q = document.getElementById('q'); return { same: q.__same === true, focused: document.activeElement === q, value: q.value, caret: q.selectionStart }; }), { same: true, focused: true, value: 'hxula', caret: 2 });
+    assert.match(await page.textContent('.empty'), /Not on right now/, 'hxula matches nothing');
+    assert.deepEqual(await page.$eval('#q', q => [q.getAttribute('autocorrect'), q.getAttribute('autocapitalize'), q.getAttribute('enterkeyhint')]), ['off', 'none', 'search'], 'no autocorrect on a festival name');
+    // Words in any order, across the name and the place.
+    await page.fill('#q', 'live oak hula');
+    assert.equal(await page.textContent('button.row .t'), 'Suwannee Hulaween');
+    // Escape clears; Return opens the first hit.
+    await page.keyboard.press('Escape');
+    assert.equal(await page.inputValue('#q'), ''); assert.ok(await page.$('.bubble'), 'the bubbles are back');
+    await page.type('#q', 'hulaween'); await page.keyboard.press('Enter');
+    await page.waitForSelector('.sky');
+    assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween');
+    // Coming back to the list starts with an empty box.
+    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('#q');
+    assert.equal(await page.inputValue('#q'), ''); assert.ok(await page.$('.bubble'));
+    assert.deepEqual(seen.errors, []);
+  } finally { await context.close(); }
+});

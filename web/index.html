@@ -685,9 +685,10 @@ function go(name, param, opts){
   if (!opts.replace) S.stack.push({ name: S.screen, param: S.param });
   if (opts.reset) S.stack = [];
   S.screen = name; S.param = param || null;
+  if (name === 'ground') startGroundEdit();   // the chips open on what the lookups found now, not on a visit from before they landed
+  if (name === 'picker') S.query = '';        // the list opens whole, not filtered by what was typed last time
   render(false); window.scrollTo(0, 0);
   if (name === 'radar' && fest()) { startRadar(fest()); locate(); }
-  if (name === 'ground') startGroundEdit();   // the chips open on what the lookups found now, not on a visit from before they landed
   if (name === 'report') locate();
   if (name === 'moderate') loadQueue();
   if (name === 'sources') loadSources();
@@ -1459,34 +1460,45 @@ screens.feed = () => {
     ${fd ? `<p class="note">Checked ${esc(ago(fd.at))}. Alerts come from the National Weather Service and festival staff.</p>` : ''}`;
 };
 
-screens.picker = () => {
-  const q = S.query.trim().toLowerCase(), now = Date.now();
-  const started = f => now >= Date.parse(f.startDate);
-  const byOn = (a, b) => (S.here ? away(a) - away(b) : 0) || (started(b) - started(a)) || (Date.parse(a.startDate) - Date.parse(b.startDate));
-  const on = live().sort(byOn);
+/** The words typed, each of which must appear somewhere in the name, the place or the county, in any order. */
+const queryWords = () => S.query.toLowerCase().split(/\s+/).filter(Boolean);
+const matches = (f, words) => { const hay = `${f.name} ${f.location} ${f.county || ''}`.toLowerCase(); return words.every(w => hay.includes(w)); };
+/** What is on, in the picker's order: the nearest first with location on, then what has started, then by start date. */
+function pickerOn(){
+  const now = Date.now(), started = f => now >= Date.parse(f.startDate);
+  return live().sort((a, b) => (S.here ? away(a) - away(b) : 0) || (started(b) - started(a)) || (Date.parse(a.startDate) - Date.parse(b.startDate)));
+}
+/** The list under the search box: bubbles and the rest, or the hits for what is typed. Redrawn on its own as the query changes. */
+function pickerBody(){
+  const words = queryWords(), now = Date.now(), started = f => now >= Date.parse(f.startDate), on = pickerOn();
   const top = on.filter(isFeatured);
   const bubbles = (top.length ? top : on).slice(0, 6), rest = on.filter(f => !bubbles.includes(f));
   const bubble = f => `<button class="bubble" style="--hue:${hue(f)}" onclick="pick('${f.id}')"><i class="glow"></i><span class="glass"><span class="t">${esc(f.name)}</span><span class="d">${esc(fmtRange(f))}</span><span class="ph">${esc(phase(f).text)}${esc(distNote(f))}</span></span></button>`;
   const row = f => `<button class="row" onclick="pick('${f.id}')"><span class="dotc" style="--hue:${hue(f)}"></span><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}${esc(distNote(f))}</div>${I.chev}</button>`;
   const hereRow = `<div class="group glass"><button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button></div>`;
-  let body;
-  if (!FESTS.length) {
-    body = `<div class="card glass"><h3>Nothing loaded</h3><p>The festival list did not load.</p></div>`;
-  } else if (!on.length) {
-    body = `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>${hereRow}`;
-  } else if (q) {
-    const hits = on.filter(f => `${f.name} ${f.location} ${f.county || ''}`.toLowerCase().includes(q));
-    body = (hits.length ? `<div class="group glass tight">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
-  } else {
-    body = `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass tight">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
+  if (!FESTS.length) return `<div class="card glass"><h3>Nothing loaded</h3><p>The festival list did not load.</p></div>`;
+  if (!on.length) return `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>${hereRow}`;
+  if (words.length) {
+    const hits = on.filter(f => matches(f, words));
+    return (hits.length ? `<div class="group glass tight">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
   }
+  return `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass tight">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
+}
+screens.picker = () => {
+  const on = pickerOn();
   return topbar(backBtn(), '', gearBtn()) + `
     <h1 class="title">Which festival?</h1>
-    ${on.length ? `<label class="search glass">${I.search}<input id="q" type="search" placeholder="Search festivals" autocomplete="off" value="${esc(S.query)}" oninput="filterFests(this.value)"></label>` : ''}
-    ${body}
+    ${on.length ? `<label class="search glass">${I.search}<input id="q" type="search" placeholder="Search festivals" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" value="${esc(S.query)}" oninput="filterFests(this.value)" onkeydown="searchKey(event)"></label>` : ''}
+    <div id="picklist">${pickerBody()}</div>
     <p class="note">Listed from a week before gates to the day after.</p>`;
 };
-function filterFests(v){ S.query = v; const had = document.activeElement === document.getElementById('q'); render(); if (had) { const q = document.getElementById('q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); } }
+// A keystroke redraws the list and leaves the box alone: the caret, the keyboard and its autocorrect state stay where they were.
+function filterFests(v){ S.query = v; const el = document.getElementById('picklist'); if (el) el.innerHTML = pickerBody(); else render(); }
+// Return (the keyboard's Search key) opens the first hit; Escape clears the box.
+function searchKey(e){
+  if (e.key === 'Enter') { const hit = pickerOn().find(f => matches(f, queryWords())); if (hit) { e.target.blur(); pick(hit.id); } e.preventDefault(); }
+  else if (e.key === 'Escape') { e.target.value = ''; filterFests(''); }
+}
 
 screens.home = () => {
   const f = fest(); if (!f) return screens.picker();
