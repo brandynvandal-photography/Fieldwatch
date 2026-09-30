@@ -291,7 +291,8 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {} };
+  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {} };
+  const groundOf = id => ({ surface: 'grass', soil: 'B', low: false, structures: ['canopies'], surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, past: null, override: null, ...(store.ground[id] || {}) });
   // What the home page shows: the fixture's warning at Hulaween, an advisory at the next festival that is on.
   const p = alertFeature().properties, toAlert = over => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null, severity: String(p.severity || 'Unknown').toLowerCase(), area: p.areaDesc ?? '', source: p.senderName ?? 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0, ...over });
   const other = store.list.find(f => isLive(f) && f.id !== 'hulaween-2026');
@@ -317,6 +318,8 @@ function fakeBackend(list) {
       const rep = path.match(/^\/festivals\/([^/]+)\/reports$/);
       if (m === 'POST' && rep) { const b = JSON.parse(raw); if (!b.summary || b.summary.length < 8) return send(400, { error: 'summary required' }); store.reports.push({ festival: rep[1], ...b }); return send(202, { id: `rep-${store.reports.length}`, queued: true }); }
       if (m === 'GET' && path === '/alerts') return send(200, { at: new Date().toISOString(), on: store.list.filter(f => isLive(f) && f.status !== 'hidden').length, items: (store.feed || []).map(x => ({ festival: store.list.find(f => f.id === x.festivalId), alerts: x.alerts, lightning: store.lightning[x.festivalId] || null })).filter(i => i.festival) });
+      const gr = path.match(/^\/festivals\/([^/]+)\/ground$/);
+      if (m === 'GET' && gr) return send(200, groundOf(gr[1]));
       const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
       if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
@@ -324,6 +327,10 @@ function fakeBackend(list) {
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
       if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' });
+      if (m === 'PUT' && gr) { const b = JSON.parse(raw); store.ground[gr[1]] = { ...(store.ground[gr[1]] || {}), ...b, surfaceSource: b.surface ? 'staff' : 'assumed', override: b }; return send(200, groundOf(gr[1])); }
+      if (m === 'DELETE' && gr) { delete store.ground[gr[1]]; return send(200, groundOf(gr[1])); }
+      const grl = path.match(/^\/festivals\/([^/]+)\/ground\/lookup$/);
+      if (m === 'POST' && grl) { store.ground[grl[1]] = { ...(store.ground[grl[1]] || {}), surface: 'grass', soil: 'A', soilName: 'Blanton fine sand, 0 to 5 percent slopes', drainage: 'Somewhat excessively drained', surfaceSource: 'OpenStreetMap: leisure=park', soilSource: 'USDA soil survey' }; return send(200, groundOf(grl[1])); }
       const hide = path.match(/^\/festivals\/([^/]+)\/(hide|unhide)$/);
       if (m === 'POST' && hide) { const f = store.list.find(x => x.id === hide[1]); if (!f) return send(404, {}); f.status = hide[2] === 'hide' ? 'hidden' : 'published'; return send(200, { ok: true, id: f.id, status: f.status }); }
       const post = path.match(/^\/festivals\/([^/]+)\/posts$/);
@@ -402,6 +409,20 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     assert.deepEqual(await oversizedIcons(page), [], 'the flag on Report a hazard is an icon, not the button');
     await shot(page, '25-incidents');
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+
+    // Staff say what the ground is and what is standing; the lookups can be run again from here.
+    await page.click('button.row:has-text("Ground and what is standing")'); await page.waitForSelector('h1.title:has-text("Ground")');
+    assert.match(await page.textContent('.kv:has-text("Surface")'), /Grass.*assumed, nothing found/s);
+    await page.click('button:has-text("Look it up again")'); await page.waitForSelector('.toast.show:has-text("Looked up again")');
+    assert.match(await page.textContent('.kv:has-text("Soil")'), /Blanton fine sand.*Drains fast \(A\).*USDA soil survey/s);
+    await page.click('button.chip:has-text("Blacktop")'); await page.click('button.chip:has-text("Stage or rigging")');
+    await page.click('button.btn:has-text("Save")'); await page.waitForSelector('.toast.show:has-text("Saved")');
+    assert.ok(store.calls.includes('PUT /festivals/hulaween-2026/ground'));
+    assert.deepEqual({ surface: store.ground['hulaween-2026'].surface, structures: store.ground['hulaween-2026'].structures, low: store.ground['hulaween-2026'].low }, { surface: 'pavement', structures: ['canopies', 'stage'], low: false });
+    assert.match(await page.textContent('.kv:has-text("Surface")'), /Blacktop.*staff/s);
+    await shot(page, '26-ground');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    assert.match(await page.textContent('button.row:has-text("Ground and what is standing") .s'), /^Blacktop/);
     await page.click('button[aria-label="Settings"]'); await page.waitForSelector('#admin');
 
     // What feeds the list.

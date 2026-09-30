@@ -37,6 +37,8 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.includes('/points/')) return jsonResponse(points);
   if (url.includes('/forecast/hourly')) return jsonResponse(hourly);
   if (/gridpoints\/[^/]+\/[\d,]+$/.test(url)) return jsonResponse(grid);
+  if (url.includes('overpass')) return jsonResponse({ elements: [{ type: 'area', id: 1, tags: { boundary: 'administrative', admin_level: '6' } }, { type: 'area', id: 2, tags: { leisure: 'park', name: 'Spirit of the Suwannee Music Park' } }] });
+  if (url.includes('sdmdataaccess')) return jsonResponse({ Table: [['mukey', 'muname', 'compname', 'hydgrp', 'drainagecl', 'comppct_r'], ['1', 'Blanton fine sand, 0 to 5 percent slopes', 'Blanton', 'A', 'Somewhat excessively drained', '85']] });
   if (url.includes('n0q-t.cgi')) return new Response(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'), { status: 200, headers: { 'content-type': 'image/png' } });
   return jsonResponse({ detail: 'not found' }, 404);
 };
@@ -516,4 +518,21 @@ test('a heads-up goes out hours before the forecast turns: once per window, push
   nwsState.features = before;
   q.updateAlert({ ...a, expiresAt: new Date().toISOString() });
   assert.equal((await api('DELETE', '/push/subscribe', { body: { endpoint: sub.endpoint } })).json.ok, true);
+});
+
+test('the ground: the lookups run on demand, staff set what they know better, anyone reads it, the pack carries it, an edit keeps it', async () => {
+  assert.equal((await api('PUT', `/festivals/${FEST}/ground`, { body: { surface: 'sand' } })).status, 401);
+  assert.equal((await api('PUT', `/festivals/${FEST}/ground`, { headers: admin, body: { surface: 'lava' } })).status, 400);
+  const look = await api('POST', `/festivals/${FEST}/ground/lookup`, { headers: admin });
+  assert.equal(look.status, 200); assert.equal(look.json.surface, 'grass'); assert.equal(look.json.surfaceSource, 'OpenStreetMap: leisure=park');
+  assert.equal(look.json.soil, 'A'); assert.match(look.json.soilName, /^Blanton fine sand/); assert.equal(look.json.soilSource, 'USDA soil survey'); assert.equal(look.json.low, false);
+  const set = await api('PUT', `/festivals/${FEST}/ground`, { headers: admin, body: { surface: 'pavement', structures: ['canopies', 'stage'], low: false, note: 'the lot, this year' } });
+  assert.equal(set.status, 200); assert.equal(set.json.surface, 'pavement'); assert.equal(set.json.surfaceSource, 'staff'); assert.equal(set.json.soil, 'A', 'the soil lookup stays under a surface override'); assert.deepEqual(set.json.structures, ['canopies', 'stage']);
+  assert.equal((await api('GET', `/festivals/${FEST}/ground`)).json.surface, 'pavement', 'anyone can read it');
+  assert.equal((await api('GET', `/festivals/${FEST}/pack`)).json.ground.surface, 'pavement');
+  assert.equal(q.festival(FEST).ground.override.surface, 'pavement', 'it is on the record');
+  const edited = await api('PUT', `/festivals/${FEST}`, { headers: admin, body: { name: 'Suwannee Hulaween', location: 'Spirit of the Suwannee Music Park, Live Oak, FL', latitude: 30.404, longitude: -82.9395, startDate: q.festival(FEST).startDate, endDate: q.festival(FEST).endDate } });
+  assert.equal(edited.status, 200); assert.equal(edited.json.ground.override.surface, 'pavement', 'an edit of the record keeps the ground'); assert.equal(edited.json.ground.soil, 'A');
+  const cleared = await api('DELETE', `/festivals/${FEST}/ground`, { headers: admin });
+  assert.equal(cleared.json.surface, 'grass'); assert.equal(cleared.json.surfaceSource, 'OpenStreetMap: leisure=park'); assert.deepEqual(cleared.json.structures, ['canopies']);
 });

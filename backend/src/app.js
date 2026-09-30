@@ -16,7 +16,7 @@ import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
 import { lightningFor, lightningOn, lightningStatus } from './lightning.js';
-import { groundFor, groundStatus } from './ground.js';
+import { groundFor, groundStatus, lookupGround, validOverride } from './ground.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -194,6 +194,26 @@ app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
 
 /** The ground under the festival: what the record says about it, and the rain of the last two days (ground.js). */
 app.get('/festivals/:id/ground', loadFestival, wrap(async (req, res) => res.set('Cache-Control', 'no-store').json(await groundFor(req.festival))));
+
+/** Staff set what the lookups cannot see: the surface, how it drains, low ground, and what is standing (canopies, inflatables, a stage). */
+app.put('/festivals/:id/ground', requireAdmin, loadFestival, wrap(async (req, res) => {
+  const { override, error } = validOverride(req.body || {});
+  if (error) return res.status(400).json({ error });
+  const f = { ...req.festival, ground: { ...(req.festival.ground || {}), override } };
+  q.upsertFestival(f);
+  res.json(await groundFor(f));
+}));
+app.delete('/festivals/:id/ground', requireAdmin, loadFestival, wrap(async (req, res) => {
+  const { override, ...rest } = req.festival.ground || {};
+  const f = { ...req.festival, ground: rest };
+  q.upsertFestival(f);
+  res.json(await groundFor(f));
+}));
+/** Run the surface and soil lookups again now (they otherwise run once, for a festival that is on). */
+app.post('/festivals/:id/ground/lookup', requireAdmin, loadFestival, wrap(async (req, res) => {
+  const ground = await lookupGround(req.festival, { save: f => q.upsertFestival(f) });
+  res.json(await groundFor({ ...req.festival, ground }));
+}));
 
 /** Lightning near the festival right now (lightning.js): the code, the nearest flash, counts by ring, the all-clear time. */
 app.get('/festivals/:id/lightning', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(lightningFor(req.festival.id) || { code: 'none', at: iso(), on: lightningOn(), source: 'GOES GLM' }));

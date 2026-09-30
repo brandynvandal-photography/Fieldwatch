@@ -359,6 +359,8 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .share-link{text-align:center;color:var(--muted);font-size:14px;word-break:break-all;margin:0 auto 18px;max-width:34ch}
 .field textarea{flex:1;border:0;background:none;outline:none;min-width:0;min-height:88px;resize:none;font:inherit;color:inherit;line-height:1.4}
 .chips{display:flex;gap:8px;justify-content:center;margin:0 0 16px}
+.chips.wrap{flex-wrap:wrap}
+.kv .dim{color:var(--muted);font-size:13px}
 .chip{padding:8px 16px;border-radius:999px;font-size:14px;font-weight:600;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink)}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
 .pill.on{background:var(--ok);color:#fff}
@@ -678,6 +680,7 @@ function go(name, param, opts){
   if (name === 'sources') loadSources();
   if (name === 'catalog') loadCatalog();
   if (name === 'feed') loadFeed();
+  if (name === 'ground') startGroundEdit();
 }
 function back(){
   stopRadar();
@@ -720,6 +723,7 @@ const I = {
   fog: svg('<path d="M4 10h16M6 14h12M8 18h8"/>'),
   wind: svg('<path d="M3 8h10a3 3 0 1 0-3-3"/><path d="M3 12h15a3 3 0 1 1-3 3"/><path d="M3 16h7a2 2 0 1 1-2 2"/>'),
   bolt: svg('<path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/>'),
+  ground: svg('<path d="M3 17c3-3 6-3 9 0s6 3 9 0"/><path d="M3 11c3-3 6-3 9 0s6 3 9 0"/><path d="M12 3v4M9 5l3 2 3-2"/>'),
   check: svg('<path d="M5 12l5 5L20 7"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
@@ -833,6 +837,40 @@ function outlook(f){
   if (some) return `A chance of rain from ${fmtHour(some.startTime)}.`;
   return 'Dry for the next 12 hours.';
 }
+
+// ---- the ground: what the model assumes about the grounds, and what staff know better (backend/src/ground.js) ----
+const SURFACE_LABEL = { grass: 'Grass', dirt: 'Dirt', sand: 'Sand', gravel: 'Gravel', pavement: 'Blacktop', mixed: 'Mixed' };
+const SOIL_LABEL = { A: 'Drains fast', B: 'Average', C: 'Drains slowly', D: 'Clay' };
+const STRUCTURE_LABEL = { canopies: 'Pop-up canopies', inflatables: 'Inflatables', stage: 'Stage or rigging' };
+/** One line about the ground for the prep screen: "Grass, drains fast · 1.2 in of rain in the last two days". */
+function groundLine(g){
+  if (!g) return '';
+  const soil = { A: 'drains fast', B: 'drains normally', C: 'drains slowly', D: 'clay, barely drains' }[g.soil] || '';
+  const past = g.past && g.past.in48 != null ? `${g.past.in48.toFixed(1)} in of rain in the last two days` : '';
+  return [`${SURFACE_LABEL[g.surface] || 'Grass'}${soil && g.surface !== 'pavement' ? `, ${soil}` : ''}${g.low ? ', low ground' : ''}`, past].filter(Boolean).join(' · ');
+}
+function startGroundEdit(){
+  const f = fest(), g = (f && data(f).ground) || {}, o = g.override || {};
+  S.groundEdit = { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: (o.structures || g.structures || ['canopies']).slice() };
+}
+function setGround(k, v){
+  const e = S.groundEdit; if (!e) return;
+  if (k === 'structures') { const i = e.structures.indexOf(v); if (i >= 0) e.structures.splice(i, 1); else e.structures.push(v); }
+  else e[k] = v;
+  render();
+}
+async function groundCall(method, path, body){
+  const f = fest(), b = backend(); if (!f || !b || !S.admin || S.groundBusy) return;
+  S.groundBusy = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${f.id}/ground${path || ''}`, { method, headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    S.cache[f.id] = { ...data(f), ground: await r.json() }; save(); startGroundEdit();
+    toast(method === 'PUT' ? 'Saved' : method === 'DELETE' ? 'Back to what the lookups found' : 'Looked up again');
+  }catch(e){ toast(staffFail(e)); }
+  S.groundBusy = false; render();
+}
+const saveGround = () => groundCall('PUT', '', S.groundEdit);
 
 // ---- lightning codes (the backend grades them from the GOES lightning mapper, lightning.js; the phone only reads) ----
 // The festival safety protocol, in its own words (backend/src/lightning.js PROTOCOL carries the same text for the pushes; change both).
@@ -1290,7 +1328,8 @@ screens.home = () => {
     <div class="group glass">
       ${here ? '' : `<button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
-      <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>`}
+      <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>
+      ${S.admin && backend() ? `<button class="row" onclick="later(function(){ go('ground') })"><span class="lead">${I.ground}</span><div class="main"><div class="t">Ground and what is standing</div><div class="s">${esc(groundLine(d.ground) || 'What the rain and wind advice assumes')}</div></div>${I.chev}</button>` : ''}`}
       ${pushRow()}
     </div>
     ${listingNote(f)}
@@ -1431,7 +1470,7 @@ screens.prep = () => {
     <div class="group glass">${rows.map(([k, l, t]) => `<div class="tl ${k === stage ? 'now' : ''}"><span class="k">${esc(l)}</span><span class="v">${esc(t)}</span></div>`).join('')}</div>
     <p class="h">Pack for shelter</p>
     <div class="group glass steps">${SHELTER_PACK.map(s => `<div class="step"><span class="n"></span><span>${esc(s)}</span></div>`).join('')}</div>
-    <p class="note">${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : 'Read from the National Weather Service forecast'}${d.at ? `, checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
+    <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : 'Read from the National Weather Service forecast'}${d.at ? `, checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
 };
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
@@ -1450,6 +1489,28 @@ screens.lightning = () => {
     <p class="h">The codes</p>
     <div class="group glass">${Object.keys(CODE).map(k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(CODE[k].ring)}</div><div class="s">${esc(CODE[k].protocol)}</div><div class="s you">${esc(CODE[k].you)}</div></div></div>`).join('')}</div>
     <p class="note">Read every minute from the GOES satellites' lightning mapper (NOAA, public), which sees cloud tops at about 8 km and can miss flashes under a thick anvil. The festival's own lightning detection and its safety staff are the authority. Carrier emergency alerts still arrive on their own.</p>`;
+};
+screens.ground = () => {
+  const f = fest(); if (!f || f.id === 'here') return screens.picker();
+  const g = data(f).ground || {}, e = S.groundEdit || (startGroundEdit(), S.groundEdit);
+  const chips = (k, opts, on) => `<div class="chips wrap">${opts.map(([v, l]) => `<button class="chip ${on(v) ? 'on' : ''}" onclick="setGround('${k}', ${typeof v === 'string' ? `'${v}'` : v})">${esc(l)}</button>`).join('')}</div>`;
+  const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  return topbar(backBtn(), '', '') + `
+    <span class="eyebrow">${esc(f.name)}</span>
+    <h1 class="title">Ground</h1>
+    <p class="sub">What the rain and wind advice assumes about the grounds. Change what you know better.</p>
+    <div class="group glass">
+      ${kv('Surface', `${esc(SURFACE_LABEL[g.surface] || 'Grass')}<br><span class="dim">${esc(g.surfaceSource === 'assumed' ? 'assumed, nothing found' : g.surfaceSource || 'assumed')}</span>`)}
+      ${kv('Soil', `${esc(g.soilName || SOIL_LABEL[g.soil] || 'Average')}${g.soil ? ` · ${esc(SOIL_LABEL[g.soil])} (${esc(g.soil)})` : ''}<br><span class="dim">${esc(g.soilSource === 'assumed' ? 'assumed, nothing found' : g.soilSource || 'assumed')}${g.drainage ? ' · ' + esc(g.drainage.toLowerCase()) : ''}</span>`)}
+      ${kv('Rain, last 48 h', g.past && g.past.in48 != null ? `${esc(g.past.in48.toFixed(2))} in<br><span class="dim">${esc(g.past.source)}</span>` : `<span class="dim">${esc(g.pastError ? 'analysis out of reach' : 'not read yet')}</span>`)}
+    </div>
+    <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_LABEL), v => e.surface === v)}
+    <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_LABEL), v => e.soil === v)}
+    <p class="h">Low ground</p>${chips('low', [[true, 'Yes, it floods'], [false, 'No']], v => e.low === v)}
+    <p class="h">What is standing</p>${chips('structures', Object.entries(STRUCTURE_LABEL), v => e.structures.includes(v))}
+    <button class="btn" onclick="saveGround()" ${S.groundBusy ? 'disabled' : ''}>Save</button>
+    <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}</div>
+    <p class="note">The lookups run once per festival: the surface from OpenStreetMap under the coordinate, the soil from the USDA soil survey, the rain from the Iowa Mesonet's daily analysis. Staff settings win over all three.</p>`;
 };
 
 

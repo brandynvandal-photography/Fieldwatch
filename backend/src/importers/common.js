@@ -80,7 +80,7 @@ export const applyImport = db.transaction(({ origin, found, now = Date.now(), er
     if (others.some(o => sameFestival(o, f))) { duplicates++; continue; }
     seen.add(f.id);
     const old = before.get(f.id);
-    if (old) { q.upsertFestival({ ...f, featured: old.featured, county: old.county || f.county, feeds: old.feeds, site: old.site, isPartner: old.isPartner, status: old.status }); updated++; }
+    if (old) { q.upsertFestival({ ...f, featured: old.featured, county: old.county || f.county, feeds: old.feeds, site: old.site, isPartner: old.isPartner, status: old.status, ...(old.ground ? { ground: old.ground } : {}) }); updated++; }
     else { q.upsertFestival(f); added++; }
   }
   for (const [id, f] of before) {

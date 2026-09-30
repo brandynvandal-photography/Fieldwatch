@@ -1,6 +1,8 @@
-// The ground under a festival, as far as free data says: how much rain fell in the last two days (the Iowa Environmental
-// Mesonet's daily point analysis, radar-derived, CONUS), and what the festival record itself carries about the surface.
-// Read every three hours per festival while it is on; the model in incoming.js turns it into mud tiers.
+// The ground under a festival, as far as free data says: what the surface is (OpenStreetMap land use under the
+// coordinate), how the soil drains (the USDA soil survey's hydrologic group), how much rain fell in the last two days
+// (the Iowa Environmental Mesonet's daily point analysis, radar-derived, CONUS), and what staff say when they know
+// better. The lookups are written onto the festival record once; the rain is read every three hours while it is on.
+// The model in incoming.js turns it all into mud tiers and wind lines.
 import { iso } from './util.js';
 
 const HOUR = 3_600_000, DAY = 24 * HOUR, TTL = 3 * HOUR;
@@ -23,6 +25,94 @@ export async function pastRain(lat, lon, { now = Date.now(), fetchImpl = globalT
   return { in24: r(since(now - DAY)), in48: r(since(now - 2 * DAY)), days, at: iso(now), source: 'IEM daily analysis' };
 }
 
+// ---- the surface: OpenStreetMap land use under the coordinate, a public Overpass instance, one query per festival ever ----
+const OVERPASS = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
+export const SURFACES = ['grass', 'dirt', 'sand', 'gravel', 'pavement', 'mixed'];
+export const SOILS = ['A', 'B', 'C', 'D'];   // USDA hydrologic groups: A drains fast (sand), D barely drains (clay)
+export const STRUCTURES = ['canopies', 'inflatables', 'stage'];
+const SURFACE_TAG = { asphalt: 'pavement', concrete: 'pavement', paved: 'pavement', paving_stones: 'pavement', sett: 'pavement', gravel: 'gravel', fine_gravel: 'gravel', compacted: 'gravel', pebblestone: 'gravel',
+  grass: 'grass', sand: 'sand', dirt: 'dirt', earth: 'dirt', ground: 'dirt', mud: 'dirt', unpaved: 'dirt', woodchips: 'dirt' };
+/** One area's tags, read for what the ground is: [surface, low] or null when the tags say nothing about the ground. */
+export function surfaceFromTags(tags = {}) {
+  if (tags.surface && SURFACE_TAG[tags.surface]) return [SURFACE_TAG[tags.surface], false];
+  if (tags.amenity === 'parking' || tags.aeroway || tags.highway || ['retail', 'commercial', 'industrial'].includes(tags.landuse)) return ['pavement', false];
+  if (tags.natural === 'wetland') return ['grass', true];
+  if (['sand', 'beach', 'dune'].includes(tags.natural)) return ['sand', false];
+  if (['grassland', 'heath'].includes(tags.natural) || ['grass', 'meadow', 'recreation_ground', 'farmland', 'farmyard', 'orchard', 'village_green', 'cemetery', 'greenfield'].includes(tags.landuse)
+    || ['pitch', 'park', 'golf_course', 'stadium', 'recreation_ground', 'garden', 'nature_reserve'].includes(tags.leisure)) return ['grass', false];
+  if (['scrub', 'wood'].includes(tags.natural) || ['forest', 'quarry'].includes(tags.landuse)) return ['dirt', false];
+  return null;
+}
+export async function surfaceFromOSM(lat, lon, { fetchImpl = globalThis.fetch } = {}) {
+  const res = await fetchImpl(OVERPASS, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(`[out:json][timeout:10];is_in(${Number(lat).toFixed(5)},${Number(lon).toFixed(5)});out tags;`)}` });
+  if (!res.ok) throw new Error(`Overpass ${res.status}`);
+  const body = await res.json();
+  // The most telling area wins: a surface tag, then a use (parking, pitch), then land cover. Boundaries and places say nothing.
+  const rank = t => (t.surface ? 0 : t.amenity || t.leisure || t.aeroway || t.highway ? 1 : 2);
+  const hits = (body?.elements || []).map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}) })).filter(h => h.read).sort((a, b) => rank(a.tags) - rank(b.tags));
+  if (!hits.length) return null;
+  const [surface, low] = hits[0].read, t = hits[0].tags;
+  return { surface, low, source: 'OpenStreetMap', tag: ['surface', 'amenity', 'leisure', 'landuse', 'natural', 'aeroway', 'highway'].filter(k => t[k]).map(k => `${k}=${t[k]}`).join(', ') };
+}
+
+// ---- the soil: the USDA soil survey's map unit at the point, its hydrologic group and drainage class ----
+const SDA = process.env.SDA_URL || 'https://sdmdataaccess.sc.egov.usda.gov/Tabular/post.rest';
+export async function soilFromUSDA(lat, lon, { fetchImpl = globalThis.fetch } = {}) {
+  const query = `SELECT TOP 1 mu.mukey, mu.muname, c.compname, c.hydgrp, c.drainagecl, c.comppct_r FROM SDA_Get_Mukey_from_intersection_with_WktWgs84('point(${Number(lon).toFixed(5)} ${Number(lat).toFixed(5)})') AS i INNER JOIN mapunit mu ON mu.mukey = i.mukey INNER JOIN component c ON c.mukey = mu.mukey ORDER BY c.comppct_r DESC`;
+  const res = await fetchImpl(SDA, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ format: 'JSON+COLUMNNAME', query }) });
+  if (!res.ok) throw new Error(`Soil survey ${res.status}`);
+  const rows = (await res.json())?.Table || [];
+  const cols = ['mukey', 'muname', 'compname', 'hydgrp', 'drainagecl', 'comppct_r'];
+  const data = rows.filter(r => Array.isArray(r) && !(String(r[0]).toLowerCase() === 'mukey'));
+  if (!data.length) return null;
+  const r = Object.fromEntries(cols.map((c, i) => [c, data[0][i]]));
+  // A dual group (A/D) is the wetter letter unless someone drained the field, which a festival field rarely is.
+  const grp = String(r.hydgrp || '').trim().toUpperCase(), soil = SOILS.find(l => l === grp.slice(-1)) || null;
+  const drainage = String(r.drainagecl || '').trim() || null;
+  return { soil, drainage, low: /poorly/i.test(drainage || ''), soilName: String(r.muname || r.compname || '').trim() || null, source: 'USDA soil survey' };
+}
+
+/** Both lookups, written onto the festival record (the staff override, if any, is kept beside them). */
+export async function lookupGround(f, { now = Date.now(), fetchImpl = globalThis.fetch, save = null } = {}) {
+  const found = { lookedUpAt: iso(now) }, errors = [];
+  try { const s = await surfaceFromOSM(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, { surface: s.surface, surfaceSource: `${s.source}: ${s.tag}`, ...(s.low ? { low: true } : {}) }); }
+  catch (e) { errors.push(`surface: ${errorText(e)}`); }
+  try { const s = await soilFromUSDA(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, { soil: s.soil, soilName: s.soilName, drainage: s.drainage, soilSource: s.source, ...(s.low ? { low: true } : {}) }); }
+  catch (e) { errors.push(`soil: ${errorText(e)}`); }
+  if (errors.length) found.lookupError = errors.join('; ');
+  const ground = { ...(f.ground || {}), ...found };
+  if (save) save({ ...f, ground });
+  return ground;
+}
+/** A record's ground as the model uses it: the staff override over the lookups over the defaults. */
+export function effectiveGround(f) {
+  const g = f?.ground || {}, o = g.override || {};
+  return { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: Array.isArray(o.structures) ? o.structures : ['canopies'],
+    surfaceSource: o.surface ? 'staff' : g.surface ? g.surfaceSource || 'lookup' : 'assumed', soilSource: o.soil ? 'staff' : g.soil ? g.soilSource || 'lookup' : 'assumed',
+    soilName: g.soilName || null, drainage: g.drainage || null, lookedUpAt: g.lookedUpAt || null, lookupError: g.lookupError || null, override: g.override || null };
+}
+/** A staff override, checked: only the fields and values the model knows. */
+export function validOverride(body = {}) {
+  const o = {};
+  if (body.surface != null && body.surface !== '') { if (!SURFACES.includes(body.surface)) return { error: `surface must be one of ${SURFACES.join(', ')}` }; o.surface = body.surface; }
+  if (body.soil != null && body.soil !== '') { if (!SOILS.includes(body.soil)) return { error: `soil must be one of ${SOILS.join(', ')}` }; o.soil = body.soil; }
+  if (body.low != null) o.low = Boolean(body.low);
+  if (body.structures != null) { if (!Array.isArray(body.structures) || body.structures.some(s => !STRUCTURES.includes(s))) return { error: `structures must be some of ${STRUCTURES.join(', ')}` }; o.structures = body.structures; }
+  if (body.note != null) o.note = String(body.note).slice(0, 200);
+  return { override: { ...o, at: iso() } };
+}
+
+const attempted = new Map();
+/** A live festival without a lookup gets one, at most one festival per call and one try per festival per six hours (public services, fair use). */
+export async function ensureGround(festivals, { now = Date.now(), fetchImpl = globalThis.fetch, save } = {}) {
+  const f = festivals.find(x => !x.ground?.lookedUpAt && (attempted.get(x.id) || 0) < now - 6 * HOUR);
+  if (!f) return null;
+  attempted.set(f.id, now);
+  const g = await lookupGround(f, { now, fetchImpl, save });
+  console.log(`[${f.id}] ground: ${g.surface || 'surface unknown'}${g.soil ? `, soil ${g.soil} (${g.soilName})` : ''}${g.lookupError ? ` (${g.lookupError})` : ''}`);
+  return g;
+}
+
 const cache = new Map();
 /**
  * What the model knows about this festival's ground: the record's own surface fields, and the recent rain, fetched at most
@@ -36,6 +126,6 @@ export async function groundFor(f, { now = Date.now(), fetchImpl = globalThis.fe
     catch (e) { pastError = errorText(e); if (!hit) console.error(`[${f.id}] past rain unavailable: ${pastError}`); }
     cache.set(f.id, { at: now, past, pastError });
   }
-  return { ...(f.ground || {}), past, ...(pastError && !past ? { pastError } : {}), at: iso(now) };
+  return { ...effectiveGround(f), past, ...(pastError && !past ? { pastError } : {}), at: iso(now) };
 }
 export const groundStatus = () => ({ cached: cache.size, errors: [...cache.values()].filter(c => c.pastError).length });

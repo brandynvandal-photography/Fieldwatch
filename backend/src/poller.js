@@ -2,7 +2,7 @@ import './env.js';
 import { q } from './db.js';
 import { activeAlerts, gridpoint, hourly, point } from './nws.js';
 import { headsUpAlert, incoming, spreadGrid } from './incoming.js';
-import { groundFor } from './ground.js';
+import { ensureGround, groundFor } from './ground.js';
 import { pushAlert } from './push.js';
 import { pushWeb } from './webpush.js';
 import { isLive } from './festivals.js';
@@ -92,7 +92,9 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
 }
 
 export async function pollOnce() {
-  for (const f of festivalsInWindow()) {
+  const on = festivalsInWindow();
+  try { await ensureGround(on, { save: f => q.upsertFestival(f) }); } catch (e) { console.error('ground lookup failed:', e.message); }
+  for (const f of on) {
     try { await pollFestival(f); } catch (e) { console.error(`[${f.id}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
     try { await headsUp(f); } catch (e) { console.error(`[${f.id}] heads-up failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   }

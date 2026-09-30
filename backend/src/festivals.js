@@ -58,6 +58,7 @@ export function normalizeFestival(input = {}, { base = null, origin = 'curated',
   if (f.verifiedOn) out.verifiedOn = String(f.verifiedOn).slice(0, 10);
   const note = text(f.note, 300); if (note) out.note = note;
   if (f.submittedAt) out.submittedAt = f.submittedAt;
+  if (f.ground && typeof f.ground === 'object') out.ground = f.ground;   // what the lookups found and what staff set (ground.js)
   return { festival: out };
 }
 
