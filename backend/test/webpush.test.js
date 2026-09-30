@@ -16,3 +16,11 @@ test('with no VAPID keys configured, a pair is made on boot and kept in the data
   assert.equal(stored.publicKey, key);
   assert.match(stored.privateKey, /^[A-Za-z0-9_-]{40,}$/);
 });
+
+test('a push keeps whole sentences up to its limit', async () => {
+  const { sentences } = await import('../src/webpush.js');
+  assert.equal(sentences('Short.', 160), 'Short.');
+  const long = 'The forecast has a 60% chance of thunder. Move the car to hard ground by 4:45 PM. Paths will be soft and muddy: 0.8 in of rain on grass over clay, after 1.1 in already down.';
+  assert.equal(sentences(long, 100), 'The forecast has a 60% chance of thunder. Move the car to hard ground by 4:45 PM.');
+  assert.equal(sentences('A'.repeat(200), 50), 'A'.repeat(50), 'no sentence end at all: a plain cut');
+});

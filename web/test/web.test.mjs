@@ -738,8 +738,8 @@ test('storms on the way: a countdown on the festival page with the first things 
   assert.match(await page.textContent('.headsup .eyebrow'), /On the way/);
   assert.match(await page.textContent('.hu-when'), /^in [23] h \d+ m$|^in 3 h 0 m$/, 'the countdown, two to three hours out');
   assert.match(await page.textContent('.headsup p'), /^Around \d+:00 [AP]M until \d+:00 [AP]M · thunder 60%$/);
-  const steps = await page.$$eval('.hu-steps .st', els => els.map(e => e.textContent));
-  assert.deepEqual(steps, ['Secure camp now, charge phones, fill water, and decide where you will shelter.', 'Drop pop-up canopies and flags', 'Stake every loop, tie guy lines, weigh the legs']);
+  assert.deepEqual(await page.$$eval('.hu-steps .st .task', els => els.map(e => e.textContent)), ['Stake every loop, tie guy lines, weigh the legs', 'Unplug and bag electronics', 'Move poles and chairs away from where people sit'], 'the longest task first');
+  assert.ok((await page.$$eval('.hu-steps .st .by', els => els.map(e => e.textContent))).every(t => /^by \d+:\d\d [AP]M$/.test(t)), 'each with a start-by time');
   assert.equal(await page.textContent('.sky h2'), 'Severe Thunderstorm Warning', 'the warning already in effect stays on the sky; the heads-up is its own card');
   await shot(page, '21-headsup');
   // The countdown ticks on its own; a minute makes no visible difference here, but the element is live.
@@ -750,7 +750,8 @@ test('storms on the way: a countdown on the festival page with the first things 
   assert.match(await page.textContent('.countdown b'), /^[23] h \d+ m$/);
   assert.match(await page.textContent('.countdown .s'), /^Secure camp now/);
   assert.match(await page.textContent('.todo'), /Where to shelter.*hard-topped vehicle/s);
-  const camp = await page.$$eval('.steps .step', els => els.map(e => e.textContent));
+  const camp = await page.$$eval('.steps .step .task', els => els.map(e => e.textContent));
+  assert.match(await page.textContent('.steps .step:first-child .by'), /^by \d+:\d\d [AP]M$/, 'start-by times on the camp list');
   assert.ok(camp.includes('Drop pop-up canopies and flags') && camp.includes('Unplug and bag electronics'), 'the camp list');
   assert.ok(camp.includes('Phone and a battery pack'), 'and what to pack for shelter');
   assert.deepEqual(await page.$$eval('.tl .k', els => els.map(e => e.textContent)), ['Earlier', 'Three hours out', 'One hour out', 'Twenty minutes out', 'While it is here', 'After']);

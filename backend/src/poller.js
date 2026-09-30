@@ -82,7 +82,7 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   if (!inc || inc.source === 'alert' || inc.minutes > HEADS_UP_HOURS * 60 || inc.minutes < 10) return null;
   const key = `headsup:${f.id}`, prev = JSON.parse(q.setting(key) || 'null');
   if (prev && prev.hazard === inc.hazard && Math.abs(Date.parse(prev.startsAt) - Date.parse(inc.startsAt)) < 90 * 60_000 && now - Date.parse(prev.at) < 6 * 3_600_000) return null;
-  const a = headsUpAlert(f, inc, p.timeZone, now);
+  const a = headsUpAlert(f, inc, p.timeZone, now, ground);
   q.setSetting(key, JSON.stringify({ hazard: inc.hazard, startsAt: inc.startsAt, at: new Date(now).toISOString() }));
   if (q.alert(a.id)) q.updateAlert(a); else q.insertAlert(f.id, a);
   const r = await pushAlert(q.tokensFor(f.id), f, a);

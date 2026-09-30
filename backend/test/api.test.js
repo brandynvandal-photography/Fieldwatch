@@ -506,12 +506,12 @@ test('a heads-up goes out hours before the forecast turns: once per window, push
   assert.equal(a.channel, 'headsup'); assert.equal(a.event, 'Storms expected around 5:00 PM'); assert.equal(a.minutes, 150); assert.equal(a.severity, 'moderate');
   assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'stored with the festival\'s alerts');
   assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Storms expected around 5:00 PM'); assert.equal(sent[0].opts.urgency, 'normal');
-  assert.equal(sent[0].payload.body, 'Suwannee Hulaween. The forecast has a 60% chance of thunder and 0.6 in of rain. Secure camp now, charge phones, fill water, and decide where you will shelter.');
+  assert.equal(sent[0].payload.body, 'Suwannee Hulaween. The forecast has a 60% chance of thunder and 0.6 in of rain. Stake every loop, tie guy lines, weigh the legs by 4:35 PM.');
   assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&alert=${encodeURIComponent(a.id)}`);
   assert.equal(await headsUp(q.festival(FEST), { now: now + 25 * 60_000 }), null, 'the same window is not announced twice');
   assert.equal(sent.length, 1);
   const listed = (await api('GET', `/festivals/${FEST}/alerts`)).json.find(x => x.id === a.id);
-  assert.equal(listed.channel, 'headsup'); assert.equal(listed.onset, a.onset); assert.match(listed.instruction, /^Drop pop-up canopies/);
+  assert.equal(listed.channel, 'headsup'); assert.equal(listed.onset, a.onset); assert.match(listed.instruction, /^Stake every loop, tie guy lines, weigh the legs by 4:35 PM\./); assert.equal(listed.plan.length, 4);
   const before = nwsState.features; nwsState.features = [];
   await pollFestival(q.festival(FEST));
   assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'NWS not listing it does not end it: it is ours, and it ends with the window');

@@ -51,6 +51,12 @@ export async function pushWelcome(subscription, festival) {
  * One notification to every browser subscribed to this festival, or, for a point (a phone following
  * wherever it is, festival.id 'here'), to every browser at that point. Dead subscriptions are dropped.
  */
+/** Whole sentences up to a length, so a notification never ends mid-word; the first sentence always, cut if it must be. */
+export function sentences(text, max) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1).lastIndexOf('. ');
+  return cut > 0 ? text.slice(0, cut + 1) : text.slice(0, max);
+}
 export async function pushWeb(festival, alert) {
   if (!enabled) return { sent: 0, skipped: true };
   if (!worthPushing(alert)) return { sent: 0, minor: true };
@@ -60,7 +66,7 @@ export async function pushWeb(festival, alert) {
   const urgent = alert.severity === 'extreme' || alert.severity === 'severe';
   const payload = JSON.stringify({
     title: alert.event,
-    body: `${festival.name}. ${String(alert.headline || alert.body || '').replace(/\s+/g, ' ').slice(0, 160)}`,
+    body: `${festival.name}. ${sentences(String(alert.headline || alert.body || '').replace(/\s+/g, ' '), 160)}`,
     tag: alert.id, urgent, severity: alert.severity,
     url: here ? `${SITE}?here=1&alert=${encodeURIComponent(alert.id)}` : `${SITE}?f=${encodeURIComponent(festival.id)}&alert=${encodeURIComponent(alert.id)}`,
   });
