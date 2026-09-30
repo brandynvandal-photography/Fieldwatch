@@ -333,8 +333,9 @@ function fakeBackend(list) {
       if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
       if (m === 'GET' && path === '/health') return send(200, { ok: true, at: '2026-10-23T09:00:00Z', build: '4356d78', uptimeSeconds: 61, database: { path: '/data/fieldwatch.db', onVolume: true }, festivals: 14, push: { web: true }, adminKey: true, nwsUserAgent: 'placeholder', sources: { ticketmaster: false, seatgeek: false, edmtrain: true, wikidata: 'NWS_USER_AGENT not set', feeds: false }, imports: { running: false, lastStartedAt: '2026-10-23T09:00:00Z', lastFinishedAt: '2026-10-23T09:01:00Z' } });
-      if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
-      if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
+      const sameFollow = (s, b) => s.subscription.endpoint === b.endpoint && (b.festivalId ? s.festivalId === b.festivalId : !s.festivalId);
+      if (m === 'POST' && path === '/push/subscribe') { const b = JSON.parse(raw); store.subs = store.subs.filter(s => !sameFollow(s, { endpoint: b.subscription.endpoint, festivalId: b.festivalId })); store.subs.push(b); return send(200, { ok: true }); }
+      if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => b.festivalId || b.here ? !sameFollow(s, b) : s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
       if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' });
       if (m === 'PUT' && gr) { const b = JSON.parse(raw); store.ground[gr[1]] = { ...(store.ground[gr[1]] || {}), ...b, surfaceSource: b.surface ? 'staff' : 'assumed', override: b }; return send(200, groundOf(gr[1])); }
       if (m === 'DELETE' && gr) { delete store.ground[gr[1]]; return send(200, groundOf(gr[1])); }
@@ -525,21 +526,24 @@ test('a link opens straight to a festival and its alert, and warnings can be swi
     await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('.pill'), 'Off');
     // The page asks once, on the festival page, before anyone finds the row.
-    assert.equal(await page.textContent('.ask .t'), 'Get warnings for Suwannee Hulaween on this phone');
+    assert.equal(await page.textContent('.ask .t'), 'Favorite Suwannee Hulaween?');
     await page.click('.ask button:has-text("Not now")');
     assert.equal(await page.$('.ask'), null, 'answered');
     await page.reload(); await page.waitForSelector('span.eyebrow:has-text("Right now")');
     await page.click('.group .row:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
     assert.equal(await page.$('.ask'), null, 'and not asked again');
-    await page.click('button.row:has-text("Warnings on this phone")');
+    await page.click('button.row:has-text("Favorite")');
     await page.waitForSelector('.pill.on');
+    await page.waitForFunction(() => /^Favorited Suwannee Hulaween/.test(document.querySelector('.toast.show')?.textContent || ''));
     assert.ok(store.calls.includes('GET /push/vapid') && store.calls.includes('POST /push/subscribe'));
+    assert.ok(await page.$('button.tb.fav.on'), 'the heart in the top bar fills');
     assert.equal(store.subs.length, 1);
     assert.equal(store.subs[0].festivalId, 'hulaween-2026');
     assert.deepEqual(store.subs[0].subscription, { endpoint: 'https://push.example.test/abc', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } });
     await shot(page, '11-home-push');
-    await page.click('button.row:has-text("Warnings on this phone")');
+    await page.click('button.tb.fav');
     await page.waitForSelector('.pill:not(.on)');
+    await page.waitForFunction(() => /^Removed Suwannee Hulaween/.test(document.querySelector('.toast.show')?.textContent || ''));
     assert.ok(store.calls.includes('DELETE /push/subscribe'));
     assert.equal(store.subs.length, 0);
     assert.deepEqual(seen.errors, []);
@@ -711,7 +715,7 @@ test('warnings stay on across a backend redeploy: on open the phone registers ag
     assert.equal(store.subs[0].subscription.endpoint, 'https://push.example.test/new');
     await page.click('.group .row:has-text("Suwannee Hulaween")');
     await page.waitForSelector('.sky.warn');
-    assert.equal(await page.textContent('button.row:has-text("Warnings on this phone") .pill'), 'On');
+    assert.equal(await page.textContent('button.row:has-text("Favorite") .pill'), 'On', 'the old one-festival record became a favorite');
     await page.reload();
     await page.waitForSelector('span.eyebrow:has-text("Right now")');
     assert.equal(store.calls.filter(c => c === 'POST /push/subscribe').length, 1, 'checked once an hour, not on every open');
@@ -969,4 +973,57 @@ test('the search box is left alone while you type: the list under it redraws, th
     assert.equal(await page.inputValue('#q'), ''); assert.ok(await page.$('.bubble'));
     assert.deepEqual(seen.errors, []);
   } finally { await context.close(); }
+});
+
+test('favorites: a heart on the festival page follows its warnings on this phone, several at once, listed first on the home page, and dropped one at a time', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['notifications']);
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  await page.addInitScript(() => {
+    const sub = { endpoint: 'https://push.example.test/fav', unsubscribe: async () => { window.__subscribed = false; localStorage.removeItem('__sub'); return true; }, toJSON: () => ({ endpoint: 'https://push.example.test/fav', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }) };
+    window.__subscribed = localStorage.getItem('__sub') === '1';   // a browser keeps its subscription across reloads
+    const reg = { pushManager: { getSubscription: async () => (window.__subscribed ? sub : null), subscribe: async () => { window.__subscribed = true; localStorage.setItem('__sub', '1'); return sub; } } };
+    Object.defineProperty(navigator.serviceWorker, 'ready', { get: () => Promise.resolve(reg) });
+    window.PushManager = function PushManager(){};
+  });
+  const other = FESTS.find(f => isLive(f) && f.id !== 'hulaween-2026');
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('button.row:has-text("Favorite") .pill'), 'Off');
+    await page.click('button.tb.fav'); await page.waitForSelector('button.tb.fav.on');
+    await page.waitForFunction(() => document.querySelector('.toast.show')?.textContent.startsWith('Favorited Suwannee Hulaween'));
+    assert.equal(await page.textContent('button.row:has-text("Favorite") .pill'), 'On');
+    assert.deepEqual(store.subs.map(s => s.festivalId), ['hulaween-2026']);
+    // A second favorite: the same phone, one more follow.
+    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)).then(h => h.slice(0, 1)), ['Your festivals']);
+    assert.match(await page.textContent('.group .row:has-text("Suwannee Hulaween") .s'), /Severe Thunderstorm Warning/, 'each favorite says what is happening there');
+    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    assert.ok(await page.$(`button:has-text("Suwannee Hulaween") .favmark, button:has-text("Suwannee Hulaween") .fav`), 'the list marks it');
+    await page.click(`button:has-text("${other.name}")`); await page.waitForSelector('.sky');
+    await page.click('button.row:has-text("Favorite")'); await page.waitForSelector('button.tb.fav.on');
+    await page.waitForFunction(() => /^Favorited /.test(document.querySelector('.toast.show')?.textContent || ''));
+    assert.deepEqual(store.subs.map(s => s.festivalId).sort(), ['hulaween-2026', other.id].sort());
+    assert.ok(store.subs.every(s => s.subscription.endpoint === 'https://push.example.test/fav'), 'one phone, two follows');
+    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    assert.deepEqual(await page.$$eval('.group .row .lead.fav', els => els.length), 2, 'both listed first on the home page');
+    // On open, every favorite registers again, quietly, once an hour.
+    await page.waitForFunction(() => !S.feedBusy && !S.busy);
+    await page.evaluate(() => { S.push.checked = 0; save(); });   // through the app's state, so a save landing later keeps it
+    store.subs = []; store.calls = [];
+    await page.reload(); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.waitForFunction(() => document.querySelectorAll('.group .row .lead.fav').length === 2);
+    for (let i = 0; i < 100 && store.subs.length < 2; i++) await new Promise(r => setTimeout(r, 50));
+    assert.deepEqual(store.subs.map(s => [s.festivalId, s.quiet]).sort(), [['hulaween-2026', true], [other.id, true]].sort());
+    // Dropping one keeps the other.
+    await page.click('.group .row:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
+    await page.click('button.tb.fav.on'); await page.waitForSelector('button.tb.fav:not(.on)');
+    await page.waitForFunction(() => /Removed Suwannee Hulaween/.test(document.querySelector('.toast.show')?.textContent || ''));
+    assert.deepEqual(store.subs.map(s => s.festivalId), [other.id]);
+    assert.equal(await page.evaluate(() => window.__subscribed), true, 'the browser subscription stays while a favorite remains');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

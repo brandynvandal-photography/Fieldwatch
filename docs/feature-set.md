@@ -21,7 +21,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - 12-hour radar loop with your position.
 - Live: an open page moves the second the backend does. A server-sent stream (`/events`) announces every alert that lands or ends, heads-up, lightning code, staff post and ground report, and the page refreshes just that festival or the feed; the backend asks the weather service every 30 seconds and the lightning buckets every 20.
 - Alerts for the whole grounds: NWS alerts are pulled by the festival's county and forecast zone and kept when their polygon reaches within about a mile of the grounds, so a warning drawn across the edge of a large site is not missed the way a single-point query misses it.
-- Warnings asked once: right after a festival is picked, one card on its page offers the push for it (Turn on, Not now; on an iPhone in Safari, Add to Home Screen first), and never again for that festival.
+- Favorites: the heart on a festival page follows its warnings on this phone, several festivals at once, one row per phone per festival on the backend; the home page lists your festivals first with what is happening at each, the list marks them, and a favorite of a festival that is over drops away. Right after a festival is picked, one card offers the favorite (Favorite, Not now; on an iPhone in Safari, Add to Home Screen first), and never again for that festival.
 - Web push warnings (VAPID, keys made on first boot) for a festival or for a spot, with a test notification the moment you switch on; deep links; share with a QR and a plain link.
 - Hazard reports into a moderated queue.
 - Incidents from the on-site receiver node (Pi, county public-safety radio only).
