@@ -65,8 +65,12 @@ test('what to do depends on the time there is; the heads-up reads like an alert 
   const a = headsUpAlert(festival, inc, TZ, at(0, 30));
   assert.equal(a.id, `headsup-hulaween-2026-${Math.floor(at(3) / 3_600_000)}`, 'one id per festival and starting hour, so a repeat updates rather than duplicates');
   assert.equal(a.event, 'Storms expected around 5:00 PM'); assert.equal(a.channel, 'headsup'); assert.equal(a.severity, 'moderate');
-  assert.equal(a.headline, 'Thunder chance 60%. Secure camp now, charge phones, fill water, and decide where you will shelter.');
-  assert.match(a.body, /^Thunder chance 60%\. Secure camp now.*Tents, canopies and stages are not shelter\.$/);
+  assert.equal(a.headline, 'The forecast has a 60% chance of thunder. Secure camp now, charge phones, fill water, and decide where you will shelter.');
+  assert.match(a.body, /^The forecast has a 60% chance of thunder\. Secure camp now.*Tents, canopies and stages are not shelter\.$/);
+  const wet = headsUpAlert(festival, { ...inc, hazard: 'rain', peak: { thunder: null, gust: 41, precip: 95, heat: null } }, TZ, at(0, 30));
+  assert.match(wet.body, /^The forecast has gusts to 41 mph and a 95% chance of rain\. Secure camp now/, 'a sentence whatever leads it, not "rain 95%."');
+  const three = headsUpAlert(festival, { ...inc, peak: { thunder: 60, gust: 45, precip: 70, heat: null } }, TZ, at(0, 30));
+  assert.match(three.headline, /^The forecast has a 60% chance of thunder, gusts to 45 mph and a 70% chance of rain\. /);
   assert.match(a.instruction, /^Drop pop-up canopies and flags\. Stake every loop/);
   assert.equal(a.onset, inc.startsAt); assert.equal(a.expiresAt, inc.endsAt); assert.equal(a.hazard, 'storms'); assert.equal(a.minutes, 150);
   assert.equal(a.issuedAt, new Date(at(0, 30)).toISOString()); assert.equal(a.area, 'Live Oak, FL'); assert.equal(a.source, 'Fieldwatch forecast watch');

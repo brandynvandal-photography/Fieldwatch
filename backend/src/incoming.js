@@ -95,9 +95,12 @@ export function prep(hazard, minutes) {
 /** The heads-up as an alert: pushed like a warning, listed with the alerts, and gone when the weather is. */
 export function headsUpAlert(festival, inc, tz, now = Date.now()) {
   const p = prep(inc.hazard, inc.minutes), head = headline(inc, tz);
-  const detail = inc.source === 'alert' ? '' : [inc.hazard === 'storms' && inc.peak.thunder != null ? `Thunder chance ${Math.round(inc.peak.thunder)}%` : '',
-    inc.peak.gust >= THRESHOLDS.gustMph ? `gusts to ${Math.round(inc.peak.gust)} mph` : '', inc.peak.precip >= THRESHOLDS.precip ? `rain ${Math.round(inc.peak.precip)}%` : ''].filter(Boolean).join(', ');
-  const lead = `${detail ? `${detail}. ` : ''}${p.timing}`;   // the notification's second line, under the headline
+  // What the forecast says, as a sentence: "The forecast has a 60% chance of thunder, gusts to 45 mph and a 70% chance of rain."
+  const bits = inc.source === 'alert' ? [] : [inc.hazard === 'storms' && inc.peak.thunder != null ? `a ${Math.round(inc.peak.thunder)}% chance of thunder` : '',
+    inc.peak.gust >= THRESHOLDS.gustMph ? `gusts to ${Math.round(inc.peak.gust)} mph` : '', inc.peak.precip >= THRESHOLDS.precip ? `a ${Math.round(inc.peak.precip)}% chance of rain` : '',
+    inc.peak.heat >= THRESHOLDS.heatF ? `a heat index near ${Math.round(inc.peak.heat)}°` : ''].filter(Boolean);
+  const detail = bits.length ? `The forecast has ${bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits[bits.length - 1]}` : bits[0]}.` : '';
+  const lead = `${detail ? `${detail} ` : ''}${p.timing}`;   // the notification's second line, under the headline
   return {
     id: `headsup-${festival.id}-${hourKey(Date.parse(inc.startsAt))}`, event: head, headline: lead,
     body: `${lead} ${p.shelter}`, instruction: p.camp.length ? `${p.camp.join('. ')}.` : null,
