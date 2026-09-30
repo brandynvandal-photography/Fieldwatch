@@ -424,7 +424,9 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     assert.match(await page.textContent('.kv:has-text("Surface")'), /Grass.*assumed, nothing found/s);
     await page.click('button:has-text("Look it up again")'); await page.waitForSelector('.toast.show:has-text("Looked up again")');
     assert.match(await page.textContent('.kv:has-text("Soil")'), /Blanton fine sand.*Drains fast \(A\).*USDA soil survey/s);
-    await page.click('button.chip:has-text("Blacktop")'); await page.click('button.chip:has-text("Stage or rigging")'); await page.click('button.chip:has-text("No camping")');
+    await page.click('button.chip:has-text("Paved")'); await page.click('button.chip:has-text("Stage")'); await page.click('button.chip:has-text("No camping")');
+    assert.ok((await page.$$eval('.chips', rs => rs.map(r => r.getBoundingClientRect().height))).every(h => h < 44), 'every section of chips is one line');
+    assert.deepEqual(await page.$$eval('.chips .chip', cs => cs.filter(c => c.scrollWidth > c.clientWidth).map(c => c.textContent)), [], 'and no chip is cut short');
     await page.click('button.btn:has-text("Save")'); await page.waitForSelector('.toast.show:has-text("Saved")');
     assert.ok(store.calls.includes('PUT /festivals/hulaween-2026/ground'));
     assert.deepEqual({ surface: store.ground['hulaween-2026'].surface, structures: store.ground['hulaween-2026'].structures, low: store.ground['hulaween-2026'].low, camping: store.ground['hulaween-2026'].camping }, { surface: 'pavement', structures: ['canopies', 'stage'], low: false, camping: false });

@@ -360,8 +360,8 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .qr img{width:240px;height:240px;display:block}
 .share-link{text-align:center;color:var(--muted);font-size:14px;word-break:break-all;margin:0 auto 18px;max-width:34ch}
 .field textarea{flex:1;border:0;background:none;outline:none;min-width:0;min-height:88px;resize:none;font:inherit;color:inherit;line-height:1.4}
-.chips{display:flex;gap:8px;justify-content:center;margin:0 0 16px}
-.chips.wrap{flex-wrap:wrap}
+.chips{display:flex;gap:6px;margin:0 0 16px}
+.chips .chip{flex:1 1 0;min-width:0;padding:8px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(12px,3.5vw,14px)}
 .chips.setup{margin:0 0 12px}
 /* Warnings, asked once. */
 .ask{border-radius:var(--radius);padding:16px 18px 14px;margin:12px 0 4px;text-align:center}
@@ -851,6 +851,10 @@ function outlook(f){
 // ---- the ground: what the model assumes about the grounds, and what staff know better (backend/src/ground.js) ----
 const SURFACE_LABEL = { grass: 'Grass', dirt: 'Dirt', sand: 'Sand', gravel: 'Gravel', pavement: 'Blacktop', mixed: 'Mixed' };
 const SOIL_LABEL = { A: 'Drains fast', B: 'Average', C: 'Drains slowly', D: 'Clay' };
+// The same choices, short enough for one row of chips each; the readouts keep the longer words.
+const SURFACE_CHIP = { ...SURFACE_LABEL, pavement: 'Paved' };
+const SOIL_CHIP = { A: 'Fast', B: 'Average', C: 'Slow', D: 'Clay' };
+const STRUCTURE_CHIP = { canopies: 'Canopies', inflatables: 'Inflatables', stage: 'Stage' };
 const STRUCTURE_LABEL = { canopies: 'Pop-up canopies', inflatables: 'Inflatables', stage: 'Stage or rigging' };
 const GROUND_STATE_LABEL = { fine: 'Fine', soft: 'Soft', mud: 'Mud', water: 'Water' };
 // Who is asking: tent and canopy advice only where people camp, a day visitor's list where they do not, crew's where things stand.
@@ -1683,7 +1687,7 @@ screens.lightning = () => {
 screens.ground = () => {
   const f = fest(); if (!f || f.id === 'here') return screens.picker();
   const g = data(f).ground || {}, e = S.groundEdit || (startGroundEdit(), S.groundEdit);
-  const chips = (k, opts, on) => `<div class="chips wrap">${opts.map(([v, l]) => `<button class="chip ${on(v) ? 'on' : ''}" onclick="setGround('${k}', ${typeof v === 'string' ? `'${v}'` : v})">${esc(l)}</button>`).join('')}</div>`;
+  const chips = (k, opts, on) => `<div class="chips">${opts.map(([v, l]) => `<button class="chip ${on(v) ? 'on' : ''}" onclick="setGround('${k}', ${typeof v === 'string' ? `'${v}'` : v})">${esc(l)}</button>`).join('')}</div>`;
   const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   return topbar(backBtn(), '', '') + `
     <span class="eyebrow">${esc(f.name)}</span>
@@ -1692,13 +1696,13 @@ screens.ground = () => {
     <div class="group glass">
       ${kv('Surface', `${esc(SURFACE_LABEL[g.surface] || 'Grass')}<br><span class="dim">${esc(g.surfaceSource === 'assumed' ? 'assumed, nothing found' : g.surfaceSource || 'assumed')}</span>`)}
       ${kv('Soil', `${esc(g.soilName || SOIL_LABEL[g.soil] || 'Average')}${g.soil ? ` · ${esc(SOIL_LABEL[g.soil])} (${esc(g.soil)})` : ''}<br><span class="dim">${esc(g.soilSource === 'assumed' ? 'assumed, nothing found' : g.soilSource || 'assumed')}${g.drainage ? ' · ' + esc(g.drainage.toLowerCase()) : ''}</span>`)}
-      ${kv('Rain, last 48 h', g.past && g.past.in48 != null ? `${esc(g.past.in48.toFixed(2))} in<br><span class="dim">${esc(g.past.source)}</span>` : `<span class="dim">${esc(g.pastError ? 'analysis out of reach' : 'not read yet')}</span>`)}
+      ${kv('Rain, 48 h', g.past && g.past.in48 != null ? `${esc(g.past.in48.toFixed(2))} in<br><span class="dim">${esc(g.past.source)}</span>` : `<span class="dim">${esc(g.pastError ? 'analysis out of reach' : 'not read yet')}</span>`)}
     </div>
-    <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_LABEL), v => e.surface === v)}
-    <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_LABEL), v => e.soil === v)}
+    <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_CHIP), v => e.surface === v)}
+    <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_CHIP), v => e.soil === v)}
     <p class="h">Low ground</p>${chips('low', [[true, 'Yes, it floods'], [false, 'No']], v => e.low === v)}
     <p class="h">Camping</p>${chips('camping', [[true, 'Yes, people camp'], [false, 'No camping']], v => e.camping === v)}
-    <p class="h">What is standing</p>${chips('structures', Object.entries(STRUCTURE_LABEL), v => e.structures.includes(v))}
+    <p class="h">What is standing</p>${chips('structures', Object.entries(STRUCTURE_CHIP), v => e.structures.includes(v))}
     <button class="btn" onclick="saveGround()" ${S.groundBusy ? 'disabled' : ''}>Save</button>
     <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}</div>
     <p class="note">The lookups run once per festival: the surface from OpenStreetMap under the coordinate, the soil from the USDA soil survey, the rain from the Iowa Mesonet's daily analysis. Staff settings win over all three.</p>`;
