@@ -253,6 +253,19 @@ button.row:active{background:rgba(255,255,255,.35)}
 .alerthead .eyebrow{color:inherit;opacity:.8;margin:0 0 8px}
 .alerthead h2{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:34px;line-height:1.04;font-weight:600;letter-spacing:-.012em;text-wrap:balance}
 .alerthead p{margin-top:8px;font-size:15px;opacity:.9}
+/* The one line to act on: big, plain, first. */
+.donow{border-radius:var(--radius);padding:18px 20px;margin-bottom:14px;text-align:center;background:var(--ink);color:var(--bg)}
+.donow .t{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:30px;line-height:1.05;font-weight:600;letter-spacing:-.012em;text-wrap:balance}
+.donow .s{margin-top:8px;font-size:16px;line-height:1.35;opacity:.8}
+.alerthead p span{white-space:nowrap}
+details.more{border-radius:var(--radius);margin-bottom:14px}
+details.more summary{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;font-weight:600;font-size:16px;cursor:pointer;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary .chev{transition:transform .2s}
+details.more[open] summary .chev{transform:rotate(90deg)}
+details.more .inner{padding:0 16px 14px}
+details.more .inner .todo{margin:0 0 12px;padding:0;background:none;border:0;box-shadow:none}
+details.more .body{margin-bottom:12px}
 .todo{display:flex;gap:12px;align-items:flex-start;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
 .todo .ic{width:36px;height:36px;border-radius:50%;background:rgba(23,179,122,.18);color:var(--ok);display:grid;place-items:center;flex:none}
 .todo .ic svg{width:20px;height:20px}
@@ -938,7 +951,7 @@ const countdownText = (t, bare) => { const c = fmtCountdown(Date.parse(t) - Date
 /** Every countdown on the page ticks on its own; when one reaches now, the screen is drawn again so the wording follows. */
 function tickCountdowns(){
   let arrived = false;
-  document.querySelectorAll('[data-countdown]').forEach(el => { const t = countdownText(el.dataset.countdown, el.dataset.bare); if (el.textContent !== t) { if (t === 'now') arrived = true; el.textContent = t; } });
+  document.querySelectorAll('[data-countdown]').forEach(el => { const t = el.dataset.left ? leftText(el.dataset.countdown) : countdownText(el.dataset.countdown, el.dataset.bare); if (el.textContent !== t) { if (t === 'now' || t === 'ending') arrived = true; el.textContent = t; } });
   if (arrived && (S.screen === 'home' || S.screen === 'prep' || S.screen === 'weather')) render();
 }
 function incomingLine(inc){
@@ -1193,7 +1206,7 @@ screens.home = () => {
   const d = data(f), al = skyAlerts(f), lv = d.alerts ? level(f) : (d.error ? 'none' : 'loading');
   const strip = (d.hourly || []).slice(0, 6);
   const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories`) : lv === 'ok' ? 'All clear' : lv === 'none' ? 'No weather data' : '';
-  const line = lv === 'warn' ? 'Take shelter now. Stages and tents are not safe shelter.'
+  const line = lv === 'warn' ? (act => act ? `${act[0]}. ${act[1]}` : 'Take shelter now. Stages and tents are not safe shelter.')(actionFor(al.find(isWarning)))
              : lv === 'watch' ? (al[0].expiresAt ? `Until ${fmtWhen(al[0].expiresAt)}` : 'Tap for details')
              : lv === 'ok' ? outlook(f) || `No alerts for ${f.county || 'this spot'}`
              : lv === 'none' ? statusLine(f) : '';
@@ -1296,16 +1309,20 @@ screens.radar = () => {
 screens.alert = id => {
   const f = fest(); const a = (data(f).alerts || []).find(x => x.id === id);
   if (!a) return topbar(backBtn(), '', '') + (S.busy && !data(f).alerts ? `<div class="card glass" style="margin-top:22px"><h3>Checking</h3></div>` : `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`);
-  const warn = isWarning(a), hu = a.channel === 'headsup', { sections, paragraphs } = parseNWS(a.body);
-  const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim();
+  const warn = isWarning(a), hu = a.channel === 'headsup', { sections, paragraphs } = parseNWS(a.body), act = actionFor(a);
+  const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim(), ours = hu || a.channel === 'lightning';
+  const when = hu && a.onset ? `Expected ${fmtTime(a.onset)} · <span data-countdown="${esc(a.onset)}">${esc(countdownText(a.onset))}</span>`
+    : a.expiresAt ? `Until ${esc(fmtTime(a.expiresAt))} · <span data-countdown="${esc(a.expiresAt)}" data-left="1">${esc(leftText(a.expiresAt))}</span>` : esc(a.area);
+  const todo = instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${hu ? 'Solidify camp' : 'What to do'}</div><p>${esc(instruction)}</p></div></div>` : '';
   return topbar(backBtn(), '', `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>`) + `
-    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p>${hu && a.onset ? 'Expected ' + esc(fmtFull(a.onset)) : a.expiresAt ? 'Until ' + esc(fmtFull(a.expiresAt)) : esc(a.area)}</p></div>
-    ${instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${hu ? 'Solidify camp' : 'What to do'}</div><p>${esc(instruction)}</p></div></div>` : ''}
+    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p class="num">${when}</p></div>
+    ${act ? `<div class="donow ${warn ? 'warn' : ''}"><div class="t">${esc(act[0])}</div><div class="s">${esc(act[1])}</div></div>` : ''}
+    ${ours ? todo : ''}
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
     ${a.channel === 'lightning' ? `<div class="group glass"><button class="row" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Lightning right now</div><div class="s">The code, the nearest flash, the all-clear</div></div>${I.chev}</button></div>` : ''}
     ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'AirDrop reaches phones nearby with no signal. Ask them to set AirDrop to Everyone for 10 minutes.' : 'Nearby share reaches phones with no signal. Or text it.'}</p>` : ''}
     ${sections.length ? `<div class="group glass">${sections.map(s => `<div class="kv"><span class="k">${esc(s.label)}</span><span class="v">${esc(s.text)}</span></div>`).join('')}</div>` : ''}
-    ${paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('')}
+    ${!ours && (instruction || paragraphs.length) ? `<details class="more glass"><summary>Full alert${I.chev}</summary><div class="inner">${todo}${paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('')}</div></details>` : ours ? paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('') : ''}
     <div class="group glass">
       <div class="kv"><span class="k">Area</span><span class="v">${esc(a.area)}</span></div>
       <div class="kv"><span class="k">Source</span><span class="v">${esc(a.source)}</span></div>
@@ -1314,6 +1331,27 @@ screens.alert = id => {
     </div>
     <p class="note">Saved on this phone. Opens without signal.</p>`;
 };
+
+// ---- the one line to act on. A person in a panic reads the first line and nothing else, so every alert opens with one ----
+// imperative under eight words and one line of what not to do; the long text folds away under it.
+const ACTION = {
+  tornado: { warn: ['Get to the shelter now', 'Lowest floor of a solid building. Not a tent, not a car.'], watch: ['Know where the shelter is', 'Keep the phone on and charged.'] },
+  storms:  { warn: ['Get into a vehicle or building', 'Not a tent, canopy or stage.'], watch: ['Know your shelter', 'A hard-topped vehicle or a building. Not a tent.'] },
+  hail:    { warn: ['Get under a solid roof', 'Not a tent or canopy.'], watch: ['Know your shelter', 'Lay canopies flat before it comes.'] },
+  wind:    { warn: ['Stay clear of tents and stages', 'Get into a vehicle or building if it turns dangerous.'], watch: ['Tie everything down', 'Drop pop-up canopies; they fly.'] },
+  flood:   { warn: ['Move to high ground now', 'Never walk or drive through moving water.'], watch: ['Know the route to high ground', 'Move the tent off low ground.'] },
+  heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbours.'] },
+  rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
+};
+/** [do, and] for an alert: the festival's own protocol for lightning, the timing line for a heads-up, the hazard for a warning. */
+function actionFor(a){
+  if (a.channel === 'lightning') return a.code === 'red' || isWarning(a) ? ['Shelter now', 'Full work stoppage. Not a tent, canopy or stage.'] : ['Head for shelter', 'Evacuation procedures. Staff hold posts.'];
+  if (a.channel === 'headsup') return [timing(a.hazard || alertHazard(a.event) || 'storms', a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - Date.now()) / 60000)) : 999).replace(/\.$/, ''), (PREP[a.hazard || 'storms'] || PREP.storms).camp[0] + '.'];
+  const hz = alertHazard(a.event); if (!hz) return null;
+  return ACTION[hz][isWarning(a) || /warning/i.test(a.event || '') ? 'warn' : 'watch'];
+}
+/** How long an alert has left, for the head: "42 min left", or nothing once it is ending. */
+const leftText = t => { const c = fmtCountdown(Date.parse(t) - Date.now()); return c === 'now' ? 'ending' : `${c} left`; };
 /** Shelter, camp, a timeline you are somewhere on, and what to pack, for whatever is on the way. */
 screens.prep = () => {
   const f = fest(); if (!f) return screens.picker();

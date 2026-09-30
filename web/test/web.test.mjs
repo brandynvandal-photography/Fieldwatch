@@ -126,7 +126,7 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   const { page, context, seen } = await newPage();
   await pickHulaween(page);
   assert.equal(await page.textContent('.sky h2'), 'Severe Thunderstorm Warning');
-  assert.match(await page.textContent('.sky p'), /Take shelter now/);
+  assert.equal(await page.textContent('.sky p'), 'Get into a vehicle or building. Not a tent, canopy or stage.', 'the sky says the one thing to do for this warning');
   assert.equal(await page.$$eval('.sky .strip .c', els => els.length), 6, 'six hours inside the status card');
   assert.match(await page.textContent('.sky .foot'), /Checked just now/);
   assert.equal(await page.textContent('button.orb:has-text("Alerts") .badge'), '1');
@@ -185,7 +185,12 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   await row.click();
   await page.waitForSelector('.alerthead');
   assert.equal(await page.textContent('.alerthead h2'), 'Severe Thunderstorm Warning');
-  assert.match(await page.textContent('.todo p'), /interior room/, 'the instruction is pulled up top as what to do');
+  assert.equal(await page.textContent('.donow .t'), 'Get into a vehicle or building', 'the first thing on a warning is one line to act on');
+  assert.equal(await page.textContent('.donow .s'), 'Not a tent, canopy or stage.');
+  assert.match(await page.textContent('.alerthead p'), /^Until 3:00 PM · .* left$/, 'and how long it has left, as a number');
+  assert.ok(!(await page.$('details.more[open]')), 'the long text is folded');
+  await page.click('details.more summary');
+  assert.match(await page.textContent('.todo p'), /interior room/, 'the weather service instruction is under Full alert');
   assert.match(await page.textContent('.body'), /near Live Oak/);
   assert.match(await page.textContent('.group'), /NWS Jacksonville FL/);
   const parsed = await page.evaluate(() => parseNWS('* WHAT...Southwest winds 20 to 30 mph.\n\n* WHERE...Riverside County valleys.\n\n* WHEN...Until 8 PM.\n\nSecure tents before 2 PM.'));

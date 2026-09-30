@@ -66,6 +66,7 @@ Hazard categories live in two places on purpose (node must classify offline): `b
 - Backend: ESM, no build step, prepared statements in `db.js` only, all env in `.env.example`, async routes wrapped so a rejected promise becomes a JSON 500 instead of a crash. Tests are `node:test` in `backend/test/`.
 - Node: one file, stdlib plus faster-whisper. Anything that must be testable without hardware is a function (`process_call`, `upload_once`), and the loops just call them.
 - Copy in the UI is sentence case, plain, short. The prototype has the reference wording for every screen.
+- Panic first: someone opening an alert may read one line and nothing else. Every alert opens with one imperative under eight words and one line of what not to do (`ACTION`, `actionFor` in the web build), then the time left as a number; the weather service's own text folds away under "Full alert". Numbers and countdowns beat sentences; a screen for a calm moment (prep, the codes) may explain, a screen for a warning may not.
 - Emergency alerts from carriers (WEA) are not something we replace; the UI tells users to keep them on.
 
 ## Things to verify early
