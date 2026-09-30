@@ -80,6 +80,11 @@ export const grid = {
     quantitativePrecipitation: { uom: 'wmoUnit:mm', values: [
       { validTime: gridTime(0, 'PT6H'), value: 2.54 }, { validTime: gridTime(6, 'PT6H'), value: 12.7 }, { validTime: gridTime(12, 'P1DT6H'), value: 0 },
     ] },
+    // Air temperature, humidity, wind and cloud behind the heat estimate: a warm, humid, cloudy evening, green flag.
+    temperature: { uom: 'wmoUnit:degC', values: Array.from({ length: 12 }, (_, h) => ({ validTime: gridTime(h), value: fToC(84 - h) })) },
+    relativeHumidity: { uom: 'wmoUnit:percent', values: [{ validTime: gridTime(0, 'PT12H'), value: 65 }] },
+    windSpeed: { uom: 'wmoUnit:km_h-1', values: [{ validTime: gridTime(0, 'PT12H'), value: 16.09 }] },
+    skyCover: { uom: 'wmoUnit:percent', values: [{ validTime: gridTime(0, 'PT12H'), value: 70 }] },
     probabilityOfThunder: { uom: 'wmoUnit:percent', values: [
       { validTime: gridTime(0, 'PT3H'), value: 20 }, { validTime: gridTime(3, 'PT3H'), value: 40 }, { validTime: gridTime(6, 'PT2H'), value: 60 },
       { validTime: gridTime(8, 'PT4H'), value: 30 }, { validTime: gridTime(12, 'P1DT12H'), value: 0 },

@@ -5,7 +5,7 @@
 const HOUR = 3600000;
 // Lines the forecast has to cross: chance of thunder (%), gusts (mph), rain in the window (inches) with the chance of
 // rain (%) standing in when the grid has no amount, hourly rain that counts as raining (inches), heat index (°F).
-const THRESHOLDS = { thunder: 30, gustMph: 30, precip: 60, rainIn: 0.25, rainInHr: 0.02, heatF: 100 };
+const THRESHOLDS = { thunder: 30, gustMph: 30, precip: 60, rainIn: 0.25, rainInHr: 0.02, heatF: 100, wbgtF: 85 };
 // Gust lines by what is standing: inflatables come down at 20 mph, pop-up canopies fail around 30, stages and rigging hold to 40.
 const WIND_LINES = { inflatables: 20, canopies: 30, stage: 40 };
 const WIND_LABEL = { inflatables: 'inflatables line', canopies: 'canopy line', stage: 'stage hold line' };
@@ -44,8 +44,23 @@ function allocate(series, hourly = []) {
   return out;
 }
 const cToF = c => c * 9 / 5 + 32, kmhToMph = k => k / 1.609;
-/** The grid's hour-by-hour numbers the model reads: heat index (°F), gusts (mph), chance of thunder (%), rain (inches in the hour). */
-const spreadGrid = (g, hourly = []) => ({ heat: spread(g?.heatIndex, cToF), gust: spread(g?.windGust, kmhToMph), thunder: spread(g?.probabilityOfThunder), rain: allocate(g?.quantitativePrecipitation, hourly) });
+/** The grid's hour-by-hour numbers the model reads: heat index (°F), gusts (mph), chance of thunder (%), rain (inches in the hour), and what the heat estimate needs. */
+const spreadGrid = (g, hourly = []) => ({ heat: spread(g?.heatIndex, cToF), gust: spread(g?.windGust, kmhToMph), thunder: spread(g?.probabilityOfThunder), rain: allocate(g?.quantitativePrecipitation, hourly),
+  temp: spread(g?.temperature, cToF), rh: spread(g?.relativeHumidity), wind: spread(g?.windSpeed, kmhToMph), sky: spread(g?.skyCover) });
+// Heat by exertion: the heat index is a shade number for someone at rest. An estimated wet-bulb globe temperature (Stull's wet
+// bulb, a globe warmed by the sun less cloud and wind, the standard 0.7/0.2/0.1 blend) is what work-rest guidance uses, and it
+// earns a flag. Red or black is a heat hazard on its own, whatever the heat index says.
+const HEAT_FLAGS = [['black', 88, 'Black flag: stop heavy work. Work 20, rest 40 in shade, water every 15 minutes.'], ['red', 85, 'Red flag: work 30, rest 30 in shade, water every 15 minutes.'],
+  ['yellow', 82, 'Yellow flag: work 40, rest 20, water every 20 minutes.'], ['green', 0, 'Green flag: work 50, rest 10, water every 20 minutes.']];
+function wbgtF(tempF, rh, windMph = 0, sky = 0) {
+  if (tempF == null || rh == null) return null;
+  const t = (tempF - 32) * 5 / 9, h = Math.max(1, Math.min(100, rh));
+  const tw = t * Math.atan(0.151977 * Math.sqrt(h + 8.313659)) + Math.atan(t + h) - Math.atan(h - 1.676331) + 0.00391838 * Math.pow(h, 1.5) * Math.atan(0.023101 * h) - 4.686035;
+  const tg = t + 12 * (1 - Math.max(0, Math.min(100, sky || 0)) / 100) - Math.min(5, 0.4 * (windMph || 0));
+  return Math.round((0.7 * tw + 0.2 * tg + 0.1 * t) * 9 / 5 * 10) / 10 + 32;
+}
+const heatFlag = w => w == null ? null : HEAT_FLAGS.find(([, at]) => w >= at)[0];
+const flagText = flag => (HEAT_FLAGS.find(([f]) => f === flag) || [])[2] || '';
 const alertHazard = event => (ALERT_HAZARD.find(([re]) => re.test(event || '')) || [null, null])[1];
 /**
  * What is coming: { hazard, startsAt, endsAt, minutes, source: 'forecast' | 'alert', event?, peak } or null. The forecast window
@@ -57,11 +72,12 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
       const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
+      const wbgt = wbgtF(grid.temp?.[k] ?? null, grid.rh?.[k] ?? null, grid.wind?.[k] ?? 0, grid.sky?.[k] ?? 0);
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
       if (gust >= gustLine) hazards.push('wind');
-      if (heat >= THRESHOLDS.heatF) hazards.push('heat');
-      return { t, hazards, thunder, gust, heat, precip, rain, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
+      if (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF) hazards.push('heat');
+      return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
   // A run of wet hours is rain when it adds up: a drizzle that never reaches rainIn is not worth a heads-up.
   for (let i = 0; i < marks.length; i++) {
@@ -80,7 +96,8 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date
     const peakOf = key => win.reduce((b, m) => (m[key] != null && (b == null || m[key] > b) ? m[key] : b), null);
     const rainIn = win.some(m => m.rain != null) ? Math.round(win.reduce((s, m) => s + (m.rain || 0), 0) * 100) / 100 : null;
     forecast = { hazard: PRIORITY.find(p => all.has(p)), startsAt: new Date(Math.max(now, marks[i].t)).toISOString(), endsAt: new Date(marks[j].t + HOUR).toISOString(),
-      source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100 } };
+      source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), wbgt: peakOf('wbgt'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100 } };
+    if (forecast.peak.wbgt != null) forecast.flag = heatFlag(forecast.peak.wbgt);
     if (rainIn != null && all.has('rain')) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
     if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)) };
   }
@@ -180,14 +197,15 @@ function timing(hazard, m) {
 // ==== shared: end ====
 
 // ---- backend only: the wording of a push, in the festival's own clock ----
-export { THRESHOLDS, WIND_LINES, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, campFor, deadlines, taskMinutes, timing };
+export { THRESHOLDS, WIND_LINES, HEAT_FLAGS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, wbgtF, heatFlag, flagText, campFor, deadlines, taskMinutes, timing };
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 export const clock = (t, tz) => { try { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz || 'UTC' }).format(new Date(t)); } catch { return new Date(t).toISOString().slice(11, 16) + 'Z'; } };
 /** One line for a notification: what, and when. */
 export function headline(inc, tz) {
   const at = inc.minutes <= 0 ? 'now' : `around ${clock(inc.startsAt, tz)}`;
   if (inc.source === 'alert') return `${inc.event} ${inc.minutes <= 0 ? 'in effect now' : `begins ${clock(inc.startsAt, tz)}`}`;
   if (inc.hazard === 'wind') return `Gusts to ${Math.round(inc.peak.gust)} mph${inc.wind && inc.wind.crossed.length ? `, past ${lineWords(inc.wind.crossed)},` : ''} expected ${at}`;
-  if (inc.hazard === 'heat') return `Heat index near ${Math.round(inc.peak.heat)}° expected ${at}`;
+  if (inc.hazard === 'heat') return inc.flag === 'red' || inc.flag === 'black' ? `${cap(inc.flag)} flag heat expected ${at}` : `Heat index near ${Math.round(inc.peak.heat)}° expected ${at}`;
   if (inc.hazard === 'rain' && inc.mud) return `${TIER[inc.mud.tier].label} expected ${at}`;
   return `${LABEL[inc.hazard] || 'Weather'} expected ${at}`;
 }
@@ -213,15 +231,16 @@ export function headsUpAlert(festival, inc, tz, now = Date.now(), ground = {}) {
   const crossed = (inc.wind && inc.wind.crossed) || [];
   const bits = inc.source === 'alert' ? [] : [inc.hazard === 'storms' && pk.thunder != null ? `a ${Math.round(pk.thunder)}% chance of thunder` : '',
     crossed.length ? `gusts to ${Math.round(pk.gust)} mph past ${lineWords(crossed)}` : pk.gust >= THRESHOLDS.gustMph ? `gusts to ${Math.round(pk.gust)} mph` : '', raining && !mud ? rainWords(pk) : '',
-    pk.heat >= THRESHOLDS.heatF ? `a heat index near ${Math.round(pk.heat)}°` : ''].filter(Boolean);
+    pk.heat >= THRESHOLDS.heatF ? `a heat index near ${Math.round(pk.heat)}°` : '', inc.flag === 'red' || inc.flag === 'black' ? `${inc.flag} flag heat for anyone working or dancing` : ''].filter(Boolean);
   const detail = bits.length ? `The forecast has ${bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits[bits.length - 1]}` : bits[0]}.` : '';
   // The notification's second line: the first thing to do and when, then the forecast, then what the rain does to the ground. The push keeps whole sentences up to its limit.
   const lead = [first, detail, mud].filter(Boolean).join(' ') || p.timing;
+  const flagLine = inc.hazard === 'heat' && (inc.flag === 'red' || inc.flag === 'black') ? ` ${flagText(inc.flag)}` : '';
   return {
     id: `headsup-${festival.id}-${hourKey(Date.parse(inc.startsAt))}`, event: head, headline: lead,
-    body: `${lead} ${p.timing} ${p.shelter}`, instruction: plan.length ? `${plan.map(d => taskLine(d, tz)).join('. ')}.` : null,
+    body: `${lead} ${p.timing}${flagLine} ${p.shelter}`, instruction: plan.length ? `${plan.map(d => taskLine(d, tz)).join('. ')}.` : null,
     severity: 'moderate', area: festival.location, source: 'Fieldwatch forecast watch', issuedAt: new Date(now).toISOString(),
     onset: inc.startsAt, expiresAt: inc.endsAt || new Date(Date.parse(inc.startsAt) + 3 * HOUR).toISOString(), channel: 'headsup', relayCount: 0, hazard: inc.hazard, minutes: inc.minutes,
-    ...(inc.mud ? { mud: inc.mud.tier } : {}), plan: plan.map(d => ({ task: d.task, startBy: d.startBy })),
+    ...(inc.mud ? { mud: inc.mud.tier } : {}), ...(inc.flag ? { flag: inc.flag } : {}), plan: plan.map(d => ({ task: d.task, startBy: d.startBy })),
   };
 }

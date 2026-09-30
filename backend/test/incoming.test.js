@@ -2,11 +2,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hourly, grid } from './fixtures/nws.js';
-import { TIER, THRESHOLDS, alertHazard, allocate, campFor, deadlines, groundWords, headline, headsUpAlert, incoming, lineWords, mudTier, mudWords, prep, spreadGrid, windLine } from '../src/incoming.js';
+import { TIER, THRESHOLDS, alertHazard, allocate, campFor, deadlines, flagText, groundWords, headline, headsUpAlert, heatFlag, incoming, lineWords, mudTier, mudWords, prep, spreadGrid, wbgtF, windLine } from '../src/incoming.js';
 
 // The fixtures as the poller sees them: 48 hours from 18:00Z, thunder 40% from hour 3 and 60% at hours 6-7, gusts peaking at 34 mph, heat index 96.
 const periods = hourly.properties.periods.map(x => ({ startTime: x.startTime, temperature: x.temperature, shortForecast: x.shortForecast, windSpeed: x.windSpeed, precipChance: x.probabilityOfPrecipitation?.value ?? null }));
-const g = spreadGrid({ heatIndex: grid.properties.heatIndex, windGust: grid.properties.windGust, probabilityOfThunder: grid.properties.probabilityOfThunder, quantitativePrecipitation: grid.properties.quantitativePrecipitation }, periods);
+const g = spreadGrid({ heatIndex: grid.properties.heatIndex, windGust: grid.properties.windGust, probabilityOfThunder: grid.properties.probabilityOfThunder, quantitativePrecipitation: grid.properties.quantitativePrecipitation,
+  temperature: grid.properties.temperature, relativeHumidity: grid.properties.relativeHumidity, windSpeed: grid.properties.windSpeed, skyCover: grid.properties.skyCover }, periods);
 const at = (h, m = 0) => Date.UTC(2026, 9, 23, 18 + h, m);
 const TZ = 'America/New_York';
 const festival = { id: 'hulaween-2026', name: 'Suwannee Hulaween', location: 'Live Oak, FL' };
@@ -133,4 +134,23 @@ test('deadlines: each task starts its length plus ten minutes before the arrival
   assert.deepEqual(plan.map(d => [d.task.split(' ')[0], d.minutes, new Date(d.startBy).toISOString().slice(11, 16), d.late]), [['Move', 60, '19:50', false], ['Stake', 15, '20:35', false], ['Drop', 5, '20:45', false], ['Know', 0, '20:50', false]]);
   const late = deadlines(start, ['Move the car to hard ground', 'Drop pop-up canopies and flags'], at(2, 30));
   assert.equal(late[0].late, true); assert.equal(late[0].startBy, new Date(at(2, 30)).toISOString(), 'the car should have moved already: now'); assert.equal(late[1].late, false);
+});
+
+test('heat by exertion: an estimated wet-bulb globe temperature earns a flag, and red or black is a hazard whatever the heat index', () => {
+  assert.equal(wbgtF(null, 50), null); assert.equal(wbgtF(80, null), null);
+  const sun = wbgtF(93, 45, 0, 0), shade = wbgtF(85, 60, 8, 50);
+  assert.ok(sun >= 85 && sun < 88, `93° and 45% in full sun is a red flag day: ${sun}`); assert.equal(heatFlag(sun), 'red');
+  assert.ok(shade < 82, `85° and 60% under half cloud with a breeze is green: ${shade}`); assert.equal(heatFlag(shade), 'green');
+  assert.ok(wbgtF(96, 55, 3, 10) >= 88, 'black at 96° and 55%'); assert.ok(wbgtF(93, 45, 0, 0) > wbgtF(93, 45, 15, 0), 'wind cools the globe'); assert.ok(wbgtF(93, 45, 0, 0) > wbgtF(93, 45, 0, 90), 'so does cloud');
+  assert.match(flagText('red'), /^Red flag: work 30, rest 30/); assert.match(flagText('black'), /stop heavy work/); assert.equal(flagText(null), '');
+  const inc = incoming({ hourly: periods, grid: g, now: at(0, 30) });
+  assert.equal(inc.flag, 'green', 'the fixture evening is green'); assert.ok(inc.peak.wbgt < 82);
+  // A clear, calm 90° afternoon at 55%: the heat index stays under 100, the wet-bulb globe says red.
+  const hot = { ...g, thunder: {}, rain: {}, gust: {}, temp: Object.fromEntries(Object.keys(g.temp).map(k => [k, 90])), rh: Object.fromEntries(Object.keys(g.rh).map(k => [k, 55])), wind: {}, sky: {} };
+  const red = incoming({ hourly: periods, grid: hot, now: at(0, 30) });
+  assert.equal(red.hazard, 'heat'); assert.equal(red.flag, 'red'); assert.ok(red.peak.heat < THRESHOLDS.heatF, 'the heat index alone would not have called it'); assert.ok(red.peak.wbgt >= 85);
+  assert.equal(headline(red, TZ), 'Red flag heat expected now', 'from the first hour');
+  const a = headsUpAlert(festival, red, TZ, at(0, 30));
+  assert.equal(a.flag, 'red'); assert.match(a.headline, /red flag heat for anyone working or dancing\.$/); assert.match(a.body, /Red flag: work 30, rest 30 in shade, water every 15 minutes\./);
+  assert.equal(campFor(red)[0], 'Shade over the tent, not only inside it');
 });
