@@ -59,6 +59,7 @@ export function normalizeFestival(input = {}, { base = null, origin = 'curated',
   const note = text(f.note, 300); if (note) out.note = note;
   if (f.submittedAt) out.submittedAt = f.submittedAt;
   if (f.ground && typeof f.ground === 'object') out.ground = f.ground;   // what the lookups found and what staff set (ground.js)
+  if (f.camping === true || f.camping === false) out.camping = f.camping;   // whether people camp here: tent and canopy advice only where they do
   return { festival: out };
 }
 

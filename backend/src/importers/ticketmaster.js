@@ -3,7 +3,7 @@
 // self-serve ticketing, where small independents turn up). A free key from developer.ticketmaster.com
 // allows 5,000 calls a day; one run here uses around 150. Per-day listings fold into one festival
 // (common.js), add-ons are dropped, and anything already listed from another source is left alone.
-import { ADD_ON, CANCELLED, FESTY, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, normalizeName, plainlyNotFestival, errorText } from './common.js';
+import { ADD_ON, CAMPING, CANCELLED, FESTY, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, normalizeName, plainlyNotFestival, errorText } from './common.js';
 import { iso } from '../util.js';
 
 export { normalizeName };
@@ -17,10 +17,15 @@ const DAY = 86_400_000;
  * A trusted listing (one Front Gate sells) skips the is-it-a-festival check: "Electric Forest" has
  * no "fest" in its name and Ticketmaster often lists the festival itself as its only attraction.
  */
-export function candidate(ev, { trusted = false } = {}) {
+export function candidate(ev, { trusted = false, campingAt = null } = {}) {
   if (!ev || ev.test) return null;
   const name = ev.name || '';
-  if (!name || ADD_ON.test(name) || CANCELLED.test(name)) return null;
+  if (ADD_ON.test(name)) {   // a pass or a parking add-on is not a festival, but a camping pass says the festival has camping
+    const v = ev._embedded?.venues?.[0];
+    if (campingAt && CAMPING.test(name) && v) campingAt.add(v.id ? String(v.id) : `${Number(v.location?.latitude).toFixed(2)},${Number(v.location?.longitude).toFixed(2)}`);
+    return null;
+  }
+  if (!name || CANCELLED.test(name)) return null;
   if (/^(cancell?ed|postponed)$/i.test(ev.dates?.status?.code || '')) return null;
   if (!trusted && plainlyNotFestival(name)) return null;   // a tour, a benefit concert or a promoter's show styled "festival"
   const c = (ev.classifications || []).find(x => x.primary) || (ev.classifications || [])[0] || {};
@@ -43,7 +48,7 @@ export function candidate(ev, { trusted = false } = {}) {
 }
 
 export const festivalsFrom = (events, today, trustedIds = new Set()) =>
-  groupListings(events.map(ev => candidate(ev, { trusted: trustedIds.has(ev?.id) })), { origin: 'ticketmaster', prefix: 'tm', today });
+  (campingAt => groupListings(events.map(ev => candidate(ev, { trusted: trustedIds.has(ev?.id), campingAt })), { origin: 'ticketmaster', prefix: 'tm', today, campingAt }))(new Set());
 
 /** Which ticket sites the listings came from, so the first real run shows what each net caught. */
 const hosts = found => found.reduce((m, f) => { try { const h = new URL(f.source).hostname.replace(/^www\./, ''); m[h] = (m[h] || 0) + 1; } catch {} return m; }, {});

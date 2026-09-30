@@ -362,6 +362,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .field textarea{flex:1;border:0;background:none;outline:none;min-width:0;min-height:88px;resize:none;font:inherit;color:inherit;line-height:1.4}
 .chips{display:flex;gap:8px;justify-content:center;margin:0 0 16px}
 .chips.wrap{flex-wrap:wrap}
+.chips.setup{margin:0 0 12px}
 .kv .dim{color:var(--muted);font-size:13px}
 .chip{padding:8px 16px;border-radius:999px;font-size:14px;font-weight:600;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink)}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
@@ -423,10 +424,10 @@ let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {} }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -847,6 +848,19 @@ const SURFACE_LABEL = { grass: 'Grass', dirt: 'Dirt', sand: 'Sand', gravel: 'Gra
 const SOIL_LABEL = { A: 'Drains fast', B: 'Average', C: 'Drains slowly', D: 'Clay' };
 const STRUCTURE_LABEL = { canopies: 'Pop-up canopies', inflatables: 'Inflatables', stage: 'Stage or rigging' };
 const GROUND_STATE_LABEL = { fine: 'Fine', soft: 'Soft', mud: 'Mud', water: 'Water' };
+// Who is asking: tent and canopy advice only where people camp, a day visitor's list where they do not, crew's where things stand.
+const SETUP_LABEL = { camping: "I'm camping", day: 'Day visitor', crew: 'Crew or vendor' };
+const campingAt = f => { const g = data(f).ground || {}; return g.camping != null ? g.camping : f.camping === true || f.camping === false ? f.camping : null; };
+function setupFor(f){
+  const camping = campingAt(f), chosen = (S.setups || {})[f.id];
+  if (chosen && !(chosen === 'camping' && camping === false)) return chosen;
+  return camping === true ? 'camping' : 'day';
+}
+function setSetup(v){ const f = fest(); if (!f) return; S.setups = { ...(S.setups || {}), [f.id]: v }; save(); render(); }
+function setupRow(f){
+  const camping = campingAt(f), on = setupFor(f), opts = Object.entries(SETUP_LABEL).filter(([v]) => v !== 'camping' || camping !== false);
+  return `<div class="chips setup">${opts.map(([v, l]) => `<button class="chip ${on === v ? 'on' : ''}" onclick="setSetup('${v}')">${esc(l)}</button>`).join('')}</div>${camping === false ? '<p class="note">No camping at this festival.</p>' : ''}`;
+}
 /** One tap from the field: what the ground is doing right now. The venue learns how much rain it takes from these. */
 async function reportGround(state){
   const f = fest(), b = backend(); if (!f || f.id === 'here') return;
@@ -877,7 +891,7 @@ function groundLine(g){
 }
 function startGroundEdit(){
   const f = fest(), g = (f && data(f).ground) || {}, o = g.override || {};
-  S.groundEdit = { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: (o.structures || g.structures || ['canopies']).slice() };
+  S.groundEdit = { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: (o.structures || g.structures || ['canopies']).slice(), camping: o.camping ?? g.camping ?? (f && (f.camping === true || f.camping === false) ? f.camping : null) };
 }
 function setGround(k, v){
   const e = S.groundEdit; if (!e) return;
@@ -1058,12 +1072,14 @@ const rainWords = p => p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.ra
 const MUD_IN = { A: 1.5, B: 0.75, C: 0.5, D: 0.3 };
 const SURFACE_X = { grass: 1, dirt: 0.6, gravel: 2.5, mixed: 1.2 };
 const TIER = {
-  wet:    { label: 'Rain', line: 'Wet, not muddy', camp: ['Rain shell and a tarp over the tent', 'Bins and bags off the floor', 'Seal a dry set of clothes in a bag'] },
-  soft:   { label: 'Mud', line: 'Paths will be soft and muddy', camp: ['Move the car to hard ground', 'Bins and bags off the floor', 'Boots, and a dry route to the stages', 'Tarp over, not under, so water sheds'] },
-  deep:   { label: 'Deep mud', line: 'Fields will not hold vehicles', camp: ['Anything that must leave, leaves before it starts', 'Move the car to hard ground', 'Tarp over the tent floor, gear in bins', 'Expect fields closed to vehicles after'] },
-  water:  { label: 'Standing water', line: 'Low ground will flood', camp: ['Move the tent off low ground', 'Bins and bags off the floor', 'Know the route to high ground', 'Move the car to hard ground'] },
-  slick:  { label: 'Rain', line: 'Slick ground and puddles', camp: ['Keep gear off the ground', 'Rain shell', 'Watch your footing on painted lines and metal plates'] },
-  runoff: { label: 'Heavy rain', line: 'Runoff into the low end', camp: ['Keep gear off the ground', 'Weigh down anything light; runoff moves it', 'Plan the walk around the low end', 'Stay out of underpasses and drains'] },
+  wet:    { label: 'Rain', line: 'Wet, not muddy', camping: ['Rain shell and a tarp over the tent', 'Bins and bags off the floor', 'Seal a dry set of clothes in a bag'], day: ['Rain shell, and a bag for the phone', 'Boots if you have them'] },
+  soft:   { label: 'Mud', line: 'Paths will be soft and muddy', camping: ['If the car can still move to hard ground, move it now; if not, plan to leave after the ground dries', 'Bins and bags off the floor', 'Boots, and a dry route to the stages', 'Tarp over, not under, so water sheds'],
+            day: ['Boots and a rain shell', 'The lot will be slow: leave before it starts, or wait it out', 'Keep the phone and cash dry', 'Plan the walk around the low end'] },
+  deep:   { label: 'Deep mud', line: 'Fields will not hold vehicles', camping: ['Anything that must leave, leaves before it starts', 'If you stay, plan to wait for the ground to dry, not to drive out', 'Tarp over the tent floor, gear in bins', 'Expect fields closed to vehicles after'],
+            day: ['If you must be somewhere, leave before it starts', 'If you stay, plan to wait it out; the lot will not clear', 'Boots; the walk out will be mud', 'Keep the phone and cash dry'] },
+  water:  { label: 'Standing water', line: 'Low ground will flood', camping: ['Move the tent off low ground', 'Bins and bags off the floor', 'Know the route to high ground', 'If the car sits low and can still move, move it'], day: ['Know the route to high ground', 'Keep off the low end', 'Keep the phone and cash dry'] },
+  slick:  { label: 'Rain', line: 'Slick ground and puddles', camping: ['Keep gear off the ground', 'Rain shell', 'Watch your footing on painted lines and metal plates'], day: ['Rain shell, and a bag for the phone', 'Watch your footing on painted lines and metal plates'] },
+  runoff: { label: 'Heavy rain', line: 'Runoff into the low end', camping: ['Keep gear off the ground', 'Weigh down anything light; runoff moves it', 'Plan the walk around the low end', 'Stay out of underpasses and drains'], day: ['Plan the walk around the low end', 'Stay out of underpasses and drains', 'Keep the phone and cash dry'] },
 };
 /** What this rain does to this ground: { tier, effective, threshold, past }. Effective rain is what is ahead plus a share of what already fell. */
 function mudTier(ground = {}, aheadIn = 0, rateInHr = 0) {
@@ -1083,18 +1099,26 @@ function groundWords(ground = {}) {
   const soil = ground.surface === 'pavement' || ground.surface === 'sand' ? '' : { A: ' over sand', B: '', C: ' over soil that drains slowly', D: ' over clay' }[ground.soil] || '';
   return `${s}${soil}${ground.low ? ', low ground' : ''}`;
 }
-// How long each camp task takes, so a start-by time can be worked back from the arrival. Anything not listed takes ten minutes.
-const TASK_MIN = [['Anything that must leave', 90], ['Move the car', 60], ['Move the tent', 45], ['Deflate and tie down', 30], ['Stage: clear the deck', 20], ['Park a vehicle upwind', 20], ['Guy lines and sandbags', 20], ['Shade over the tent', 20], ['Tarp over the tent floor', 20],
-  ['Pack what you can carry', 20], ['Stake every loop', 15], ['Tarp over, not under', 15], ['Drop pop-up canopies', 5], ['Seal a dry set', 5], ['Leave the camp', 5], ['Get to the shelter', 5],
-  ['Head down', 0], ['Freeze water bottles', 0], ['Rest between', 0], ['Check on neighbours', 0], ['Expect fields', 0], ['Know the route', 0], ['Rain shell', 0], ['Plan the walk', 0], ['Stay out of', 0], ['Watch your footing', 0], ['Leave the car', 0]];
+// How long each task takes, so a start-by time can be worked back from the arrival. Anything not listed takes ten minutes.
+const TASK_MIN = [['If you must be somewhere', 90], ['Anything that must leave', 90], ['If the car can still move', 60], ['Move the tent', 45], ['If the car sits low', 30], ['Deflate and tie down', 30], ['Stage: clear the deck', 20],
+  ['Park a vehicle upwind', 20], ['Guy lines and sandbags', 20], ['Shade over', 20], ['Tarp over the tent floor', 20], ['Tarp over the stock', 20], ['Pack what you can carry', 20], ['Stake every loop', 15], ['Tarp over, not under', 15],
+  ['Secure stock', 15], ['Close the booth', 15], ['Drop vendor canopies', 10], ['Find shade', 10], ['Drop pop-up canopies', 5], ['Seal a dry set', 5], ['Leave the camp', 5], ['Get to the shelter', 5], ['Know where the shelter is', 5],
+  ['Bag the phone', 5], ['Rain shell, and a bag', 5], ['Boots', 5], ['Hats and light things', 5], ['Get under a solid roof', 5], ['Keep the phone and cash dry', 5],
+  ['If you stay', 0], ['The lot will be slow', 0], ['When it starts', 0], ['Head down', 0], ['Freeze water bottles', 0], ['Rest between', 0], ['Rest before', 0], ['Check on', 0], ['Expect fields', 0], ['Know the route', 0], ['Know the way', 0],
+  ['Rain shell', 0], ['Plan the walk', 0], ['Stay out of', 0], ['Stay clear', 0], ['Watch your footing', 0], ['Leave the car', 0], ['Water every', 0], ['Rotate the crew', 0], ['Keep out from under', 0], ['Keep off the low end', 0], ['Not the car', 0]];
 const taskMinutes = t => (TASK_MIN.find(([k]) => t.startsWith(k)) || [null, 10])[1];
-/** The camp list for what is coming: the hazard's own, with the mud tier's car and tent moves in front when the ground calls for them. */
-function campFor(inc) {
-  const own = inc.hazard === 'rain' && inc.mud ? TIER[inc.mud.tier].camp : (PREP[inc.hazard] || PREP.storms).camp;
-  const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? TIER[inc.mud.tier].camp.filter(t => /^(Anything that must leave|Move the car|Move the tent)/.test(t)) : [];
+/**
+ * The list for what is coming and for who is asking: someone camping, a day visitor in a lot with no in and out, or crew and
+ * vendors with things standing. The mud tier's leave-or-stay call comes first when the ground calls for it; a stage or
+ * inflatables past their line are crew's to deal with.
+ */
+function campFor(inc, setup = 'day') {
+  const s = setup === 'camping' || setup === 'crew' ? setup : 'day', tierList = t => TIER[t][s === 'day' ? 'day' : 'camping'];
+  const own = inc.hazard === 'rain' && inc.mud ? tierList(inc.mud.tier) : (PREP[inc.hazard] || PREP.storms)[s];
+  const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? tierList(inc.mud.tier).filter(t => /^(Anything that must leave|If the car|If you must be somewhere|The lot will be slow|Move the tent off)/.test(t)) : [];
   const crossed = (inc.wind && inc.wind.crossed) || [], standing = [];
-  if (crossed.includes('stage')) standing.push('Stage: clear the deck, drop the scrim and the banners');
-  if (crossed.includes('inflatables')) standing.push('Deflate and tie down the inflatables');
+  if (s === 'crew' && crossed.includes('stage')) standing.push('Stage: clear the deck, drop the scrim and the banners');
+  if (s === 'crew' && crossed.includes('inflatables')) standing.push('Deflate and tie down the inflatables');
   return [...standing, ...ground, ...own.filter(t => !ground.includes(t))];
 }
 /** Each task with when to start it: the arrival less how long it takes less ten minutes, earliest start first. Late means it should have started already. */
@@ -1103,28 +1127,43 @@ function deadlines(startsAt, tasks, now = Date.now()) {
   return tasks.map(t => { const m = taskMinutes(t), by = t0 - (m + 10) * 60000; return { task: t, minutes: m, startBy: new Date(Math.max(now, by)).toISOString(), late: by <= now }; })
     .sort((a, b) => Date.parse(a.startBy) - Date.parse(b.startBy) || b.minutes - a.minutes);
 }
-// Where to shelter, how to solidify camp, what it is like while it is here, and after. The push says the first two, shorter.
+// Where to shelter; what to do before it comes for someone camping, for a day visitor in a lot with no in and out, and for crew
+// and vendors with things standing; what it is like while it is here, and after. The push says the first two, shorter.
 const PREP = {
   storms:  { label: 'Storms', shelter: 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter.',
-             camp: ['Drop pop-up canopies and flags', 'Stake every loop, tie guy lines, weigh the legs', 'Unplug and bag electronics', 'Move poles and chairs away from where people sit'],
+             camping: ['Drop pop-up canopies and flags', 'Stake every loop, tie guy lines, weigh the legs', 'Unplug and bag electronics', 'Move poles and chairs away from where people sit'],
+             day: ['Know where the shelter is and how long the walk takes', 'Charge the phone, fill water', 'Bag the phone and anything that must stay dry', 'When it starts, head for a building or the car, not a tree or a pop-up'],
+             crew: ['Drop vendor canopies and banners, weigh the legs', 'Unplug and bag electronics', 'Secure stock, signage and anything that flies', 'Know where the shelter is and how long the walk takes'],
              during: 'Stay in shelter until it passes. Do not go back for anything.', after: 'Wait thirty minutes after the last thunder before going back out. Lightning reaches ten miles ahead of the rain.' },
   wind:    { label: 'Strong wind', shelter: 'Get into a vehicle or a building if it turns dangerous. Stay clear of stages, towers and anything tall that is tied down.',
-             camp: ['Drop pop-up canopies now, they fly', 'Guy lines and sandbags or water jugs on every leg', 'Take down banners and flags', 'Close and weigh coolers and bins', 'Park a vehicle upwind as a windbreak'],
+             camping: ['Drop pop-up canopies now, they fly', 'Guy lines and sandbags or water jugs on every leg', 'Take down banners and flags', 'Close and weigh coolers and bins', 'Park a vehicle upwind as a windbreak'],
+             day: ['Stay clear of stages, towers and banners', 'Hats and light things get tied down or bagged', 'Know where the shelter is if it turns dangerous'],
+             crew: ['Drop vendor canopies now, they fly', 'Take down banners and flags', 'Close and weigh coolers, bins and stock', 'Stay clear of stages and towers'],
              during: 'Stay away from tents, stages and trees until the gusts ease.', after: 'Check every stake and line before you trust the tent again.' },
   rain:    { label: 'Heavy rain', shelter: 'A vehicle or a building keeps you dry. A tent on high ground is fine while there is no thunder.',
-             camp: ['Move the tent off low ground', 'Bins and bags off the floor', 'Tarp over, not under, so water sheds', 'Seal a dry set of clothes in a bag'],
+             camping: ['Move the tent off low ground', 'Bins and bags off the floor', 'Tarp over, not under, so water sheds', 'Seal a dry set of clothes in a bag'],
+             day: ['Rain shell, and a bag for the phone', 'Boots if you have them', 'Know the way to cover'],
+             crew: ['Tarp over the stock, off the floor', 'Unplug and bag electronics', 'Rain shell and boots'],
              during: 'Stay dry and off low ground. Watch the paths for standing water.', after: 'Dry the sleeping gear first. Wet nights are how people get cold.' },
   flood:   { label: 'Flooding', shelter: 'Move to high ground now, away from creeks and low fields. Never drive or walk through moving water.',
-             camp: ['Pack what you can carry', 'Know the route to high ground', 'Leave the car if water is rising around it'],
+             camping: ['Pack what you can carry', 'Know the route to high ground', 'Leave the car if water is rising around it'],
+             day: ['Know the route to high ground', 'Pack what you can carry', 'Leave the car if water is rising around it'],
+             crew: ['Close the booth and get to high ground', 'Know the route to high ground', 'Leave the car if water is rising around it'],
              during: 'Stay on high ground. Water rises faster than it looks.', after: 'Stay off flooded paths until staff open them. The water hides what it took.' },
   heat:    { label: 'Dangerous heat', shelter: 'Water every twenty minutes, shade at midday, and the medical tent at the first sign of confusion or no sweat.',
-             camp: ['Shade over the tent, not only inside it', 'Freeze water bottles overnight', 'Rest between noon and four', 'Check on neighbours'],
+             camping: ['Shade over the tent, not only inside it', 'Freeze water bottles overnight', 'Rest between noon and four', 'Check on neighbours'],
+             day: ['Water every twenty minutes', 'Find shade for the afternoon', 'Rest before it peaks', 'Check on the people around you'],
+             crew: ['Water every fifteen minutes', 'Shade over the booth, not only inside it', 'Rotate the crew: work and rest by the flag', 'Check on each other'],
              during: 'Shade, water, rest. Watch each other for confusion, cramps, or skin that stops sweating.', after: 'Keep drinking after sundown. The heat you took in stays with you.' },
   hail:    { label: 'Hail', shelter: 'Get under a solid roof or into a vehicle. Tents, canopies and stages are not shelter.',
-             camp: ['Lay canopies flat so hail does not shred them', 'Cover windshields with mats or blankets', 'Get under a solid roof'],
+             camping: ['Lay canopies flat so hail does not shred them', 'Cover windshields with mats or blankets', 'Get under a solid roof'],
+             day: ['Get under a solid roof or into the car', 'Keep out from under trees'],
+             crew: ['Lay canopies flat so hail does not shred them', 'Cover windshields with mats or blankets', 'Get under a solid roof'],
              during: 'Stay under the roof until it stops.', after: 'Check the tent and the car for damage before the next rain.' },
   tornado: { label: 'Tornado', shelter: 'Get to the shelter the festival named or the lowest floor of a solid building. Vehicles and tents are not safe from a tornado.',
-             camp: ['Leave the camp', 'Get to the shelter the festival named', 'Head down, cover your head'],
+             camping: ['Leave the camp', 'Get to the shelter the festival named', 'Head down, cover your head'],
+             day: ['Get to the shelter the festival named', 'Not the car, not a tent', 'Head down, cover your head'],
+             crew: ['Get to the shelter the festival named', 'Not the car, not a tent', 'Head down, cover your head'],
              during: 'Stay down in the shelter until the warning ends.', after: 'Watch for downed lines and broken glass on the way back.' },
 };
 const SHELTER_PACK = ['Phone and a battery pack', 'Water and a snack', 'Rain shell and a warm layer', 'ID, cash, keys, medication', 'A light'];
@@ -1175,7 +1214,7 @@ const incomingLabel = inc => inc.hazard === 'rain' && inc.mud ? TIER[inc.mud.tie
 function headsUpCard(f){
   const inc = incomingFor(f); if (!inc) return '';
   const P = PREP[inc.hazard] || PREP.storms, now = inc.minutes <= 0, label = incomingLabel(inc);
-  const steps = deadlines(inc.startsAt, campFor(inc)).slice(0, 3);
+  const steps = deadlines(inc.startsAt, campFor(inc, setupFor(f))).slice(0, 3);
   return `<button class="headsup glass ${esc(inc.hazard)}" onclick="later(function(){ go('prep') })">
     <span class="hu-top"><span class="eyebrow">${now ? 'Happening now' : inc.source === 'radar' ? 'On the radar' : 'On the way'}</span><span class="hu-when num" data-countdown="${esc(inc.startsAt)}">${esc(countdownText(inc.startsAt))}</span></span>
     <h3>${esc(label)}</h3>
@@ -1570,7 +1609,7 @@ screens.prep = () => {
     <p class="sub">${esc(outlook(f) || statusLine(f))}</p>
     <div class="empty"><b>The next twelve hours look calm</b>The forecast is read again every time you open the app, and every five minutes while it is open.</div>`;
   const P = PREP[inc.hazard] || PREP.storms, m = inc.minutes, now = m <= 0, label = incomingLabel(inc);
-  const plan = deadlines(inc.startsAt, campFor(inc)), mudLine = inc.mud && inc.mud.tier !== 'wet' ? `${TIER[inc.mud.tier].line}: ${groundWords(inc.ground || {})}${inc.mud.past >= 0.1 ? `, ${inc.mud.past.toFixed(1)} in already down` : ''}.` : inc.hazard === 'heat' && (inc.flag === 'red' || inc.flag === 'black') ? flagText(inc.flag) : '';
+  const plan = deadlines(inc.startsAt, campFor(inc, setupFor(f))), mudLine = inc.mud && inc.mud.tier !== 'wet' ? `${TIER[inc.mud.tier].line}: ${groundWords(inc.ground || {})}${inc.mud.past >= 0.1 ? `, ${inc.mud.past.toFixed(1)} in already down` : ''}.` : inc.hazard === 'heat' && (inc.flag === 'red' || inc.flag === 'black') ? flagText(inc.flag) : '';
   const stage = now ? 'during' : m <= 20 ? '20' : m <= 60 ? '60' : m <= 180 ? '180' : 'early';
   const rows = [['early', 'Earlier', timing(inc.hazard, 999)], ['180', 'Three hours out', timing(inc.hazard, 180)], ['60', 'One hour out', timing(inc.hazard, 60)],
     ['20', 'Twenty minutes out', timing(inc.hazard, 20)], ['during', 'While it is here', P.during], ['after', 'After', P.after]];
@@ -1581,7 +1620,8 @@ screens.prep = () => {
     <div class="countdown glass"><span class="eyebrow">${now ? 'Started' : 'Arrives in'}</span><b class="num" data-countdown="${esc(inc.startsAt)}" data-bare="1">${esc(countdownText(inc.startsAt, true))}</b><span class="s">${esc(mudLine || timing(inc.hazard, m))}</span></div>
     <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${esc(P.shelter)}</p></div></div>
     ${groundReportRow(f)}
-    <p class="h">Solidify camp, in order</p>
+    <p class="h">${setupFor(f) === 'camping' ? 'Solidify camp, in order' : setupFor(f) === 'crew' ? 'Secure the booth, in order' : 'Before it comes, in order'}</p>
+    ${setupRow(f)}
     <div class="group glass steps">${plan.map(d => `<div class="step"><span class="n"></span><span class="task">${esc(d.task)}</span><b class="by num">${d.late ? 'now' : 'by ' + esc(fmtTime(d.startBy))}</b></div>`).join('')}</div>
     <p class="h">Timeline</p>
     <div class="group glass">${rows.map(([k, l, t]) => `<div class="tl ${k === stage ? 'now' : ''}"><span class="k">${esc(l)}</span><span class="v">${esc(t)}</span></div>`).join('')}</div>
@@ -1624,6 +1664,7 @@ screens.ground = () => {
     <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_LABEL), v => e.surface === v)}
     <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_LABEL), v => e.soil === v)}
     <p class="h">Low ground</p>${chips('low', [[true, 'Yes, it floods'], [false, 'No']], v => e.low === v)}
+    <p class="h">Camping</p>${chips('camping', [[true, 'Yes, people camp'], [false, 'No camping']], v => e.camping === v)}
     <p class="h">What is standing</p>${chips('structures', Object.entries(STRUCTURE_LABEL), v => e.structures.includes(v))}
     <button class="btn" onclick="saveGround()" ${S.groundBusy ? 'disabled' : ''}>Save</button>
     <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}</div>

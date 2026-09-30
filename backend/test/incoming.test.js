@@ -11,6 +11,8 @@ const g = spreadGrid({ heatIndex: grid.properties.heatIndex, windGust: grid.prop
 const at = (h, m = 0) => Date.UTC(2026, 9, 23, 18 + h, m);
 const TZ = 'America/New_York';
 const festival = { id: 'hulaween-2026', name: 'Suwannee Hulaween', location: 'Live Oak, FL' };
+const CAMP = { camping: true };
+const PREP_DAY_WIND = ['Stay clear of stages, towers and banners', 'Hats and light things get tied down or bagged', 'Know where the shelter is if it turns dangerous'];
 
 test('the first stretch of the next twelve hours over a threshold is the window: storms from hour 3, two and a half hours out', () => {
   const inc = incoming({ hourly: periods, grid: g, now: at(0, 30) });
@@ -63,7 +65,8 @@ test('heat, wind and rain have their own lines; a dry, calm forecast has nothing
   assert.equal(headline(stage, TZ), 'Gusts to 45 mph, past the stage hold line, expected around 7:00 PM', 'only a stage standing: the 40 mph line, crossed an hour later');
   const both = incoming({ hourly: periods, grid: windy, ground: { structures: ['inflatables', 'stage'] }, now: at(0, 30) });
   assert.equal(headline(both, TZ), 'Gusts to 45 mph, past the inflatables and stage hold lines, expected around 4:00 PM', 'inflatables come down at 20 mph');
-  assert.deepEqual(campFor(both).slice(0, 2), ['Stage: clear the deck, drop the scrim and the banners', 'Deflate and tie down the inflatables'], 'what is standing comes first on the list');
+  assert.deepEqual(campFor(both, 'crew').slice(0, 2), ['Stage: clear the deck, drop the scrim and the banners', 'Deflate and tie down the inflatables'], 'what is standing comes first on the list, for crew');
+  assert.deepEqual(campFor(both, 'day'), PREP_DAY_WIND, 'a day visitor cannot touch the stage; their list is their own');
   assert.equal(windLine({}), 30); assert.equal(windLine({ structures: [] }), 30); assert.equal(windLine({ structures: ['stage'] }), 40); assert.equal(lineWords(['canopies']), 'the canopy line'); assert.equal(lineWords([]), '');
   const wet = periods.map((p, i) => ({ ...p, precipChance: i >= 4 ? 70 : 10 }));
   const chance = incoming({ hourly: wet, grid: { ...g, thunder: {}, rain: {}, gust: {} }, now: at(0, 30) });
@@ -86,14 +89,18 @@ test('what to do depends on the time there is; the heads-up reads like an alert 
   assert.match(prep('tornado', 150).shelter, /not safe from a tornado/);
   assert.ok(prep('wind', 60).camp.some(s => /canopies/.test(s)));
   const inc = incoming({ hourly: periods, grid: g, now: at(0, 30) });
-  const a = headsUpAlert(festival, inc, TZ, at(0, 30));
+  const a = headsUpAlert(festival, inc, TZ, at(0, 30), CAMP);
   assert.equal(a.id, `headsup-hulaween-2026-${Math.floor(at(3) / 3_600_000)}`, 'one id per festival and starting hour, so a repeat updates rather than duplicates');
   assert.equal(a.event, 'Storms expected around 5:00 PM'); assert.equal(a.channel, 'headsup'); assert.equal(a.severity, 'moderate');
   assert.equal(a.headline, 'Stake every loop, tie guy lines, weigh the legs by 4:35 PM. The forecast has a 60% chance of thunder, gusts to 34 mph past the canopy line and 0.6 in of rain.', 'the first thing to do and when, then the forecast');
   assert.match(a.body, /^Stake every loop, tie guy lines, weigh the legs by 4:35 PM\. The forecast has a 60% chance of thunder, gusts to 34 mph past the canopy line and 0\.6 in of rain\. Secure camp now.*Tents, canopies and stages are not shelter\.$/);
-  const wet = headsUpAlert(festival, { ...inc, hazard: 'rain', peak: { thunder: null, gust: 41, precip: 95, heat: null } }, TZ, at(0, 30));
+  const wet = headsUpAlert(festival, { ...inc, hazard: 'rain', peak: { thunder: null, gust: 41, precip: 95, heat: null } }, TZ, at(0, 30), CAMP);
   assert.match(wet.body, /^Bins and bags off the floor by 4:40 PM\. The forecast has gusts to 41 mph past the canopy line and a 95% chance of rain\. /, 'a sentence whatever leads it, not "rain 95%."');
-  const three = headsUpAlert(festival, { ...inc, peak: { thunder: 60, gust: 45, precip: 70, heat: null } }, TZ, at(0, 30));
+  const three = headsUpAlert(festival, { ...inc, peak: { thunder: 60, gust: 45, precip: 70, heat: null } }, TZ, at(0, 30), CAMP);
+  const day = headsUpAlert(festival, inc, TZ, at(0, 30));
+  assert.equal(day.setup, 'day'); assert.match(day.headline, /^Charge the phone, fill water by 4:40 PM\. /, 'nobody knows if people camp here: no tent talk');
+  assert.ok(!day.instruction.includes('canop') && !day.instruction.includes('tent'), 'a day visitor\'s list has no canopies or tents');
+  assert.equal(a.setup, 'camping');
   assert.match(three.headline, /^Stake every loop, tie guy lines, weigh the legs by 4:35 PM\. The forecast has a 60% chance of thunder, gusts to 45 mph past the canopy line and a 70% chance of rain\.$/);
   assert.equal(a.instruction, 'Stake every loop, tie guy lines, weigh the legs by 4:35 PM. Unplug and bag electronics by 4:40 PM. Move poles and chairs away from where people sit by 4:40 PM. Drop pop-up canopies and flags by 4:45 PM.', 'every task with its start-by time, the longest first');
   assert.equal(a.mud, 'wet'); assert.equal(a.plan.length, 4); assert.equal(a.plan[0].startBy, new Date(at(3) - 25 * 60000).toISOString());
@@ -118,21 +125,25 @@ test('mud: what the rain does to this ground, by soil and surface, with what alr
   const inc = incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {} }, ground: { soil: 'D', past: { in24: 1.1, in48: 1.1 } }, now: at(0, 30) });
   assert.equal(inc.hazard, 'rain'); assert.equal(inc.mud.tier, 'deep'); assert.equal(headline(inc, TZ), 'Deep mud expected around 8:00 PM');
   assert.equal(mudWords(inc, { soil: 'D' }), 'Fields will not hold vehicles: 0.5 in of rain on grass over clay, after 0.7 in already down.');
-  assert.deepEqual(campFor(inc), TIER.deep.camp);
+  assert.deepEqual(campFor(inc, 'camping'), TIER.deep.camping); assert.deepEqual(campFor(inc, 'day'), TIER.deep.day);
+  assert.equal(TIER.soft.camping[0], 'If the car can still move to hard ground, move it now; if not, plan to leave after the ground dries', 'most people cannot move the car; the line says so');
   const storm = incoming({ hourly: periods, grid: g, ground: { soil: 'D' }, now: at(0, 30) });
   assert.equal(storm.hazard, 'storms'); assert.equal(storm.mud.tier, 'soft');
-  assert.deepEqual(campFor(storm).slice(0, 2), ['Move the car to hard ground', 'Drop pop-up canopies and flags'], 'storms on soft ground: the car first, then the storm list');
-  const alert = headsUpAlert(festival, inc, TZ, at(0, 30), { soil: 'D' });
+  assert.deepEqual(campFor(storm, 'camping').slice(0, 2), ['If the car can still move to hard ground, move it now; if not, plan to leave after the ground dries', 'Drop pop-up canopies and flags'], 'storms on soft ground: the car call first, then the storm list');
+  assert.deepEqual(campFor(storm, 'day').slice(0, 2), ['The lot will be slow: leave before it starts, or wait it out', 'Know where the shelter is and how long the walk takes'], 'a day visitor hears about the lot, not the tent');
+  const alert = headsUpAlert(festival, inc, TZ, at(0, 30), { soil: 'D', camping: true });
   assert.equal(alert.event, 'Deep mud expected around 8:00 PM');
+  assert.match(headsUpAlert(festival, inc, TZ, at(0, 30), { soil: 'D' }).headline, /^If you must be somewhere, leave before it starts by 6:20 PM\. /, 'a lot with no in and out: leave or stay, not move the car');
   assert.equal(alert.headline, 'Anything that must leave, leaves before it starts by 6:20 PM. Fields will not hold vehicles: 0.5 in of rain on grass over clay, after 0.7 in already down.', 'the rain rides in the mud sentence, the first deadline comes first');
   assert.equal(alert.mud, 'deep');
 });
 
 test('deadlines: each task starts its length plus ten minutes before the arrival, the longest first; past its time it is now', () => {
   const start = new Date(at(3)).toISOString(), now = at(0, 30);
-  const plan = deadlines(start, ['Drop pop-up canopies and flags', 'Move the car to hard ground', 'Stake every loop, tie guy lines, weigh the legs', 'Know the route to high ground'], now);
-  assert.deepEqual(plan.map(d => [d.task.split(' ')[0], d.minutes, new Date(d.startBy).toISOString().slice(11, 16), d.late]), [['Move', 60, '19:50', false], ['Stake', 15, '20:35', false], ['Drop', 5, '20:45', false], ['Know', 0, '20:50', false]]);
-  const late = deadlines(start, ['Move the car to hard ground', 'Drop pop-up canopies and flags'], at(2, 30));
+  const car = 'If the car can still move to hard ground, move it now; if not, plan to leave after the ground dries';
+  const plan = deadlines(start, ['Drop pop-up canopies and flags', car, 'Stake every loop, tie guy lines, weigh the legs', 'Know the route to high ground'], now);
+  assert.deepEqual(plan.map(d => [d.task.split(' ')[0], d.minutes, new Date(d.startBy).toISOString().slice(11, 16), d.late]), [['If', 60, '19:50', false], ['Stake', 15, '20:35', false], ['Drop', 5, '20:45', false], ['Know', 0, '20:50', false]]);
+  const late = deadlines(start, [car, 'Drop pop-up canopies and flags'], at(2, 30));
   assert.equal(late[0].late, true); assert.equal(late[0].startBy, new Date(at(2, 30)).toISOString(), 'the car should have moved already: now'); assert.equal(late[1].late, false);
 });
 
@@ -152,7 +163,7 @@ test('heat by exertion: an estimated wet-bulb globe temperature earns a flag, an
   assert.equal(headline(red, TZ), 'Red flag heat expected now', 'from the first hour');
   const a = headsUpAlert(festival, red, TZ, at(0, 30));
   assert.equal(a.flag, 'red'); assert.match(a.headline, /red flag heat for anyone working or dancing\.$/); assert.match(a.body, /Red flag: work 30, rest 30 in shade, water every 15 minutes\./);
-  assert.equal(campFor(red)[0], 'Shade over the tent, not only inside it');
+  assert.equal(campFor(red, 'camping')[0], 'Shade over the tent, not only inside it'); assert.equal(campFor(red)[0], 'Water every twenty minutes');
 });
 
 test('rain already on the radar pulls the start of a window earlier, or is a window of its own when the forecast has none', () => {
@@ -163,7 +174,7 @@ test('rain already on the radar pulls the start of a window earlier, or is a win
   assert.equal(alone.source, 'radar'); assert.equal(alone.hazard, 'rain'); assert.equal(alone.minutes, 40);
   assert.equal(headline(alone, TZ), 'Rain on the radar, about 40 min out');
   const a = headsUpAlert(festival, alone, TZ, at(0, 30));
-  assert.match(a.headline, /^Move the tent off low ground now\. On the radar, moving NE at 25 mph\.$/, 'the radar line rides with the first task, which forty minutes out is already due');
+  assert.match(a.headline, /^Rain shell, and a bag for the phone by 2:55 PM\. On the radar, moving NE at 25 mph\.$/, 'the radar line rides with the first task');
   assert.equal(incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {}, rain: {} }, nowcast: { ...nowcast, minutes: 150 }, now: at(0, 30) }), null, 'more than two hours out is the forecast\'s to call');
   assert.equal(incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {}, rain: {} }, nowcast: { ...nowcast, minutes: null }, now: at(0, 30) }), null, 'nothing coming this way');
   const later = incoming({ hourly: periods, grid: g, nowcast: { ...nowcast, minutes: 200 }, now: at(0, 30) });

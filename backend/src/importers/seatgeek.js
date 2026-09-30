@@ -1,7 +1,7 @@
 // SeatGeek Platform API: a free client id (seatgeek.com/account/develop) and a music_festival
 // taxonomy, which reaches a lot of ticketing Ticketmaster does not carry, including smaller
 // independents. Listings fold into festivals exactly as Ticketmaster's do (common.js).
-import { ADD_ON, CANCELLED, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, looksLikeFestival, plainlyNotFestival, errorText } from './common.js';
+import { ADD_ON, CAMPING, CANCELLED, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, looksLikeFestival, plainlyNotFestival, errorText } from './common.js';
 import { iso } from '../util.js';
 
 const API = 'https://api.seatgeek.com/2/events';
@@ -11,10 +11,15 @@ const PER_PAGE = 100, MAX_PAGES = 60, DAY = 86_400_000;
 const utc = s => (s && !/Z$|[+-]\d\d:\d\d$/.test(s) ? `${s}Z` : s);
 
 /** One listing reduced to what matters, or null if it is not a festival we can place on a map. */
-export function candidate(ev) {
+export function candidate(ev, { campingAt = null } = {}) {
   if (!ev) return null;
   let name = ev.title || ev.short_title || '';
-  if (!name || ADD_ON.test(name) || CANCELLED.test(name) || ev.date_tbd) return null;
+  if (ADD_ON.test(name)) {   // a camping pass beside a festival says people camp there
+    const v = ev.venue;
+    if (campingAt && CAMPING.test(name) && v) campingAt.add(v.id ? String(v.id) : `${Number(v.location?.lat).toFixed(2)},${Number(v.location?.lon).toFixed(2)}`);
+    return null;
+  }
+  if (!name || CANCELLED.test(name) || ev.date_tbd) return null;
   const festival = ev.type === 'music_festival' || (ev.taxonomies || []).some(t => t.name === 'music_festival');
   if (!festival) return null;
   // SeatGeek files plenty of plain concerts under music_festival. A festival says so in its name, or in the
@@ -41,7 +46,7 @@ export function candidate(ev) {
   };
 }
 
-export const festivalsFrom = (events, today) => groupListings(events.map(candidate), { origin: 'seatgeek', prefix: 'sg', today });
+export const festivalsFrom = (events, today) => (campingAt => groupListings(events.map(ev => candidate(ev, { campingAt })), { origin: 'seatgeek', prefix: 'sg', today, campingAt }))(new Set());
 
 function describe(u) { return `${u.pathname}?${[...u.searchParams].filter(([k]) => k !== 'client_id').map(kv => kv.join('=')).join('&')}`; }
 

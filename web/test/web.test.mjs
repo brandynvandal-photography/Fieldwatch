@@ -420,10 +420,10 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     assert.match(await page.textContent('.kv:has-text("Surface")'), /Grass.*assumed, nothing found/s);
     await page.click('button:has-text("Look it up again")'); await page.waitForSelector('.toast.show:has-text("Looked up again")');
     assert.match(await page.textContent('.kv:has-text("Soil")'), /Blanton fine sand.*Drains fast \(A\).*USDA soil survey/s);
-    await page.click('button.chip:has-text("Blacktop")'); await page.click('button.chip:has-text("Stage or rigging")');
+    await page.click('button.chip:has-text("Blacktop")'); await page.click('button.chip:has-text("Stage or rigging")'); await page.click('button.chip:has-text("No camping")');
     await page.click('button.btn:has-text("Save")'); await page.waitForSelector('.toast.show:has-text("Saved")');
     assert.ok(store.calls.includes('PUT /festivals/hulaween-2026/ground'));
-    assert.deepEqual({ surface: store.ground['hulaween-2026'].surface, structures: store.ground['hulaween-2026'].structures, low: store.ground['hulaween-2026'].low }, { surface: 'pavement', structures: ['canopies', 'stage'], low: false });
+    assert.deepEqual({ surface: store.ground['hulaween-2026'].surface, structures: store.ground['hulaween-2026'].structures, low: store.ground['hulaween-2026'].low, camping: store.ground['hulaween-2026'].camping }, { surface: 'pavement', structures: ['canopies', 'stage'], low: false, camping: false });
     assert.match(await page.textContent('.kv:has-text("Surface")'), /Blacktop.*staff/s);
     await shot(page, '26-ground');
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
@@ -763,6 +763,12 @@ test('storms on the way: a countdown on the festival page with the first things 
   assert.match(await page.textContent('.todo'), /Where to shelter.*hard-topped vehicle/s);
   const camp = await page.$$eval('.steps .step .task', els => els.map(e => e.textContent));
   assert.match(await page.textContent('.steps .step:first-child .by'), /^by \d+:\d\d [AP]M$/, 'start-by times on the camp list');
+  // Hulaween is a camping festival, so the list is a camper's; a day visitor gets their own, with no tent in it.
+  assert.ok(await page.$('button.chip.on:has-text("I\'m camping")'));
+  await page.click('button.chip:has-text("Day visitor")');
+  const dayList = await page.$$eval('.steps .step .task', els => els.map(e => e.textContent));
+  assert.equal(dayList[0], 'Charge the phone, fill water'); assert.ok(!dayList.some(t => /canop|tent/i.test(t)), `no tents for a day visitor: ${dayList}`);
+  await page.click('button.chip:has-text("I\'m camping")');
   assert.ok(camp.includes('Drop pop-up canopies and flags') && camp.includes('Unplug and bag electronics'), 'the camp list');
   assert.ok(camp.includes('Phone and a battery pack'), 'and what to pack for shelter');
   assert.deepEqual(await page.$$eval('.tl .k', els => els.map(e => e.textContent)), ['Earlier', 'Three hours out', 'One hour out', 'Twenty minutes out', 'While it is here', 'After']);

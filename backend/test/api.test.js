@@ -528,7 +528,9 @@ test('the ground: the lookups run on demand, staff set what they know better, an
   const look = await api('POST', `/festivals/${FEST}/ground/lookup`, { headers: admin });
   assert.equal(look.status, 200); assert.equal(look.json.surface, 'grass'); assert.equal(look.json.surfaceSource, 'OpenStreetMap: leisure=park');
   assert.equal(look.json.soil, 'A'); assert.match(look.json.soilName, /^Blanton fine sand/); assert.equal(look.json.soilSource, 'USDA soil survey'); assert.equal(look.json.low, false);
-  const set = await api('PUT', `/festivals/${FEST}/ground`, { headers: admin, body: { surface: 'pavement', structures: ['canopies', 'stage'], low: false, note: 'the lot, this year' } });
+  assert.equal(look.json.camping, true, 'the seed says people camp at Hulaween'); assert.equal(look.json.campingSource, 'the listing');
+  const set = await api('PUT', `/festivals/${FEST}/ground`, { headers: admin, body: { surface: 'pavement', structures: ['canopies', 'stage'], low: false, camping: false, note: 'the lot, this year' } });
+  assert.equal(set.json.camping, false); assert.equal(set.json.campingSource, 'staff');
   assert.equal(set.status, 200); assert.equal(set.json.surface, 'pavement'); assert.equal(set.json.surfaceSource, 'staff'); assert.equal(set.json.soil, 'A', 'the soil lookup stays under a surface override'); assert.deepEqual(set.json.structures, ['canopies', 'stage']);
   assert.equal((await api('GET', `/festivals/${FEST}/ground`)).json.surface, 'pavement', 'anyone can read it');
   assert.equal((await api('GET', `/festivals/${FEST}/pack`)).json.ground.surface, 'pavement');
@@ -536,7 +538,7 @@ test('the ground: the lookups run on demand, staff set what they know better, an
   const edited = await api('PUT', `/festivals/${FEST}`, { headers: admin, body: { name: 'Suwannee Hulaween', location: 'Spirit of the Suwannee Music Park, Live Oak, FL', latitude: 30.404, longitude: -82.9395, startDate: q.festival(FEST).startDate, endDate: q.festival(FEST).endDate } });
   assert.equal(edited.status, 200); assert.equal(edited.json.ground.override.surface, 'pavement', 'an edit of the record keeps the ground'); assert.equal(edited.json.ground.soil, 'A');
   const cleared = await api('DELETE', `/festivals/${FEST}/ground`, { headers: admin });
-  assert.equal(cleared.json.surface, 'grass'); assert.equal(cleared.json.surfaceSource, 'OpenStreetMap: leisure=park'); assert.deepEqual(cleared.json.structures, ['canopies']);
+  assert.equal(cleared.json.surface, 'grass'); assert.equal(cleared.json.surfaceSource, 'OpenStreetMap: leisure=park'); assert.deepEqual(cleared.json.structures, ['canopies']); assert.equal(cleared.json.camping, true);
 });
 
 test('one tap from the field: a ground report is stored, shows on the ground and in the pack, and is rate limited', async () => {

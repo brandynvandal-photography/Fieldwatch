@@ -34,6 +34,8 @@ export const STRUCTURES = ['canopies', 'inflatables', 'stage'];
 const SURFACE_TAG = { asphalt: 'pavement', concrete: 'pavement', paved: 'pavement', paving_stones: 'pavement', sett: 'pavement', gravel: 'gravel', fine_gravel: 'gravel', compacted: 'gravel', pebblestone: 'gravel',
   grass: 'grass', sand: 'sand', dirt: 'dirt', earth: 'dirt', ground: 'dirt', mud: 'dirt', unpaved: 'dirt', woodchips: 'dirt' };
 /** One area's tags, read for what the ground is: [surface, low] or null when the tags say nothing about the ground. */
+/** A campground under the point says people camp here. */
+export const campingFromTags = (tags = {}) => tags.tourism === 'camp_site' || tags.tourism === 'caravan_site' || Boolean(tags.camp_site);
 export function surfaceFromTags(tags = {}) {
   if (tags.surface && SURFACE_TAG[tags.surface]) return [SURFACE_TAG[tags.surface], false];
   if (tags.amenity === 'parking' || tags.aeroway || tags.highway || ['retail', 'commercial', 'industrial'].includes(tags.landuse)) return ['pavement', false];
@@ -50,10 +52,11 @@ export async function surfaceFromOSM(lat, lon, { fetchImpl = globalThis.fetch } 
   const body = await res.json();
   // The most telling area wins: a surface tag, then a use (parking, pitch), then land cover. Boundaries and places say nothing.
   const rank = t => (t.surface ? 0 : t.amenity || t.leisure || t.aeroway || t.highway ? 1 : 2);
-  const hits = (body?.elements || []).map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}) })).filter(h => h.read).sort((a, b) => rank(a.tags) - rank(b.tags));
-  if (!hits.length) return null;
+  const elements = body?.elements || [], camping = elements.some(e => campingFromTags(e.tags || {}));
+  const hits = elements.map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}) })).filter(h => h.read).sort((a, b) => rank(a.tags) - rank(b.tags));
+  if (!hits.length) return camping ? { surface: null, low: false, camping, source: 'OpenStreetMap', tag: 'tourism=camp_site' } : null;
   const [surface, low] = hits[0].read, t = hits[0].tags;
-  return { surface, low, source: 'OpenStreetMap', tag: ['surface', 'amenity', 'leisure', 'landuse', 'natural', 'aeroway', 'highway'].filter(k => t[k]).map(k => `${k}=${t[k]}`).join(', ') };
+  return { surface, low, camping, source: 'OpenStreetMap', tag: ['surface', 'amenity', 'leisure', 'landuse', 'natural', 'aeroway', 'highway'].filter(k => t[k]).map(k => `${k}=${t[k]}`).join(', ') };
 }
 
 // ---- the soil: the USDA soil survey's map unit at the point, its hydrologic group and drainage class ----
@@ -76,7 +79,7 @@ export async function soilFromUSDA(lat, lon, { fetchImpl = globalThis.fetch } = 
 /** Both lookups, written onto the festival record (the staff override, if any, is kept beside them). */
 export async function lookupGround(f, { now = Date.now(), fetchImpl = globalThis.fetch, save = null } = {}) {
   const found = { lookedUpAt: iso(now) }, errors = [];
-  try { const s = await surfaceFromOSM(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, { surface: s.surface, surfaceSource: `${s.source}: ${s.tag}`, ...(s.low ? { low: true } : {}) }); }
+  try { const s = await surfaceFromOSM(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, ...(s.surface ? [{ surface: s.surface, surfaceSource: `${s.source}: ${s.tag}` }] : []), ...(s.low ? [{ low: true }] : []), ...(s.camping ? [{ camping: true, campingSource: 'OpenStreetMap: a campground under the grounds' }] : [])); }
   catch (e) { errors.push(`surface: ${errorText(e)}`); }
   try { const s = await soilFromUSDA(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, { soil: s.soil, soilName: s.soilName, drainage: s.drainage, soilSource: s.source, ...(s.low ? { low: true } : {}) }); }
   catch (e) { errors.push(`soil: ${errorText(e)}`); }
@@ -88,7 +91,9 @@ export async function lookupGround(f, { now = Date.now(), fetchImpl = globalThis
 /** A record's ground as the model uses it: the staff override over the lookups over the defaults. */
 export function effectiveGround(f) {
   const g = f?.ground || {}, o = g.override || {};
+  const camping = o.camping ?? g.camping ?? (f?.camping === true || f?.camping === false ? f.camping : null);
   return { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: Array.isArray(o.structures) ? o.structures : ['canopies'],
+    camping, campingSource: o.camping != null ? 'staff' : g.camping != null ? g.campingSource || 'lookup' : f?.camping === true || f?.camping === false ? 'the listing' : 'unknown',
     surfaceSource: o.surface ? 'staff' : g.surface ? g.surfaceSource || 'lookup' : 'assumed', soilSource: o.soil ? 'staff' : g.soil ? g.soilSource || 'lookup' : 'assumed',
     soilName: g.soilName || null, drainage: g.drainage || null, lookedUpAt: g.lookedUpAt || null, lookupError: g.lookupError || null, override: g.override || null, learned: g.learned || null };
 }
@@ -98,6 +103,7 @@ export function validOverride(body = {}) {
   if (body.surface != null && body.surface !== '') { if (!SURFACES.includes(body.surface)) return { error: `surface must be one of ${SURFACES.join(', ')}` }; o.surface = body.surface; }
   if (body.soil != null && body.soil !== '') { if (!SOILS.includes(body.soil)) return { error: `soil must be one of ${SOILS.join(', ')}` }; o.soil = body.soil; }
   if (body.low != null) o.low = Boolean(body.low);
+  if (body.camping != null) o.camping = body.camping === true || body.camping === 'true';
   if (body.structures != null) { if (!Array.isArray(body.structures) || body.structures.some(s => !STRUCTURES.includes(s))) return { error: `structures must be some of ${STRUCTURES.join(', ')}` }; o.structures = body.structures; }
   if (body.note != null) o.note = String(body.note).slice(0, 200);
   return { override: { ...o, at: iso() } };

@@ -25,6 +25,8 @@ export async function fetchRetry(fetchImpl, url, init, { tries = 3, log } = {}) 
 }
 export const VENUE_NAMED_FESTIVAL = /\bfestival (pier|hall|park|theat\w*|grounds|stage|field|plaza|centre|center)\b/i;
 export const FESTY = /\bfest(ival)?s?\b|fest$/i;
+/** An add-on that says people camp at this festival. */
+export const CAMPING = /\b(camping|campsite|campground|car camping|rv pass|glamping)\b/i;
 /** The festival's own name, as the app shows it: no day, pass, lineup or year. */
 export const displayName = n => cleanName(n);
 /** A listing with only a date starts mid-afternoon UTC and runs into the small hours after that day. */
@@ -41,7 +43,7 @@ export const usState = s => { const t = String(s || '').trim(); return STATES.ha
  * Listings ({ key, name, place, lat, lon, start, end, url }) grouped into festivals:
  * earliest start, latest end, the shortest name in the group, one record per group.
  */
-export function groupListings(listings, { origin, prefix, today = iso().slice(0, 10) }) {
+export function groupListings(listings, { origin, prefix, today = iso().slice(0, 10), campingAt = new Set() }) {
   const groups = new Map();
   for (const c of listings) { if (!c) continue; (groups.get(c.key) || groups.set(c.key, []).get(c.key)).push(c); }
   const out = [];
@@ -56,6 +58,7 @@ export function groupListings(listings, { origin, prefix, today = iso().slice(0,
       { name, location: first.place, latitude: first.lat, longitude: first.lon, startDate: first.start, endDate, source: first.url, website: first.url, verifiedOn: today },
       { origin, status: 'published', id: `${prefix}-${slug(name)}-${first.start.slice(0, 4)}` });
     if (!festival) continue;
+    if (campingAt.has(first.key.split('|')[1])) festival.camping = true;   // a camping pass was on sale for these grounds
     // "Country In The Park" and "Country In The Park 2", same weekend, same grounds: one festival, the longer stay.
     const twin = out.find(f => sameNamedNearby(f, festival));
     if (twin) { twin.startDate = Date.parse(festival.startDate) < Date.parse(twin.startDate) ? festival.startDate : twin.startDate; twin.endDate = Date.parse(festival.endDate) > Date.parse(twin.endDate) ? festival.endDate : twin.endDate; }

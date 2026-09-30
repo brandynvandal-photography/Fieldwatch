@@ -336,3 +336,22 @@ test('what is not a festival stays out: SeatGeek concerts, tours and tributes, c
   assert.deepEqual(festivalsFrom([tmEvent({ name: '2-Day Palm Tree Music Festival' }), tmEvent({ name: 'Palm Tree Music Festival - FRI 10/2' }), tmEvent({ name: 'Palm Tree Music Festival - SAT 10/3', dates: { start: { localDate: '2026-10-10', dateTime: '2026-10-10T22:00:00Z' } } })], today).map(f => [f.name, f.startDate, f.endDate]),
     [['Palm Tree Music Festival', '2026-10-09T17:00:00Z', '2026-10-11T08:00:00Z']], 'a two-day pass and two day tickets are one festival');
 });
+
+test('a camping pass on sale beside a festival says people camp there; a festival with none stays unknown', async () => {
+  const { candidate: tm } = await import('../src/importers/ticketmaster.js');
+  const { candidate: sg } = await import('../src/importers/seatgeek.js');
+  const { groupListings } = await import('../src/importers/common.js');
+  const { tmEvent } = await import('./fixtures/ticketmaster.js');
+  const { sgEvent } = await import('./fixtures/seatgeek.js');
+  const campingAt = new Set();
+  const fest = tm(tmEvent({ name: 'Mulberry Mountain Music Festival' }), { trusted: true, campingAt });
+  assert.equal(tm(tmEvent({ name: 'Mulberry Mountain Music Festival Camping Pass' }), { trusted: true, campingAt }), null, 'the pass itself is not a listing');
+  assert.equal(campingAt.size, 1);
+  const [f] = groupListings([fest], { origin: 'ticketmaster', prefix: 'tm', today: '2026-10-01', campingAt });
+  assert.equal(f.camping, true);
+  const [plain] = groupListings([tm(tmEvent({ name: 'Mulberry Mountain Music Festival' }), { trusted: true })], { origin: 'ticketmaster', prefix: 'tm', today: '2026-10-01' });
+  assert.equal(plain.camping, undefined, 'no pass seen: nobody knows');
+  const sgAt = new Set();
+  sg(sgEvent({ title: 'Harvest Music Festival RV Pass' }), { campingAt: sgAt });
+  assert.equal(sgAt.size, 1, 'SeatGeek too');
+});

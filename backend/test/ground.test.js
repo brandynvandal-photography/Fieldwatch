@@ -31,9 +31,11 @@ test('the surface from Overpass: the most telling area under the point wins, a c
     { type: 'area', id: 3, tags: { leisure: 'park', name: 'Spirit of the Suwannee Music Park' } },
   ]); };
   const s = await surfaceFromOSM(fest.latitude, fest.longitude, { fetchImpl });
-  assert.deepEqual(s, { surface: 'grass', low: false, source: 'OpenStreetMap', tag: 'leisure=park' }, 'the park (a use) beats the farmland (land cover)');
+  assert.deepEqual(s, { surface: 'grass', low: false, camping: false, source: 'OpenStreetMap', tag: 'leisure=park' }, 'the park (a use) beats the farmland (land cover)');
   assert.match(decodeURIComponent(calls[0].body), /is_in\(30\.40400,-82\.93950\)/); assert.equal(calls[0].ua, process.env.NWS_USER_AGENT);
   assert.equal(await surfaceFromOSM(0, 0, { fetchImpl: async () => overpass([{ type: 'area', id: 1, tags: { boundary: 'administrative' } }]) }), null, 'nothing telling: null, not a guess');
+  const camp = await surfaceFromOSM(0, 0, { fetchImpl: async () => overpass([{ type: 'area', id: 1, tags: { tourism: 'camp_site', name: 'Spirit of the Suwannee' } }, { type: 'area', id: 2, tags: { landuse: 'meadow' } }]) });
+  assert.equal(camp.camping, true, 'a campground under the grounds: people camp here'); assert.equal(camp.surface, 'grass'); assert.equal(s.camping, false);
   await assert.rejects(surfaceFromOSM(0, 0, { fetchImpl: async () => new Response('busy', { status: 429 }) }), /Overpass 429/);
 });
 
@@ -69,8 +71,10 @@ test('a lookup lands on the record, the override sits on top, and the effective 
   assert.equal(saved.length, 1); assert.equal(saved[0].ground.surface, 'pavement');
   const eff = effectiveGround(saved[0]);
   assert.deepEqual({ surface: eff.surface, soil: eff.soil, low: eff.low, structures: eff.structures, surfaceSource: eff.surfaceSource }, { surface: 'pavement', soil: 'D', low: false, structures: ['canopies'], surfaceSource: 'OpenStreetMap: surface=asphalt, amenity=parking' });
-  assert.deepEqual(effectiveGround({}), { surface: 'grass', soil: 'B', low: false, structures: ['canopies'], surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, lookedUpAt: null, lookupError: null, override: null, learned: null }, 'nothing known: trampled grass on average soil');
+  assert.deepEqual(effectiveGround({}), { surface: 'grass', soil: 'B', low: false, structures: ['canopies'], camping: null, campingSource: 'unknown', surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, lookedUpAt: null, lookupError: null, override: null, learned: null }, 'nothing known: trampled grass on average soil, and nobody knows if people camp');
   // Staff know the lot is grass this year, and there is a stage.
+  assert.equal(validOverride({ camping: false }).override.camping, false); assert.equal(validOverride({ camping: 'true' }).override.camping, true); assert.equal(validOverride({}).override.camping, undefined);
+  assert.equal(effectiveGround({ camping: false }).camping, false, 'the listing says no camping'); assert.equal(effectiveGround({ camping: false, ground: { camping: true, campingSource: 'x' } }).camping, true, 'a lookup beats the listing'); assert.equal(effectiveGround({ ground: { camping: true, override: { camping: false } } }).camping, false, 'staff beat both');
   const { override, error } = validOverride({ surface: 'grass', structures: ['canopies', 'stage'], low: true });
   assert.equal(error, undefined);
   const withOverride = { ...saved[0], ground: { ...saved[0].ground, override } };

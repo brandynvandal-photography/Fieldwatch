@@ -12,7 +12,8 @@
     "feeds": [],
     "site": [],
     "source": "https://aftershockfestival.com/festival-info/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "acl-2026-w1",
@@ -27,7 +28,8 @@
     "feeds": [],
     "site": [],
     "source": "https://www.aclfestival.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "neverender-2026",
@@ -42,7 +44,8 @@
     "feeds": [],
     "site": [],
     "source": "https://www.ticketmaster.com/neverender-festival-santa-ana-california-10-03-2026/event/0900648DA22D560C",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "acl-2026-w2",
@@ -57,7 +60,8 @@
     "feeds": [],
     "site": [],
     "source": "https://www.aclfestival.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "iii-points-2026",
@@ -72,7 +76,8 @@
     "feeds": [],
     "site": [],
     "source": "https://www.iiipoints.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "hulaween-2026",
@@ -87,7 +92,8 @@
     "feeds": [],
     "site": [],
     "source": "https://hulaween.frontgatetickets.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": true
   },
   {
     "id": "sick-new-world-tx-2026",
@@ -117,7 +123,8 @@
     "feeds": [],
     "site": [],
     "source": "https://escapehalloween.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "edc-orlando-2026",
@@ -132,7 +139,8 @@
     "feeds": [],
     "site": [],
     "source": "https://orlando.edc.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "camp-flog-gnaw-2026",
@@ -147,7 +155,8 @@
     "feeds": [],
     "site": [],
     "source": "https://www.campfloggnaw.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   },
   {
     "id": "dreamstate-socal-2026",
@@ -162,6 +171,7 @@
     "feeds": [],
     "site": [],
     "source": "https://socal.dreamstateusa.com/",
-    "verifiedOn": "2026-09-27"
+    "verifiedOn": "2026-09-27",
+    "camping": false
   }
 ]
