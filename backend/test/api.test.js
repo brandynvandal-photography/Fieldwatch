@@ -16,6 +16,8 @@ process.env.NODE_KEY = 'test-node';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
 delete process.env.OPENAI_API_KEY;
 delete process.env.APNS_KEY_PATH;
+delete process.env.TICKETMASTER_KEY; delete process.env.SEATGEEK_CLIENT_ID; delete process.env.EDMTRAIN_KEY; delete process.env.FESTIVAL_FEEDS;
+process.env.WIKIDATA_IMPORT = 'false';   // keyless and on by default; kept off here so the import route never reaches the network
 const { default: webpushLib } = await import('web-push');
 const vapid = webpushLib.generateVAPIDKeys();
 process.env.VAPID_PUBLIC_KEY = vapid.publicKey;
@@ -278,6 +280,7 @@ test('the list is what is on: a week before gates for early entry and crews, thr
   assert.equal(r.ticketmaster.skipped, 'TICKETMASTER_KEY not set');
   assert.equal(r.seatgeek.skipped, 'SEATGEEK_CLIENT_ID not set');
   assert.equal(r.edmtrain.skipped, 'EDMTRAIN_KEY not set');
+  assert.equal(r.wikidata.skipped, 'WIKIDATA_IMPORT=false');
   assert.equal(r.feeds.skipped, 'FESTIVAL_FEEDS not set');
 
   // PUT still adds or edits a festival outright, through the same validator.

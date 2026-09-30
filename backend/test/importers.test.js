@@ -5,6 +5,7 @@ import { tmEvent, tmVenue, tmPage } from './fixtures/ticketmaster.js';
 process.env.DB_PATH = ':memory:';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
 delete process.env.TICKETMASTER_KEY; delete process.env.SEATGEEK_CLIENT_ID; delete process.env.EDMTRAIN_KEY; delete process.env.FESTIVAL_FEEDS;
+process.env.WIKIDATA_IMPORT = 'false';   // on by default and keyless; its own suite covers it with a fake endpoint
 
 const { q } = await import('../src/db.js');
 const { seedAll } = await import('../src/seed.js');
@@ -193,6 +194,7 @@ test('runImports reports every source and joins a run already in progress', asyn
   const [a, b] = await Promise.all([runImports(), runImports()]);
   assert.equal(a, b);
   assert.equal(a.ticketmaster.skipped, 'TICKETMASTER_KEY not set'); assert.equal(a.feeds.skipped, 'FESTIVAL_FEEDS not set');
+  assert.equal(a.wikidata.skipped, 'WIKIDATA_IMPORT=false');
   assert.ok(a.startedAt && a.finishedAt);
 });
 
