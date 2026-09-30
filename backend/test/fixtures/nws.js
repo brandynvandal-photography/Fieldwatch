@@ -35,6 +35,7 @@ export const points = {
     forecast: 'https://api.weather.gov/gridpoints/JAX/40,90/forecast',
     forecastHourly: 'https://api.weather.gov/gridpoints/JAX/40,90/forecast/hourly',
     forecastGridData: 'https://api.weather.gov/gridpoints/JAX/40,90',
+    county: 'https://api.weather.gov/zones/county/FLC121', forecastZone: 'https://api.weather.gov/zones/forecast/FLZ024',
     timeZone: 'America/New_York',
   },
 };

@@ -22,6 +22,7 @@ import { festivalsInWindow } from './poller.js';
 import { pushAlert } from './push.js';
 import { pushWeb } from './webpush.js';
 import { iso } from './util.js';
+import { changed } from './live.js';
 
 const MIN = 60_000, MI = 1609.344, J2000 = Date.UTC(2000, 0, 1, 12);   // GOES-R clocks count seconds from noon on 1 January 2000
 export const RINGS = { red: 8, orange: 12, yellow: 20 };
@@ -132,6 +133,7 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
   for (const f of festivals) {
     const prev = state.per.get(f.id), a = assess(f, state.flashes, now, state.lastFileAt);
     state.per.set(f.id, a);
+    if (!prev || prev.code !== a.code || prev.nearestMi !== a.nearestMi) changed(f.id, 'lightning');
     try { await announce(f, prev, a, now); } catch (e) { console.error(`[${f.id}] lightning alert failed:`, errorText(e)); }
   }
   for (const id of state.per.keys()) if (!festivals.some(f => f.id === id)) state.per.delete(id);
@@ -180,7 +182,7 @@ async function announce(f, prev, a, now) {
   console.log(`[${f.id}] lightning: ${a.code}, ${alert.nearestMi} mi push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
 }
 
-export function startLightning(seconds = Number(process.env.LIGHTNING_SECONDS || 60)) {
+export function startLightning(seconds = Number(process.env.LIGHTNING_SECONDS || 20)) {
   if (!lightningOn()) return false;
   const run = () => lightningTick().catch(e => console.error('lightning failed:', errorText(e)));
   run(); setInterval(run, seconds * 1000);

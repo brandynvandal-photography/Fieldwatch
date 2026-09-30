@@ -551,3 +551,22 @@ test('one tap from the field: a ground report is stored, shows on the ground and
   for (let n = 0; n < 4; n++) assert.equal((await api('POST', `/festivals/${FEST}/ground/report`, { body: { state: 'fine' } })).status, 200);
   assert.equal((await api('POST', `/festivals/${FEST}/ground/report`, { body: { state: 'fine' } })).status, 429);
 });
+
+test('the live stream: a page listening hears which festival changed and what kind, the moment it lands', async () => {
+  const ctl = new AbortController();
+  const res = await fetchReal(`${base}/events?f=${FEST}`, { signal: ctl.signal });
+  assert.equal(res.status, 200); assert.match(res.headers.get('content-type'), /text\/event-stream/); assert.equal(res.headers.get('access-control-allow-origin'), '*', 'a page on another origin may listen');
+  const reader = res.body.getReader(), decoder = new TextDecoder();
+  const first = decoder.decode((await reader.read()).value);
+  assert.match(first, /retry: 5000/, 'the browser reconnects on its own');
+  const before = nwsState.features;
+  nwsState.features = [alertFeature({ id: 'urn:oid:live-1', '@id': 'https://api.weather.gov/alerts/urn:oid:live-1', event: 'Wind Advisory', severity: 'Minor' })];
+  const heard = (async () => { let buf = ''; for (;;) { const { value, done } = await reader.read(); if (done) return buf; buf += decoder.decode(value); if (buf.includes('event: change')) return buf; } })();
+  await pollFestival(q.festival(FEST));
+  const chunk = await heard;
+  assert.match(chunk, /event: change\ndata: \{"festivalId":"hulaween-2026","kind":"alerts","at":"[^"]+"\}\n\n/);
+  assert.equal((await api('GET', '/health')).json.live, 1, 'one page listening');
+  ctl.abort(); nwsState.features = before;
+  await new Promise(r => setTimeout(r, 50));
+  assert.equal((await api('GET', '/health')).json.live, 0, 'and gone when it hangs up');
+});

@@ -363,6 +363,11 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .chips{display:flex;gap:8px;justify-content:center;margin:0 0 16px}
 .chips.wrap{flex-wrap:wrap}
 .chips.setup{margin:0 0 12px}
+/* Warnings, asked once. */
+.ask{border-radius:var(--radius);padding:16px 18px 14px;margin:12px 0 4px;text-align:center}
+.ask .t{font-weight:700;font-size:17px;line-height:1.25}
+.ask p{color:var(--muted);font-size:14px;line-height:1.4;margin-top:5px;max-width:34ch;margin-left:auto;margin-right:auto}
+.ask .acts{margin-top:12px}
 .kv .dim{color:var(--muted);font-size:13px}
 .chip{padding:8px 16px;border-radius:999px;font-size:14px;font-weight:600;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink)}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
@@ -424,10 +429,10 @@ let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {} }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -912,6 +917,33 @@ async function groundCall(method, path, body){
 }
 const saveGround = () => groundCall('PUT', '', S.groundEdit);
 
+// ---- the live stream: the backend says which festival changed and what kind, and the page refreshes just that ----
+let liveSrc = null, liveFor = '';
+function connectLive(){
+  const b = backend();
+  if (!b || !('EventSource' in window)) { if (liveSrc) { liveSrc.close(); liveSrc = null; liveFor = ''; } return; }
+  if (liveSrc && liveFor === b) return;
+  if (liveSrc) liveSrc.close();
+  liveFor = b; liveSrc = new EventSource(`${b}/events`);
+  liveSrc.addEventListener('change', e => { let d = null; try{ d = JSON.parse(e.data); }catch(err){} if (d) onLive(d); });
+}
+function onLive(d){
+  const f = fest();
+  if (f && d.festivalId === f.id) { if (d.kind === 'lightning') loadLightning(f); else if (!S.busy) refresh(f); }
+  if (S.screen === 'feed' && !S.feedBusy) loadFeed();
+}
+// ---- warnings, asked once: right after a festival opens, one card offers the push for it ----
+function askPush(f){
+  if (!f || f.id === 'here' || !backend() || (S.push && S.push.fest === f.id) || (S.asked || {})[f.id]) return '';
+  if (!PUSH_OK) return IOS && !STANDALONE && !IN_PREVIEW ? `<div class="ask glass"><div class="t">Get warnings on this phone</div><p>Add Fieldwatch to your Home Screen first: Share, then "Add to Home Screen". Then switch warnings on here.</p><div class="acts"><button class="btn small quiet" onclick="askedPush()">Got it</button></div></div>` : '';
+  if (Notification.permission === 'denied') return '';
+  return `<div class="ask glass"><div class="t">Get warnings for ${esc(f.name)} on this phone</div><p>A push when a warning, a heads-up or a lightning code lands, even with the app closed.</p><div class="acts"><button class="btn small" onclick="askedPush(); togglePush()">Turn on</button><button class="btn small quiet" onclick="askedPush()">Not now</button></div></div>`;
+}
+function askedPush(){ const f = fest(); if (f) { S.asked = { ...(S.asked || {}), [f.id]: true }; save(); } render(); }
+// ---- staff mode: the backend address, its check and the admin key stay out of sight until someone who runs it asks ----
+const staffMode = () => Boolean(S.staff || S.admin || new URLSearchParams(location.search).get('staff') || new URLSearchParams(location.search).get('backend'));
+let creditsTaps = 0;
+function creditsTap(){ if (staffMode()) return; if (++creditsTaps >= 5) { S.staff = true; save(); toast('Staff settings shown'); render(); } }
 // ---- lightning codes (the backend grades them from the GOES lightning mapper, lightning.js; the phone only reads) ----
 // The festival safety protocol, in its own words (backend/src/lightning.js PROTOCOL carries the same text for the pushes; change both).
 const CODE = {
@@ -1479,6 +1511,7 @@ screens.home = () => {
       ${orb('Alerts', I.bell, 345, "go('weather')", activeAlerts(f).length || '')}
       ${orb('Forecast', I.chart, 190, "go('weather')")}
     </div>
+    ${askPush(f)}
     <div class="group glass">
       ${here ? '' : `<button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
@@ -1897,16 +1930,16 @@ async function shareFestival(){
 
 screens.settings = () => topbar(backBtn(), '', '') + `
   <h1 class="title">Settings</h1>
-  <p class="h" style="margin-top:22px">Backend</p>
+  ${staffMode() ? `<p class="h" style="margin-top:22px">Backend</p>
   <div class="group glass"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="${esc(DEFAULT_BACKEND.replace(/^https:\/\//, ''))}" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
   <p class="note">Empty uses the default. Type none to go without.</p>
-  ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up, and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}
+  ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up, and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at, and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
-  <p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported; hide what is not a festival</div></div>${I.chev}</button>` : ''}</div>
+  ${staffMode() ? `<p class="h">Admin</p>
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported; hide what is not a festival</div></div>${I.chev}</button>` : ''}</div>` : ''}
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
-  <p class="note">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. Listings: Ticketmaster, SeatGeek, Edmtrain and people here. No account, no login.</p>`;
+  <p class="note credits" onclick="creditsTap()">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. Listings: Ticketmaster, SeatGeek, Edmtrain and people here. No account, no login.</p>`;
 
 /** When the app and the backend do not talk: is it up, which build, which keys it sees, does the admin key match. */
 async function checkBackend(){
@@ -1932,8 +1965,8 @@ async function checkBackend(){
   S.check = { ok, summary: ok ? lines[0] : lines[lines.length - 1], detail: lines.join('. ') + '.' };
   S.checkBusy = false; render();
 }
-function setBackend(v){ S.backend = cleanURL(v); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); }
-function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.hereFest = null; S.push = null; S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
+function setBackend(v){ S.backend = cleanURL(v); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); connectLive(); }
+function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.hereFest = null; S.push = null; S.asked = {}; S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
 
 // ---- the festival list: the bundled copy first, the backend's live list when one is set -------------------
 function mergeLists(a, b){ const m = new Map(); for (const f of [...(a || []), ...(b || [])]) m.set(f.id, f); return [...m.values()]; }
@@ -2115,6 +2148,7 @@ async function boot(){
   try{ bundled = await (await fetch('festivals.json', { cache: 'no-cache' })).json(); }catch(e){}
   FESTS = backend() && S.fests ? mergeLists(bundled, S.fests) : bundled;
   const qs = new URLSearchParams(location.search);
+  if (qs.get('staff')) { S.staff = true; save(); }
   if (qs.get('f') || qs.get('here')) {
     S.link = { fest: qs.get('f'), here: !!qs.get('here'), alert: qs.get('alert') || null };
     qs.delete('f'); qs.delete('here'); qs.delete('alert');
@@ -2129,6 +2163,7 @@ async function boot(){
   if (fest()) refresh(fest());
   syncFestivals();
   ensurePush();
+  connectLive();
   setInterval(tickCountdowns, 30000);
   setInterval(() => { if (document.visibilityState === 'visible' && fest() && backend()) loadLightning(fest()); }, 60000);
   setInterval(() => { if (document.visibilityState !== 'visible') return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);

@@ -33,6 +33,35 @@ export async function activeAlerts(lat, lon) {
   return (fc.features || []).map(normalizeAlert);
 }
 
+/** Does this alert's polygon reach the grounds: a 3 km square around the point, tested at nine points, and the polygon's own corners inside it. Zone-wide alerts (no polygon) always do. */
+export function reaches(geometry, lat, lon, km = 1.5) {
+  if (!geometry) return true;
+  const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.type === 'MultiPolygon' ? geometry.coordinates : null;
+  if (!polys) return true;
+  const dLat = km / 111.195, dLon = km / (111.195 * Math.cos(lat * Math.PI / 180));
+  const samples = []; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) samples.push([lon + j * dLon, lat + i * dLat]);
+  const inRing = (ring, x, y) => { let inside = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; } return inside; };
+  for (const poly of polys) {
+    const ring = poly?.[0] || [];
+    if (samples.some(([x, y]) => inRing(ring, x, y))) return true;
+    if (ring.some(([x, y]) => Math.abs(x - lon) <= dLon && Math.abs(y - lat) <= dLat)) return true;
+  }
+  return false;
+}
+/**
+ * The alerts that apply to a festival's grounds, not just one point on them: everything active for the point's county and
+ * forecast zones, then a polygon warning only where its polygon reaches the grounds, a zone-wide alert as it is. A storm
+ * warning whose edge crosses the grounds is caught; one across the county that misses them is not. The point query stands in
+ * when the zones are unknown.
+ */
+export async function alertsFor(lat, lon) {
+  let zones = [];
+  try { const p = await point(lat, lon); zones = [p.county, p.forecastZone].map(u => String(u || '').split('/').pop()).filter(z => /^[A-Z]{2}[CZ]\d{3}$/.test(z)); } catch {}
+  if (!zones.length) return activeAlerts(lat, lon);
+  const fc = await nws(`https://api.weather.gov/alerts/active?zone=${zones.join(',')}`);
+  return (fc.features || []).filter(ft => reaches(ft.geometry, lat, lon)).map(normalizeAlert);
+}
+
 // /points rarely changes, so cache it for the life of the process.
 const points = new Map();
 export async function point(lat, lon) {

@@ -1,6 +1,7 @@
 import './env.js';
 import { q } from './db.js';
-import { activeAlerts, gridpoint, hourly, point } from './nws.js';
+import { activeAlerts, alertsFor, gridpoint, hourly, point } from './nws.js';
+import { changed } from './live.js';
 import { headsUpAlert, incoming, spreadGrid } from './incoming.js';
 import { ensureGround, groundFor } from './ground.js';
 import { nowcastFor } from './nowcast.js';
@@ -18,7 +19,7 @@ const lastPolled = new Map();
 
 /** Fetch NWS alerts for one festival, store new ones, push them, and end the ones that vanished. */
 export async function pollFestival(f) {
-  const fresh = await activeAlerts(f.latitude, f.longitude);
+  const fresh = await alertsFor(f.latitude, f.longitude);
   lastPolled.set(f.id, Date.now());
   const seenNow = new Set(fresh.map(a => a.id));
   const brandNew = [];
@@ -28,9 +29,11 @@ export async function pollFestival(f) {
     else { q.insertAlert(f.id, a); brandNew.push(a); }
   }
   // Anything we had as active that NWS no longer lists has ended. A staff post or a forecast heads-up is not NWS's to end.
+  let ended = 0;
   for (const id of q.activeAlertIds(f.id)) {
-    if (!seenNow.has(id)) { const a = q.alert(id); if (a && (a.channel || 'weather') === 'weather') q.updateAlert({ ...a, expiresAt: iso() }); }
+    if (!seenNow.has(id)) { const a = q.alert(id); if (a && (a.channel || 'weather') === 'weather') { q.updateAlert({ ...a, expiresAt: iso() }); ended++; } }
   }
+  if (brandNew.length || ended) changed(f.id, 'alerts');
 
   if (brandNew.length) {
     const tokens = q.tokensFor(f.id);
@@ -87,6 +90,7 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   const a = headsUpAlert(f, inc, p.timeZone, now, ground);
   q.setSetting(key, JSON.stringify({ hazard: inc.hazard, startsAt: inc.startsAt, at: new Date(now).toISOString() }));
   if (q.alert(a.id)) q.updateAlert(a); else q.insertAlert(f.id, a);
+  changed(f.id, 'headsup');
   const r = await pushAlert(q.tokensFor(f.id), f, a);
   const w = await pushWeb(f, a);
   console.log(`[${f.id}] heads-up: ${a.event} in ${inc.minutes} min push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
@@ -106,7 +110,7 @@ export async function pollOnce() {
   q.purgeAlerts(daysFromNow(-7));
 }
 
-export function startPolling(seconds = Number(process.env.POLL_SECONDS || 120)) {
+export function startPolling(seconds = Number(process.env.POLL_SECONDS || 30)) {
   pollOnce();
   setInterval(pollOnce, seconds * 1000);
 }

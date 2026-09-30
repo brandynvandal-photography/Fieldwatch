@@ -20,12 +20,13 @@ It installs: on an iPhone, Share then "Add to Home Screen" gives a full-screen a
 - **Opens on your festival.** With location allowed, the picker skips itself when you are within a few miles of a festival that is on, and sorts the rest by distance. A link with `?f=<festival>` (a QR code at the gate, a pushed warning) opens there too, past the walkthrough.
 - **Right where you are.** The last row of the picker. Alerts, forecast, radar and push warnings for the phone's own spot, whether or not the festival is listed: the spot is a festival of its own for the week, named by OpenStreetMap, and warnings follow it as it moves. `?here=1` opens it. This replaced adding a festival by hand.
 - **Warn people near you.** On a warning, one button hands the alert text and its link to the phones around you over AirDrop (or the system share sheet), which reaches people with nothing installed and no signal.
-- **Warnings on this phone.** One row on the home screen turns Web Push on for the chosen festival: warnings, watches and staff posts arrive with the app closed. On an iPhone it needs the site on the Home Screen. A warning that lands while the app is open vibrates the phone and shows a banner.
+- **Warnings on this phone.** One row on the home screen turns Web Push on for the chosen festival: warnings, watches and staff posts arrive with the app closed. On an iPhone it needs the site on the Home Screen. Right after a festival is picked, one card offers it (Turn on, Not now) and never asks again for that festival. A warning that lands while the app is open vibrates the phone and shows a banner.
+- **Live.** With a backend, the page holds its event stream open (`/events`) and refreshes the festival or the feed the moment an alert, heads-up, lightning code, post or ground report lands there; its own polls (lightning every minute, everything every five) are the fallback.
 - **Heat, wind, lightning.** The weather screen reads the grid behind the forecast: heat index with the 90 and 103 guides, wind gusts with the 25 and 40 mph guides crews watch for tents and stages, chance of thunder. One crosshair across all three. The home card leads with whichever matters most in the next twelve hours.
 - **Day by day.** One row per festival day through the day after, and one line about what to pack.
 - **Share.** A QR code (rendered by the backend) and a link that open straight on the festival.
 - **Report a hazard.** What, where, your position if you allow it. It goes to the backend's moderation queue; a human checks it before it goes out.
-- **Staff.** With the admin key in Settings: post an official update (it goes out as an alert and a push), review reports before they go out, and see what feeds the festival list.
+- **Staff.** With the admin key in Settings: post an official update (it goes out as an alert and a push), review reports before they go out, and see what feeds the festival list. Settings hides the backend address, its check and the key until five taps on the credits line at the bottom, `?staff=1`, or `?backend=`; a saved key keeps them shown.
 
 ## The interface
 

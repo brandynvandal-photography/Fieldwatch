@@ -18,6 +18,7 @@ import { skipReason as wikidataSkipped } from './importers/wikidata.js';
 import { lightningFor, lightningOn, lightningStatus } from './lightning.js';
 import { GROUND_STATES, groundFor, groundStatus, lookupGround, reportGround, reportSummary, validOverride } from './ground.js';
 import { nowcastFor } from './nowcast.js';
+import { changed, liveCount, sse } from './live.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -112,6 +113,7 @@ app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
   sources: { ticketmaster: Boolean(process.env.TICKETMASTER_KEY), seatgeek: Boolean(process.env.SEATGEEK_CLIENT_ID), edmtrain: Boolean(process.env.EDMTRAIN_KEY), wikidata: wikidataSkipped() || 'on', feeds: Boolean(process.env.FESTIVAL_FEEDS) },
   lightning: lightningStatus(),
   ground: groundStatus(),
+  live: liveCount(),
   imports: { running: imports.running, lastStartedAt: imports.last?.startedAt || null, lastFinishedAt: imports.last?.finishedAt || null,
     // Per source, what the last run managed and the last error it hit, so a failing key or a blocked host shows here.
     sources: Object.fromEntries(Object.entries(imports.last || {}).filter(([, v]) => v && typeof v === 'object')
@@ -125,6 +127,9 @@ app.get('/festivals', (req, res) => {
   if (req.query.all && req.query.hidden && isAdmin(req)) return res.json(q.allFestivals().filter(f => ['published', 'hidden'].includes(f.status || 'published')));
   const all = q.publishedFestivals(); res.json(req.query.all ? all : all.filter(f => isLive(f)));
 });
+/** The live stream (live.js): `?f=<id>` for one festival, nothing for all of them. */
+app.get('/events', sse);
+
 // The home page: every current alert at every festival that is on, grouped by festival, the worst first. Lightning within
 // 15 miles (code red or orange) puts a festival on the page too; red is an alert already, orange is its own row.
 const RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
@@ -204,6 +209,7 @@ app.post('/festivals/:id/ground/report', loadFestival, wrap(async (req, res) => 
   groundReportTimes.set(ip, [...recent, now]);
   const r = await reportGround(req.festival, String(req.body?.state || ''), { now, q, save: f => q.upsertFestival(f) });
   if (r.error) return res.status(400).json({ error: r.error });
+  changed(req.festival.id, 'ground');
   res.json({ ...r, reports: reportSummary(q, req.festival.id, now) });
 }));
 
@@ -259,6 +265,7 @@ app.post('/festivals/:id/posts', requireAdmin, loadFestival, wrap(async (req, re
   };
   const push = await pushAlert(q.tokensFor(req.festival.id), req.festival, alert);
   const web = await pushWeb(req.festival, alert);
+  changed(req.festival.id, 'posts');
   res.status(201).json({ id: String(info.lastInsertRowid), push, web });
 }));
 

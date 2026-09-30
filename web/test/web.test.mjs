@@ -293,6 +293,9 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 function fakeBackend(list) {
   const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {} };
   store.groundReports = {};
+  // The live stream: open responses, and a way for a test to push a change to every page on it (backend/src/live.js).
+  store.live = [];
+  store.emit = e => store.live.forEach(r => r.write(`event: change\ndata: ${JSON.stringify(e)}\n\n`));
   const groundOf = id => ({ surface: 'grass', soil: 'B', low: false, structures: ['canopies'], surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, past: null, override: null, learned: null, reports: store.groundReports[id] ? { last: store.groundReports[id][0], recent: store.groundReports[id].length } : null, ...(store.ground[id] || {}) });
   // What the home page shows: the fixture's warning at Hulaween, an advisory at the next festival that is on.
   const p = alertFeature().properties, toAlert = over => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null, severity: String(p.severity || 'Unknown').toLowerCase(), area: p.areaDesc ?? '', source: p.senderName ?? 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0, ...over });
@@ -305,6 +308,7 @@ function fakeBackend(list) {
       store.calls.push(`${m} ${path}`);
       const send = (status, body) => { res.writeHead(status, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
       if (m === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
+      if (m === 'GET' && path === '/events') { res.writeHead(200, { ...cors, 'content-type': 'text/event-stream', 'cache-control': 'no-cache' }); res.write('retry: 5000\n: hello\n\n'); store.live.push(res); res.on('close', () => { store.live = store.live.filter(r => r !== res); }); return; }
       if (m === 'GET' && path === '/festivals') {
         const u = new URL(req.url, 'http://x');
         if (u.searchParams.get('all')) return send(200, u.searchParams.get('hidden') && key === 'k-admin' ? store.list : store.list.filter(f => f.status !== 'hidden'));
@@ -507,6 +511,13 @@ test('a link opens straight to a festival and its alert, and warnings can be swi
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('.pill'), 'Off');
+    // The page asks once, on the festival page, before anyone finds the row.
+    assert.equal(await page.textContent('.ask .t'), 'Get warnings for Suwannee Hulaween on this phone');
+    await page.click('.ask button:has-text("Not now")');
+    assert.equal(await page.$('.ask'), null, 'answered');
+    await page.reload(); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('.group .row:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
+    assert.equal(await page.$('.ask'), null, 'and not asked again');
     await page.click('button.row:has-text("Warnings on this phone")');
     await page.waitForSelector('.pill.on');
     assert.ok(store.calls.includes('GET /push/vapid') && store.calls.includes('POST /push/subscribe'));
@@ -825,11 +836,20 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     await shot(page, '24-lightning');
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.bolt.red');
-    // A minute later, green: the tile says so, without a reload.
+    // A minute later, green: the backend says so down the live stream, and the tile changes with no reload and no poll.
+    assert.equal(store.live.length, 1, 'the page holds one live stream open');
     store.lightning['hulaween-2026'] = { code: 'green', nearestMi: null, nearestAt: null, within: { 8: 0, 12: 0, 20: 0 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: null, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' };
-    await page.evaluate(() => loadLightning(fest()));
+    store.emit({ festivalId: 'hulaween-2026', kind: 'lightning', at: minutesAgo(0) });
     await page.waitForSelector('.bolt.green');
     assert.equal(await page.textContent('.bolt .t'), 'No lightning within 20 mi · Code green');
+    // A new alert on the stream pulls the whole festival again; one at another festival does not.
+    const pulls = () => store.calls.filter(c => c === 'GET /festivals/hulaween-2026/ground').length, settle = () => new Promise(r => setTimeout(r, 400));
+    const was = pulls();
+    store.emit({ festivalId: 'not-this-one', kind: 'alerts', at: minutesAgo(0) }); await settle();
+    assert.equal(pulls(), was, 'another festival\'s change is not ours');
+    store.emit({ festivalId: 'hulaween-2026', kind: 'alerts', at: minutesAgo(0) });
+    for (let i = 0; i < 50 && pulls() === was; i++) await new Promise(r => setTimeout(r, 100));
+    assert.equal(pulls(), was + 1, 'ours pulls the festival once');
     // Orange with no alert at all still puts a festival on the home page, as its own row.
     const other = FESTS.find(f => isLive(f) && f.id !== 'hulaween-2026');
     store.feed = [{ festivalId: other.id, alerts: [] }];
@@ -844,4 +864,34 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     assert.equal(await page.textContent('h1.title'), 'Lightning');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('staff settings stay out of sight: the backend address and the admin key show after five taps on the credits, or with ?staff=1', async () => {
+  const { page, context, seen } = await newPage();
+  try {
+    await page.goto(`${base}/index.html`);
+    await page.click('button:has-text("Use my location")');
+    await page.click('button[aria-label="Settings"]');
+    await page.waitForSelector('h1.title:has-text("Settings")');
+    assert.equal(await page.$('#backend'), null, 'no backend address for the public');
+    assert.equal(await page.$('#admin'), null, 'no admin key either');
+    assert.ok(await page.$('button.row:has-text("Use my location")') && await page.$('button.row:has-text("Forget saved data")'), 'what is left is theirs');
+    for (let i = 0; i < 5; i++) await page.click('.note.credits');
+    await page.waitForSelector('#admin');
+    assert.ok(await page.$('#backend'));
+    assert.equal(await page.textContent('#toast'), 'Staff settings shown');
+    await page.reload();
+    await page.click('button[aria-label="Settings"]');
+    await page.waitForSelector('#admin', { timeout: 5000 });
+    await shot(page, '25-settings-staff');
+  } finally { await context.close(); }
+  const other = await newPage();
+  try {
+    await other.page.goto(`${base}/index.html?staff=1`);
+    await other.page.click('button:has-text("Use my location")');
+    await other.page.click('button[aria-label="Settings"]');
+    await other.page.waitForSelector('#admin', { timeout: 5000 });
+    assert.deepEqual(other.seen.errors, []);
+  } finally { await other.context.close(); }
+  assert.deepEqual(seen.errors, []);
 });
