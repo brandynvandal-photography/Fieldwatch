@@ -367,6 +367,9 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     await page.waitForSelector('.toast.show:has-text("Imported")');
     assert.equal(store.imports, 1);
 
+    // An address typed without https:// still points at the backend, not at a page under this site.
+    assert.deepEqual(await page.evaluate(() => { const was = S.backend; setBackend('fieldwatch.example.test/'); const got = [S.backend, cleanURL(' HTTPS://x.test// '), cleanURL('none'), cleanURL('')]; setBackend(was); return got; }), ['https://fieldwatch.example.test', 'HTTPS://x.test', 'none', '']);
+
     // Check the backend: up, which build, which keys, and whether the admin key matches.
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('#admin');

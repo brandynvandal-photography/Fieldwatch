@@ -345,7 +345,9 @@ function save(){
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
-const backend = () => { const v = (new URLSearchParams(location.search).get('backend') || S.backend || DEFAULT_BACKEND).replace(/\/+$/, ''); return v === 'none' ? '' : v; };
+/** An address as people type it: no scheme means https, no trailing slash. */
+const cleanURL = v => { v = (v || '').trim().replace(/\/+$/, ''); return v && v !== 'none' && !/^https?:\/\//i.test(v) ? `https://${v}` : v; };
+const backend = () => { const v = cleanURL(new URLSearchParams(location.search).get('backend') || S.backend || DEFAULT_BACKEND); return v === 'none' ? '' : v; };
 // 'here' is a festival of your own: wherever the phone is, for the week. Everything keyed by latitude and longitude just works.
 const fest = () => (S.fest === 'here' ? hereFest() : FESTS.find(f => f.id === S.fest));
 function hereFest(){
@@ -388,7 +390,8 @@ async function getJSON(url, headers){
     const r = await fetch(url, { headers: headers || {}, signal: ctl.signal });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     return await r.json();
-  } finally { clearTimeout(t); }
+  } catch(e){ throw ctl.signal.aborted ? new Error('timed out after 15 s') : e; }
+  finally { clearTimeout(t); }
 }
 const GEO = { Accept: 'application/geo+json' };
 const pt = f => `${f.latitude.toFixed(4)},${f.longitude.toFixed(4)}`;
@@ -1141,8 +1144,8 @@ screens.moderate = () => {
     <p class="note">Published reports reach every phone here as an alert.</p>`;
 };
 /** What to say when a staff call fails: the admin key, a backend that is down or restarting, or the address. */
-const staffFail = e => !e ? 'Cannot reach the backend' : e.message === 'HTTP 401' ? 'Wrong admin key' : /HTTP 5/.test(e.message) ? 'The backend is restarting or down' : 'Cannot reach the backend';
-const staffHint = e => !e ? '' : e.message === 'HTTP 401' ? 'The key in Settings must match ADMIN_KEY in the backend\'s variables.' : /HTTP 5/.test(e.message) ? 'Check its deploy log, then try again in a minute.' : 'Check the address in Settings and whether the backend is up.';
+const staffFail = e => !e ? 'Cannot reach the backend' : e.message === 'HTTP 401' ? 'Wrong admin key' : /HTTP 5/.test(e.message) ? 'The backend is restarting or down' : /timed out/.test(e.message) ? 'The backend is not answering in time' : 'Cannot reach the backend';
+const staffHint = e => !e ? '' : e.message === 'HTTP 401' ? 'The key in Settings must match ADMIN_KEY in the backend\'s variables.' : /HTTP 5/.test(e.message) ? `${e.message}. Check its deploy log, then try again in a minute.` : /timed out/.test(e.message) ? 'It may be busy with an import. Try again in a minute.' : `${e.message} from ${backend()}. Check the address in Settings and whether the backend is up.`;
 async function loadQueue(){
   const f = fest(), b = backend(); if (!f || f.id === 'here' || !b || !S.admin) { S.queue = null; return; }
   S.queueBusy = true; render();
@@ -1254,7 +1257,7 @@ async function checkBackend(){
   S.check = { ok, summary: ok ? lines[0] : lines[lines.length - 1], detail: lines.join('. ') + '.' };
   S.checkBusy = false; render();
 }
-function setBackend(v){ S.backend = v.trim().replace(/\/+$/, ''); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); }
+function setBackend(v){ S.backend = cleanURL(v); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); }
 function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.hereFest = null; S.push = null; S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
 
 // ---- the festival list: the bundled copy first, the backend's live list when one is set -------------------

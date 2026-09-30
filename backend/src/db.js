@@ -3,6 +3,7 @@ import { iso } from './util.js';
 
 export const db = new Database(process.env.DB_PATH || 'fieldwatch.db');
 db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS festivals (

@@ -1,7 +1,7 @@
 // What every ticket-site importer shares: turning a pile of listings ("Aftershock - Friday",
 // "Aftershock 3 Day Pass", "Aftershock Parking") into festivals, and writing them into the table
 // without stepping on another source's record.
-import { q } from '../db.js';
+import { db, q } from '../db.js';
 import { normalizeFestival, sameFestival, slug } from '../festivals.js';
 import { iso } from '../util.js';
 
@@ -53,7 +53,7 @@ export function groupListings(listings, { origin, prefix, today = iso().slice(0,
  * and prunes this source's own records that vanished before they started (cancelled) or ended
  * a month ago. A run with fetch errors never prunes on absence; it only knows what it fetched.
  */
-export function applyImport({ origin, found, now = Date.now(), errors = 0 }) {
+export const applyImport = db.transaction(({ origin, found, now = Date.now(), errors = 0 }) => {
   const existing = q.allFestivals();
   const others = existing.filter(f => f.origin !== origin);
   const before = new Map(existing.filter(f => f.origin === origin).map(f => [f.id, f]));
@@ -71,4 +71,4 @@ export function applyImport({ origin, found, now = Date.now(), errors = 0 }) {
     if ((gone && unstarted && errors === 0) || longOver) { q.deleteFestival(id); pruned++; }
   }
   return { festivals: found.length, added, updated, duplicates, pruned };
-}
+});
