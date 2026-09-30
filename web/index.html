@@ -528,13 +528,14 @@ async function refresh(f){
   if (!f || S.busy) return;
   S.busy = true; render();
   const b = backend();
-  const [al, hr, po, inc, gr, dy, lt, gd] = await Promise.allSettled([
+  const [al, hr, po, inc, gr, dy, lt, gd, nc] = await Promise.allSettled([
     loadAlerts(f), loadHourly(f),
     b ? getJSON(`${b}/festivals/${f.id}/posts`) : Promise.resolve(data(f).posts || []),
     b ? getJSON(`${b}/festivals/${f.id}/incidents`) : Promise.resolve(null),
     loadGrid(f), loadDaily(f),
     b ? getJSON(`${b}/festivals/${f.id}/lightning`) : Promise.resolve(null),
     b ? getJSON(`${b}/festivals/${f.id}/ground`) : Promise.resolve(null),
+    b ? getJSON(`${b}/festivals/${f.id}/nowcast`) : Promise.resolve(null),
   ]);
   const next = { ...data(f) };
   let ok = false;
@@ -551,6 +552,7 @@ async function refresh(f){
   if (inc.status === 'fulfilled') next.incidents = inc.value;
   if (gr.status === 'fulfilled') next.grid = spreadGrid(gr.value, next.hourly || data(f).hourly || []);
   if (gd.status === 'fulfilled') next.ground = gd.value;
+  if (nc.status === 'fulfilled') next.nowcast = nc.value;
   if (dy.status === 'fulfilled') next.daily = dy.value;
   if (lt.status === 'fulfilled') next.lightning = lt.value;
   next.checkedAt = new Date().toISOString();
@@ -1002,7 +1004,7 @@ const alertHazard = event => (ALERT_HAZARD.find(([re]) => re.test(event || '')) 
  * is the first run of hours over a line; rain counts by amount when the grid has one (a run must add up to rainIn), by chance
  * when it does not. A watch or warning with an onset still ahead wins when it comes first.
  */
-function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date.now(), hours = 12 } = {}) {
+function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = null, now = Date.now(), hours = 12 } = {}) {
   const end = now + hours * HOUR, gustLine = windLine(ground), standing = ground && Array.isArray(ground.structures) && ground.structures.length ? ground.structures : ['canopies'];
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
@@ -1042,7 +1044,11 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date
     if (!hz || !Number.isFinite(onset) || onset <= now || onset >= end || a.channel === 'headsup') continue;
     if (!watch || onset < Date.parse(watch.startsAt)) watch = { hazard: hz, startsAt: new Date(onset).toISOString(), endsAt: a.expiresAt || null, source: 'alert', event: a.event, peak: {} };
   }
-  const pick = watch && (!forecast || Date.parse(watch.startsAt) <= Date.parse(forecast.startsAt)) ? watch : forecast;
+  // Rain already on the radar inside two hours moves a window's start earlier, or is a window of its own when the forecast has none.
+  const radar = nowcast && nowcast.minutes != null && nowcast.minutes <= 120 ? { hazard: 'rain', startsAt: new Date(now + nowcast.minutes * 60000).toISOString(), endsAt: new Date(now + (nowcast.minutes + 120) * 60000).toISOString(), source: 'radar', peak: {}, nowcast } : null;
+  if (radar && forecast) { if (Date.parse(radar.startsAt) < Date.parse(forecast.startsAt)) forecast.startsAt = radar.startsAt; forecast.nowcast = nowcast; }
+  const soon = forecast || radar;
+  const pick = watch && (!soon || Date.parse(watch.startsAt) <= Date.parse(soon.startsAt)) ? watch : soon;
   return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)) } : null;
 }
 /** Rain in a sentence: "0.6 in of rain" when the grid says how much, "a 70% chance of rain" when it only says how likely. */
@@ -1133,7 +1139,7 @@ function timing(hazard, m) {
 /** What is on the way at this festival: read from the forecast on the phone, or the backend's own heads-up when there is no forecast yet. */
 function incomingFor(f){
   const d = data(f), alerts = (d.alerts || []).filter(isActive);
-  const inc = d.hourly ? incoming({ hourly: d.hourly, grid: d.grid || {}, alerts, ground: d.ground || {} }) : null;
+  const inc = d.hourly || d.nowcast ? incoming({ hourly: d.hourly || [], grid: d.grid || {}, alerts, ground: d.ground || {}, nowcast: d.nowcast || null }) : null;
   if (inc) return { ...inc, ground: d.ground || {} };
   const hu = alerts.find(a => a.channel === 'headsup' && a.onset);
   return hu ? { hazard: hu.hazard || alertHazard(hu.event) || 'storms', startsAt: hu.onset, endsAt: hu.expiresAt || null, source: 'headsup', event: hu.event, peak: {}, alertId: hu.id,
@@ -1151,6 +1157,7 @@ function incomingLine(inc){
   const now = inc.minutes <= 0, span = `${now ? 'Since' : 'Around'} ${fmtTime(inc.startsAt)}${inc.endsAt ? ` until ${fmtTime(inc.endsAt)}` : ''}`;
   if (inc.source === 'alert') return `${inc.event}, ${now ? 'in effect' : `from ${fmtTime(inc.startsAt)}`}${inc.endsAt ? ` until ${fmtTime(inc.endsAt)}` : ''}`;
   const p = inc.peak || {}, bits = [];
+  if (inc.nowcast && inc.nowcast.minutes != null) bits.push(`on the radar${inc.nowcast.heading ? `, moving ${inc.nowcast.heading} at ${Math.round((inc.nowcast.speedKmh || 0) / 1.609)} mph` : ''}`);
   if (inc.hazard === 'storms' && p.thunder != null) bits.push(`thunder ${Math.round(p.thunder)}%`);
   const crossed = (inc.wind && inc.wind.crossed) || [];
   if (crossed.length) bits.push(`gusts to ${Math.round(p.gust)} mph past ${lineWords(crossed)}`); else if (p.gust >= THRESHOLDS.gustMph) bits.push(`gusts to ${Math.round(p.gust)} mph`);
@@ -1170,7 +1177,7 @@ function headsUpCard(f){
   const P = PREP[inc.hazard] || PREP.storms, now = inc.minutes <= 0, label = incomingLabel(inc);
   const steps = deadlines(inc.startsAt, campFor(inc)).slice(0, 3);
   return `<button class="headsup glass ${esc(inc.hazard)}" onclick="later(function(){ go('prep') })">
-    <span class="hu-top"><span class="eyebrow">${now ? 'Happening now' : 'On the way'}</span><span class="hu-when num" data-countdown="${esc(inc.startsAt)}">${esc(countdownText(inc.startsAt))}</span></span>
+    <span class="hu-top"><span class="eyebrow">${now ? 'Happening now' : inc.source === 'radar' ? 'On the radar' : 'On the way'}</span><span class="hu-when num" data-countdown="${esc(inc.startsAt)}">${esc(countdownText(inc.startsAt))}</span></span>
     <h3>${esc(label)}</h3>
     <p>${esc(incomingLine(inc))}</p>
     <span class="hu-steps">${steps.map(d => `<span class="st">${I.check}<span class="task">${esc(d.task)}</span><b class="by num">${d.late ? 'now' : 'by ' + esc(fmtTime(d.startBy))}</b></span>`).join('')}</span>
@@ -1580,7 +1587,7 @@ screens.prep = () => {
     <div class="group glass">${rows.map(([k, l, t]) => `<div class="tl ${k === stage ? 'now' : ''}"><span class="k">${esc(l)}</span><span class="v">${esc(t)}</span></div>`).join('')}</div>
     <p class="h">Pack for shelter</p>
     <div class="group glass steps">${SHELTER_PACK.map(s => `<div class="step"><span class="n"></span><span class="task">${esc(s)}</span></div>`).join('')}</div>
-    <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : 'Read from the National Weather Service forecast'}${d.at ? `, checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
+    <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : inc.source === 'radar' ? 'From the rain on the radar, tracked frame to frame' : 'Read from the National Weather Service forecast'}${d.at ? `, checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
 };
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();

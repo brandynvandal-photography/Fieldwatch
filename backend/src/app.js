@@ -17,6 +17,7 @@ import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
 import { lightningFor, lightningOn, lightningStatus } from './lightning.js';
 import { GROUND_STATES, groundFor, groundStatus, lookupGround, reportGround, reportSummary, validOverride } from './ground.js';
+import { nowcastFor } from './nowcast.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -228,6 +229,9 @@ app.post('/festivals/:id/ground/lookup', requireAdmin, loadFestival, wrap(async 
 
 /** Lightning near the festival right now (lightning.js): the code, the nearest flash, counts by ring, the all-clear time. */
 app.get('/festivals/:id/lightning', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(lightningFor(req.festival.id) || { code: 'none', at: iso(), on: lightningOn(), source: 'GOES GLM' }));
+
+/** Where the rain on the radar is going and when it gets here, from the frames on disk (nowcast.js). */
+app.get('/festivals/:id/nowcast', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(nowcastFor(req.festival) || { at: null, tracked: false, minutes: null, reason: 'no radar frames yet' }));
 
 /** The radar loop: what's on disk right now, with a refresh kicked off in the background if it's due. */
 app.get('/festivals/:id/radar', loadFestival, (req, res) => {

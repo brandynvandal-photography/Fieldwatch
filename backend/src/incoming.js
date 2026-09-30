@@ -67,7 +67,7 @@ const alertHazard = event => (ALERT_HAZARD.find(([re]) => re.test(event || '')) 
  * is the first run of hours over a line; rain counts by amount when the grid has one (a run must add up to rainIn), by chance
  * when it does not. A watch or warning with an onset still ahead wins when it comes first.
  */
-function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date.now(), hours = 12 } = {}) {
+function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = null, now = Date.now(), hours = 12 } = {}) {
   const end = now + hours * HOUR, gustLine = windLine(ground), standing = ground && Array.isArray(ground.structures) && ground.structures.length ? ground.structures : ['canopies'];
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
@@ -107,7 +107,11 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, now = Date
     if (!hz || !Number.isFinite(onset) || onset <= now || onset >= end || a.channel === 'headsup') continue;
     if (!watch || onset < Date.parse(watch.startsAt)) watch = { hazard: hz, startsAt: new Date(onset).toISOString(), endsAt: a.expiresAt || null, source: 'alert', event: a.event, peak: {} };
   }
-  const pick = watch && (!forecast || Date.parse(watch.startsAt) <= Date.parse(forecast.startsAt)) ? watch : forecast;
+  // Rain already on the radar inside two hours moves a window's start earlier, or is a window of its own when the forecast has none.
+  const radar = nowcast && nowcast.minutes != null && nowcast.minutes <= 120 ? { hazard: 'rain', startsAt: new Date(now + nowcast.minutes * 60000).toISOString(), endsAt: new Date(now + (nowcast.minutes + 120) * 60000).toISOString(), source: 'radar', peak: {}, nowcast } : null;
+  if (radar && forecast) { if (Date.parse(radar.startsAt) < Date.parse(forecast.startsAt)) forecast.startsAt = radar.startsAt; forecast.nowcast = nowcast; }
+  const soon = forecast || radar;
+  const pick = watch && (!soon || Date.parse(watch.startsAt) <= Date.parse(soon.startsAt)) ? watch : soon;
   return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)) } : null;
 }
 /** Rain in a sentence: "0.6 in of rain" when the grid says how much, "a 70% chance of rain" when it only says how likely. */
@@ -204,6 +208,7 @@ export const clock = (t, tz) => { try { return new Intl.DateTimeFormat('en-US', 
 export function headline(inc, tz) {
   const at = inc.minutes <= 0 ? 'now' : `around ${clock(inc.startsAt, tz)}`;
   if (inc.source === 'alert') return `${inc.event} ${inc.minutes <= 0 ? 'in effect now' : `begins ${clock(inc.startsAt, tz)}`}`;
+  if (inc.source === 'radar') return `Rain on the radar${inc.minutes <= 0 ? ', here now' : `, about ${inc.minutes} min out`}`;
   if (inc.hazard === 'wind') return `Gusts to ${Math.round(inc.peak.gust)} mph${inc.wind && inc.wind.crossed.length ? `, past ${lineWords(inc.wind.crossed)},` : ''} expected ${at}`;
   if (inc.hazard === 'heat') return inc.flag === 'red' || inc.flag === 'black' ? `${cap(inc.flag)} flag heat expected ${at}` : `Heat index near ${Math.round(inc.peak.heat)}° expected ${at}`;
   if (inc.hazard === 'rain' && inc.mud) return `${TIER[inc.mud.tier].label} expected ${at}`;
@@ -229,12 +234,13 @@ export function headsUpAlert(festival, inc, tz, now = Date.now(), ground = {}) {
   // What the forecast says, as a sentence: "The forecast has a 60% chance of thunder, gusts to 45 mph and 0.6 in of rain." The mud sentence carries the rain when there is one.
   const raining = pk.rainIn != null ? pk.rainIn >= THRESHOLDS.rainIn : pk.precip >= THRESHOLDS.precip;
   const crossed = (inc.wind && inc.wind.crossed) || [];
+  const nc = inc.nowcast && inc.nowcast.minutes != null ? `On the radar${inc.nowcast.heading ? `, moving ${inc.nowcast.heading} at ${Math.round((inc.nowcast.speedKmh || 0) / 1.609)} mph` : ''}.` : '';
   const bits = inc.source === 'alert' ? [] : [inc.hazard === 'storms' && pk.thunder != null ? `a ${Math.round(pk.thunder)}% chance of thunder` : '',
     crossed.length ? `gusts to ${Math.round(pk.gust)} mph past ${lineWords(crossed)}` : pk.gust >= THRESHOLDS.gustMph ? `gusts to ${Math.round(pk.gust)} mph` : '', raining && !mud ? rainWords(pk) : '',
     pk.heat >= THRESHOLDS.heatF ? `a heat index near ${Math.round(pk.heat)}°` : '', inc.flag === 'red' || inc.flag === 'black' ? `${inc.flag} flag heat for anyone working or dancing` : ''].filter(Boolean);
   const detail = bits.length ? `The forecast has ${bits.length > 1 ? `${bits.slice(0, -1).join(', ')} and ${bits[bits.length - 1]}` : bits[0]}.` : '';
   // The notification's second line: the first thing to do and when, then the forecast, then what the rain does to the ground. The push keeps whole sentences up to its limit.
-  const lead = [first, detail, mud].filter(Boolean).join(' ') || p.timing;
+  const lead = [first, nc, detail, mud].filter(Boolean).join(' ') || p.timing;
   const flagLine = inc.hazard === 'heat' && (inc.flag === 'red' || inc.flag === 'black') ? ` ${flagText(inc.flag)}` : '';
   return {
     id: `headsup-${festival.id}-${hourKey(Date.parse(inc.startsAt))}`, event: head, headline: lead,

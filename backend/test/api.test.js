@@ -105,6 +105,8 @@ test('pack carries festival, normalized NWS alerts, forecast, posts and incident
   assert.equal(pack.radar.festivalId, FEST);
   assert.ok(Array.isArray(pack.radar.frames));
   assert.equal(pack.lightning, null, 'no lightning grade until the mapper has been read');
+  assert.ok(pack.nowcast === null || pack.nowcast.tracked === false, 'no real radar frames in tests');
+  assert.equal((await api('GET', `/festivals/${FEST}/nowcast`)).json.tracked, false);
   assert.equal(pack.ground.past, null, 'the rain analysis is out of reach in tests'); assert.match(pack.ground.pastError, /IEMRE 404/);
   const ground = (await api('GET', `/festivals/${FEST}/ground`)).json;
   assert.equal(ground.past, null); assert.match(ground.at, /^\d{4}-/);

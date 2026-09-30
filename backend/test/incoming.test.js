@@ -154,3 +154,18 @@ test('heat by exertion: an estimated wet-bulb globe temperature earns a flag, an
   assert.equal(a.flag, 'red'); assert.match(a.headline, /red flag heat for anyone working or dancing\.$/); assert.match(a.body, /Red flag: work 30, rest 30 in shade, water every 15 minutes\./);
   assert.equal(campFor(red)[0], 'Shade over the tent, not only inside it');
 });
+
+test('rain already on the radar pulls the start of a window earlier, or is a window of its own when the forecast has none', () => {
+  const nowcast = { at: new Date(at(0, 20)).toISOString(), tracked: true, minutes: 40, speedKmh: 40, headingDeg: 45, heading: 'NE', raining: false };
+  const moved = incoming({ hourly: periods, grid: g, nowcast, now: at(0, 30) });
+  assert.equal(moved.hazard, 'storms'); assert.equal(moved.source, 'forecast'); assert.equal(moved.minutes, 40, 'the storm window starts when the radar says, not at the forecast hour'); assert.equal(moved.nowcast.heading, 'NE');
+  const alone = incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {}, rain: {} }, nowcast, now: at(0, 30) });
+  assert.equal(alone.source, 'radar'); assert.equal(alone.hazard, 'rain'); assert.equal(alone.minutes, 40);
+  assert.equal(headline(alone, TZ), 'Rain on the radar, about 40 min out');
+  const a = headsUpAlert(festival, alone, TZ, at(0, 30));
+  assert.match(a.headline, /^Move the tent off low ground now\. On the radar, moving NE at 25 mph\.$/, 'the radar line rides with the first task, which forty minutes out is already due');
+  assert.equal(incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {}, rain: {} }, nowcast: { ...nowcast, minutes: 150 }, now: at(0, 30) }), null, 'more than two hours out is the forecast\'s to call');
+  assert.equal(incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {}, rain: {} }, nowcast: { ...nowcast, minutes: null }, now: at(0, 30) }), null, 'nothing coming this way');
+  const later = incoming({ hourly: periods, grid: g, nowcast: { ...nowcast, minutes: 200 }, now: at(0, 30) });
+  assert.equal(later.minutes, 150, 'a radar arrival after the forecast start changes nothing');
+});

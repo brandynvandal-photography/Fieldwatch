@@ -4,6 +4,7 @@ import { INCIDENT_WINDOW_MS } from './incidents.js';
 import { radarLoop } from './radar.js';
 import { lightningFor } from './lightning.js';
 import { groundFor, reportSummary } from './ground.js';
+import { nowcastFor } from './nowcast.js';
 import { iso } from './util.js';
 
 // Forecasts change slowly; don't hit NWS for every download.
@@ -34,6 +35,7 @@ export async function buildPack(f) {
     radar: radarLoop(f),
     lightning: lightningFor(f.id),
     ground: { ...(await groundFor(f)), reports: reportSummary(q, f.id) },
+    nowcast: nowcastFor(f),
     generatedAt: iso(),
   };
 }

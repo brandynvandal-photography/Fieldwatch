@@ -323,6 +323,8 @@ function fakeBackend(list) {
       if (m === 'GET' && gr) return send(200, groundOf(gr[1]));
       const grr = path.match(/^\/festivals\/([^/]+)\/ground\/report$/);
       if (m === 'POST' && grr) { const b = JSON.parse(raw); if (!['fine', 'soft', 'mud', 'water'].includes(b.state)) return send(400, { error: 'state' }); store.groundReports[grr[1]] = [{ state: b.state, at: new Date().toISOString() }, ...(store.groundReports[grr[1]] || [])]; return send(200, { ok: true, state: b.state, effective: 0.9, learned: b.state === 'fine' ? null : { threshold: 0.9, samples: store.groundReports[grr[1]].length, at: new Date().toISOString() }, reports: groundOf(grr[1]).reports }); }
+      const ncm = path.match(/^\/festivals\/([^/]+)\/nowcast$/);
+      if (m === 'GET' && ncm) return send(200, (store.nowcast || {})[ncm[1]] || { at: null, tracked: false, minutes: null });
       const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
       if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
@@ -776,6 +778,11 @@ test('storms on the way: a countdown on the festival page with the first things 
   await page.click('button[aria-label="Back"]');
   await page.waitForSelector('.headsup');
   assert.match(await page.textContent('.headsup p'), /· reported mud just now$/);
+  // Rain already on the radar, 35 minutes out, pulls the countdown in and says where it is coming from.
+  store.nowcast = { 'hulaween-2026': { at: new Date().toISOString(), tracked: true, minutes: 35, speedKmh: 40, headingDeg: 45, heading: 'NE', raining: false, ageMinutes: 0 } };
+  await page.click('button[aria-label="Refresh"]'); await page.waitForSelector('.hu-when:has-text("min")');
+  assert.match(await page.textContent('.hu-when'), /^in 3[3-5] min$/);
+  assert.match(await page.textContent('.headsup p'), /on the radar, moving NE at 25 mph/);
   assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
