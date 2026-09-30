@@ -17,6 +17,7 @@ if (!(PUBLIC && PRIVATE)) {
     const k = webpush.generateVAPIDKeys();
     q.setSetting('vapid', JSON.stringify(k));
     PUBLIC = k.publicKey; PRIVATE = k.privateKey; source = 'database, made just now';
+    console.log(`Web push keys made; they live in the database at ${process.env.DB_PATH || 'fieldwatch.db'}. Keep that on a volume (or set VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY): a fresh pair after a redeploy means every phone must open the app once to register again.`);
   }
 }
 try { webpush.setVapidDetails(SUBJECT, PUBLIC, PRIVATE); enabled = true; console.log(`Web push configured (keys from the ${source})`); }

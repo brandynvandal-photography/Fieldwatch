@@ -273,7 +273,8 @@ app.delete('/devices/:token', (req, res) => { q.deleteDevice(req.params.token); 
 app.get('/push/vapid', (req, res) => (webPushEnabled() ? res.json({ key: vapidPublicKey() }) : res.status(404).json({ error: 'web push not configured' })));
 app.post('/push/subscribe', wrap(async (req, res) => {
   if (!webPushEnabled()) return res.status(404).json({ error: 'web push not configured' });
-  const { subscription, festivalId, point } = req.body || {};
+  // quiet: a phone registering again on open (after a redeploy, say) wants no welcome notification.
+  const { subscription, festivalId, point, quiet } = req.body || {};
   if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys is required' });
   if (festivalId && !q.festival(festivalId)) return res.status(404).json({ error: 'no such festival' });
   // A phone with no festival follows a point: wherever it is, rounded to about a kilometre, so a warning for that spot reaches it.
@@ -283,7 +284,7 @@ app.post('/push/subscribe', wrap(async (req, res) => {
   const clean = { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } };
   q.upsertWebSubscription(subscription.endpoint, festivalId || null, clean, at);
   const target = festivalId ? q.festival(festivalId) : { id: 'here', name: 'Where you are', ...at };
-  res.json({ ok: true, welcome: await pushWelcome(clean, target) });
+  res.json({ ok: true, welcome: quiet ? false : await pushWelcome(clean, target) });
 }));
 app.get('/admin/import', requireAdmin, (req, res) => res.json({ ...(imports.last || { never: true }), running: imports.running }));
 app.delete('/push/subscribe', (req, res) => {

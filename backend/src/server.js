@@ -10,7 +10,7 @@ if (seeded) console.log(`Empty database; seeded ${seeded} festivals from data/fe
 
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
-  console.log(`Fieldwatch backend on :${port}`);
+  console.log(`Fieldwatch backend on :${port}; database ${process.env.DB_PATH || 'fieldwatch.db'}${process.env.RAILWAY_VOLUME_MOUNT_PATH ? ' (on the Railway volume)' : ''}`);
   startPolling();
   startRadarLoop();
   if (startImporters()) console.log('Festival imports on (Wikidata, plus any source with a key)');

@@ -537,3 +537,37 @@ test('right where you are: alerts, forecast, radar and warnings for the phone\'s
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
+
+
+test('warnings stay on across a backend redeploy: on open the phone registers again, with a fresh subscription when the key changed', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['notifications']);
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  await page.addInitScript(() => {
+    // Warnings were switched on for Hulaween against a key the backend no longer has.
+    if (!localStorage.getItem('fieldwatch.web')) localStorage.setItem('fieldwatch.web', JSON.stringify({ fest: 'hulaween-2026', welcomed: true, push: { endpoint: 'https://push.example.test/old', fest: 'hulaween-2026' } }));
+    const mk = (endpoint, key) => ({ endpoint, options: { applicationServerKey: key }, unsubscribe: async () => { window.__unsubscribed = endpoint; window.__sub = null; return true; },
+      toJSON: () => ({ endpoint, expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }) });
+    window.__sub = mk('https://push.example.test/old', new Uint8Array([1, 2, 3]).buffer);
+    const reg = { pushManager: { getSubscription: async () => window.__sub, subscribe: async o => { window.__key = Array.from(new Uint8Array(o.applicationServerKey)); window.__sub = mk('https://push.example.test/new', o.applicationServerKey); return window.__sub; } } };
+    Object.defineProperty(navigator.serviceWorker, 'ready', { get: () => Promise.resolve(reg) });
+    window.PushManager = function PushManager(){};
+  });
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.waitForSelector('.sky.warn');
+    await page.waitForFunction(() => window.__key);
+    assert.equal(await page.evaluate(() => window.__unsubscribed), 'https://push.example.test/old', 'the subscription made against the old key is dropped');
+    assert.deepEqual(await page.evaluate(() => window.__key), Array.from(Buffer.from('BPUBLICKEY', 'base64url')), 'and a new one made against the key the backend has now');
+    await page.waitForFunction(() => JSON.parse(localStorage.getItem('fieldwatch.web')).push.endpoint === 'https://push.example.test/new');
+    assert.equal(store.subs.length, 1);
+    assert.equal(store.subs[0].quiet, true, 'registered again without a welcome notification');
+    assert.equal(store.subs[0].festivalId, 'hulaween-2026');
+    assert.equal(store.subs[0].subscription.endpoint, 'https://push.example.test/new');
+    assert.equal(await page.textContent('.pill'), 'On');
+    await page.reload();
+    await page.waitForSelector('.sky.warn');
+    assert.equal(store.calls.filter(c => c === 'POST /push/subscribe').length, 1, 'checked once an hour, not on every open');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});

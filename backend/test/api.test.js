@@ -371,6 +371,9 @@ test('web push: a browser subscribes to a festival and gets warnings and staff p
   assert.match(sent[0].payload.body, /^Suwannee Hulaween\./); assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}`);
   assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('b'), festivalId: FEST } })).json.ok, true);
   assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: FEST } })).json.ok, true, 'subscribing again is fine');
+  const n = sent.length;
+  const quiet = await api('POST', '/push/subscribe', { body: { subscription: sub('a'), festivalId: FEST, quiet: true } });
+  assert.deepEqual(quiet.json, { ok: true, welcome: false }); assert.equal(sent.length, n, 'a phone registering again on open (quiet) gets no welcome');
   sent.length = 0;
 
   // A new warning from NWS reaches both browsers; an advisory reaches neither.
