@@ -333,7 +333,7 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
   cacheDays = Number(process.env.WIKIDATA_CACHE_DAYS ?? 6), timeoutMs = SITE_TIMEOUT_MS, log = console } = {}) {
   const skipped = skipReason({ enabled, userAgent });
   if (skipped) return { skipped };
-  let calls = 0, errors = 0, sitesChecked = 0, candidates = [], queried = false, lastError = null;
+  let calls = 0, errors = 0, sitesChecked = 0, siteErrors = 0, candidates = [], queried = false, lastError = null, lastSiteError = null;
   const sparql = async query => {
     const u = new URL(SPARQL_ENDPOINT);
     u.searchParams.set('query', query); u.searchParams.set('format', 'json');
@@ -372,7 +372,7 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
         entry = { checkedAt: at, ok: r.events.length > 0, ...(r.events.length ? { events: r.events } : {}), ...(r.robots ? { robots: true } : {}) };
       } catch (e) {
         // A site that is down today keeps what it said last time; it is asked again when that expires.
-        errors++; lastError = `${c.website}: ${errorText(e)}`; log.error(`wikidata ${lastError}`);
+        siteErrors++; lastSiteError = `${c.website}: ${errorText(e)}`; log.error(`wikidata ${lastSiteError}`);
         entry = { ...(entry || { ok: false }), checkedAt: at, error: String(e.message).slice(0, 120) };
       }
       cache[c.website] = entry;
@@ -385,5 +385,5 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
   const found = festivalsFrom(listings, at.slice(0, 10));
   // Only a failed query blocks prune-on-absence: a site that is down kept its last answer, and is no reason to
   // keep a listing that vanished from a site that answered. The report still counts every error.
-  return { calls, errors, ...(lastError && { lastError }), candidates: candidates.length, sitesChecked, ...applyImport({ origin: 'wikidata', found, now, errors: queried ? 0 : 1 }) };
+  return { calls, errors, ...(lastError && { lastError }), candidates: candidates.length, sitesChecked, siteErrors, ...(lastSiteError && { lastSiteError }), ...applyImport({ origin: 'wikidata', found, now, errors: queried ? 0 : 1 }) };
 }

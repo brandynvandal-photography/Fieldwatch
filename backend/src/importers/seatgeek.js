@@ -1,7 +1,7 @@
 // SeatGeek Platform API: a free client id (seatgeek.com/account/develop) and a music_festival
 // taxonomy, which reaches a lot of ticketing Ticketmaster does not carry, including smaller
 // independents. Listings fold into festivals exactly as Ticketmaster's do (common.js).
-import { ADD_ON, CANCELLED, NOT_A_FESTIVAL, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, looksLikeFestival, errorText } from './common.js';
+import { ADD_ON, CANCELLED, NOT_A_FESTIVAL, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, looksLikeFestival, errorText } from './common.js';
 import { iso } from '../util.js';
 
 const API = 'https://api.seatgeek.com/2/events';
@@ -55,7 +55,7 @@ export async function importSeatGeek({ clientId = process.env.SEATGEEK_CLIENT_ID
       const u = new URL(API);
       for (const [k, v] of Object.entries({ 'taxonomies.name': 'music_festival', 'venue.country': 'US', 'datetime_utc.gte': iso(new Date(now)).slice(0, 10),
         'datetime_utc.lte': iso(new Date(now + 365 * DAY)).slice(0, 10), sort: 'datetime_utc.asc', per_page: PER_PAGE, page, client_id: clientId })) u.searchParams.set(k, v);
-      const res = await fetchImpl(u, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+      const res = await fetchRetry(fetchImpl, u, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) }, { log });
       if (!res.ok) throw new Error(`SeatGeek ${res.status} for ${describe(u)}`);   // the id is never in a log line
       const body = await res.json();
       calls++;

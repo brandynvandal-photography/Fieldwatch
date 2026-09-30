@@ -3,7 +3,7 @@
 // self-serve ticketing, where small independents turn up). A free key from developer.ticketmaster.com
 // allows 5,000 calls a day; one run here uses around 150. Per-day listings fold into one festival
 // (common.js), add-ons are dropped, and anything already listed from another source is left alone.
-import { ADD_ON, CANCELLED, FESTY, NOT_A_FESTIVAL, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, normalizeName, errorText } from './common.js';
+import { ADD_ON, CANCELLED, FESTY, NOT_A_FESTIVAL, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, normalizeName, errorText } from './common.js';
 import { iso } from '../util.js';
 
 export { normalizeName };
@@ -50,11 +50,12 @@ const hosts = found => found.reduce((m, f) => { try { const h = new URL(f.source
 
 function describe(u) { return `${u.pathname}?${[...u.searchParams].filter(([k]) => k !== 'apikey').map(kv => kv.join('=')).join('&')}`; }
 
-async function* pages(params, key, fetchImpl, pauseMs) {
+async function* pages(params, key, fetchImpl, pauseMs, log) {
   for (let page = 0; page < MAX_PAGES; page++) {
     const u = new URL(API);
     for (const [k, v] of Object.entries({ ...params, size: PAGE, page, apikey: key })) u.searchParams.set(k, v);
-    const res = await fetchImpl(u, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    // Five calls a second is the limit; a 429 is waited out rather than counted against the run.
+    const res = await fetchRetry(fetchImpl, u, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }, { log });
     if (!res.ok) throw new Error(`Ticketmaster ${res.status} for ${describe(u)}`);   // the key is never in a log line
     const body = await res.json();
     yield body._embedded?.events || [];
@@ -64,7 +65,7 @@ async function* pages(params, key, fetchImpl, pauseMs) {
 }
 
 export async function importTicketmaster({ key = process.env.TICKETMASTER_KEY, fetchImpl = globalThis.fetch, now = Date.now(),
-  pauseMs = Number(process.env.TICKETMASTER_PAUSE_MS ?? 250), log = console } = {}) {
+  pauseMs = Number(process.env.TICKETMASTER_PAUSE_MS ?? 400), log = console } = {}) {
   if (!key) return { skipped: 'TICKETMASTER_KEY not set' };
   const events = new Map(), trusted = new Set();
   let calls = 0, errors = 0, lastError = null, streak = 0, gaveUp = false;
@@ -79,7 +80,7 @@ export async function importTicketmaster({ key = process.env.TICKETMASTER_KEY, f
     ];
     for (const params of nets) {
       try {
-        for await (const batch of pages(params, key, fetchImpl, pauseMs)) {
+        for await (const batch of pages(params, key, fetchImpl, pauseMs, log)) {
           calls++; streak = 0;
           for (const ev of batch) if (ev?.id) { events.set(ev.id, ev); if (params.source === 'frontgate') trusted.add(ev.id); }
         }

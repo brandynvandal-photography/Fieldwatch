@@ -11,6 +11,18 @@ export { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeF
 export const errorText = e => { const c = e?.cause; return `${e?.message || e}${c ? ` (${c.code || c.message || c})` : ''}`; };
 
 const DAY = 86_400_000, HOUR = 3_600_000;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+/** A 429 or a 5xx is asked again after a pause (Retry-After when the site says, a second or two otherwise), twice at most. */
+export async function fetchRetry(fetchImpl, url, init, { tries = 3, log } = {}) {
+  for (let attempt = 1; ; attempt++) {
+    const res = await fetchImpl(url, init);
+    if (attempt >= tries || !(res.status === 429 || res.status >= 500)) return res;
+    const after = Number(res.headers?.get?.('retry-after'));
+    const wait = Number.isFinite(after) && after > 0 ? Math.min(after, 15) * 1000 : 1500 * attempt;
+    log?.warn?.(`${res.status} from ${new URL(url).hostname}; trying again in ${wait / 1000} s`);
+    await sleep(wait);
+  }
+}
 export const VENUE_NAMED_FESTIVAL = /\bfestival (pier|hall|park|theat\w*|grounds|stage|field|plaza|centre|center)\b/i;
 export const FESTY = /\bfest(ival)?s?\b|fest$/i;
 /** The festival's own name, as the app shows it: no day, pass, lineup or year. */

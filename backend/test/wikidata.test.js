@@ -180,7 +180,7 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   const opts = { fetchImpl, now: NOW, pauseMs: 0, log: { error: () => {} } };
 
   const r = await importWikidata(opts);
-  assert.deepEqual(r, { calls: 9, errors: 0, candidates: 5, sitesChecked: 4, festivals: 1, added: 1, updated: 0, duplicates: 0, pruned: 0 }, 'the two queries, robots.txt and a page per site, only robots.txt where it says no');
+  assert.deepEqual(r, { calls: 9, errors: 0, candidates: 5, sitesChecked: 4, siteErrors: 0, festivals: 1, added: 1, updated: 0, duplicates: 0, pruned: 0 }, 'the two queries, robots.txt and a page per site, only robots.txt where it says no');
   assert.ok(!fetched.includes('https://hiddenhollow.example/'), 'a site whose robots.txt disallows us is never read');
   assert.ok(fetched.includes('https://moonrisefest.example/robots.txt') && fetched.includes('https://moonrisefest.example/'));
   const m = q.festival('wd-q9003-moonrise-fest-2026');
@@ -215,14 +215,14 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   q.upsertFestival({ ...q.festival('wd-q9003-moonrise-fest-2026'), featured: true, county: 'Franklin County' });
   serve.fail.add('https://moonrisefest.example/');
   const r5 = await importWikidata({ ...opts, now: NOW + 7 * DAY, cacheDays: 0 });
-  assert.equal(r5.errors, 1); assert.equal(r5.pruned, 0); assert.equal(r5.updated, 1);
+  assert.equal(r5.siteErrors, 1); assert.equal(r5.errors, 0, 'a site that is down is not an error of the run'); assert.equal(r5.pruned, 0); assert.equal(r5.updated, 1);
   assert.equal(q.festival('wd-q9003-moonrise-fest-2026').featured, true); assert.equal(q.festival('wd-q9003-moonrise-fest-2026').county, 'Franklin County');
   assert.equal(cache()['https://moonrisefest.example/'].ok, true); assert.equal(cache()['https://moonrisefest.example/'].error, 'socket hang up');
   serve.fail.clear();
   // A robots.txt that answers 5xx is not permission: the site is an error today, keeps its last answer, and is asked again later.
   serve.busy.add('https://moonrisefest.example/robots.txt'); fetched.length = 0;
   const r5b = await importWikidata({ ...opts, now: NOW + 7 * DAY, cacheDays: 0 });
-  assert.equal(r5b.errors, 1); assert.equal(r5b.festivals, 1); assert.equal(r5b.updated, 1);
+  assert.equal(r5b.siteErrors, 1); assert.equal(r5b.festivals, 1); assert.equal(r5b.updated, 1);
   assert.ok(!fetched.includes('https://moonrisefest.example/'), 'the page is not read on a 503 from robots.txt');
   assert.equal(cache()['https://moonrisefest.example/'].ok, true); assert.equal(cache()['https://moonrisefest.example/'].error, 'robots.txt HTTP 503');
   serve.busy.clear();
@@ -256,7 +256,7 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   serve.sparql = () => ({ status: 503 });
   const lines = [];
   const bad = await importWikidata({ ...opts, log: { error: m => lines.push(m) } });
-  assert.deepEqual(bad, { calls: 2, errors: 1, lastError: 'SPARQL 503', candidates: 0, sitesChecked: 0, festivals: 0, added: 0, updated: 0, duplicates: 0, pruned: 0 });
+  assert.deepEqual(bad, { calls: 2, errors: 1, lastError: 'SPARQL 503', candidates: 0, sitesChecked: 0, siteErrors: 0, festivals: 0, added: 0, updated: 0, duplicates: 0, pruned: 0 });
   assert.deepEqual(lines, ['wikidata: SPARQL 503']);
   assert.ok(q.festival('wd-q9003-moonrise-fest-2026'), 'kept through a bad run'); assert.equal(Object.keys(cache()).length, 4);
   const dead = await importWikidata({ ...opts, fetchImpl: async () => { throw new Error('fetch failed'); } });
@@ -329,7 +329,7 @@ test('sites never seen are read first, then the longest unchecked; a private add
   serve.items = items; serve.fail = 'https://saltflatssound.example/';
   q.upsertFestival({ ...q.festival('wd-q9003-moonrise-fest-2026'), id: 'wd-q9999-ghost-fest-2026', name: 'Ghost Fest', startDate: at(20), endDate: at(22) });
   const g = await importWikidata({ ...opts, now: NOW + 5 * DAY, cacheDays: 0 });
-  assert.equal(g.errors, 1, 'the site that hung up'); assert.equal(g.pruned, 1); assert.equal(g.updated, 1);
+  assert.equal(g.siteErrors, 1, 'the site that hung up'); assert.match(g.lastSiteError, /socket hang up/); assert.equal(g.pruned, 1); assert.equal(g.updated, 1);
   assert.equal(q.festival('wd-q9999-ghost-fest-2026'), null); assert.ok(q.festival('wd-q9003-moonrise-fest-2026'));
   assert.equal(cache()['https://saltflatssound.example/'].error, 'socket hang up');
 });

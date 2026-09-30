@@ -72,7 +72,7 @@ test('the import walks a year in monthly windows with three nets, skips what is 
     const url = new URL(u); calls.push(url);
     assert.match(url.searchParams.get('apikey'), /^k-/); assert.equal(url.searchParams.get('size'), '200'); assert.equal(url.searchParams.get('countryCode'), 'US');
     const body = serve(url);
-    return new Response(JSON.stringify(body), { status: body.status || 200, headers: { 'content-type': 'application/json' } });
+    return new Response(JSON.stringify(body), { status: body.status || 200, headers: { 'content-type': 'application/json', ...(body.retryAfter ? { 'retry-after': body.retryAfter } : {}) } });
   };
   // Front Gate's net: a festival with no "fest" in its name and the festival itself as its only attraction, and a parking add-on.
   const frontgate = [
@@ -125,6 +125,12 @@ test('the import walks a year in monthly windows with three nets, skips what is 
   assert.equal(q.festival('tm-moonrise-fest-2026').startDate, '2026-10-16T17:00:00Z', 'moved dates follow the listing');
   assert.equal(q.festival('tm-hidden-hollow-2026').featured, true, 'what the admin set stays');
   assert.equal(q.festival('tm-hidden-hollow-2026').county, 'Floyd County');
+
+  // A rate limit is waited out, not counted: the call is made again after the pause the site asks for.
+  const prev = serve; let limited = 0;
+  serve = url => (url.searchParams.get('keyword') === 'festival' && limited === 0 && ++limited ? { status: 429, retryAfter: '1' } : prev(url));
+  const r429 = await importTicketmaster({ key: 'k-test', fetchImpl, now: NOW, pauseMs: 0, log: { error: () => {}, warn: () => {} } });
+  assert.equal(r429.errors, 0); assert.equal(limited, 1); assert.equal(r429.pruned, 0, 'the same listings as before, nothing vanished');
 
   // A run with fetch errors never prunes on absence; it only knows what it managed to fetch.
   serve = url => (url.searchParams.get('keyword') === 'festival' ? { status: 500 } : tmPage([]));

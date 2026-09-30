@@ -1167,7 +1167,7 @@ async function decideReport(id, ok){
 const SOURCE_NAMES = { ticketmaster: 'Ticketmaster', seatgeek: 'SeatGeek', edmtrain: 'Edmtrain', wikidata: 'Wikidata and festival sites', feeds: 'Your feeds' };
 screens.sources = () => {
   const r = S.sources;
-  const line = (k, v) => !v ? '' : v.skipped ? 'No key' : v.error ? `Failed: ${v.error}` : `${v.added || 0} added, ${v.updated || 0} updated${v.duplicates ? `, ${v.duplicates} already listed` : ''}${v.errors ? `, ${v.errors} errors` : ''}${v.lastError ? ` · ${v.lastError}` : ''}`;
+  const line = (k, v) => !v ? '' : v.skipped ? 'No key' : v.error ? `Failed: ${v.error}` : `${v.added || 0} added, ${v.updated || 0} updated${v.duplicates ? `, ${v.duplicates} already listed` : ''}${v.errors ? `, ${v.errors} errors` : ''}${v.sitesChecked != null ? ` · ${v.sitesChecked} sites read${v.siteErrors ? `, ${v.siteErrors} unreachable` : ''}` : ''}${v.lastError ? ` · ${v.lastError}` : ''}`;
   return topbar(backBtn(), '', '') + `
     <h1 class="title">Festival sources</h1>
     <p class="sub">${r && r.startedAt ? `Last run ${esc(fmtFull(r.startedAt))}` : r && r.never ? 'No import has run yet' : S.sourcesBusy ? 'Checking' : esc(staffFail(S.sourcesErr))}</p>
