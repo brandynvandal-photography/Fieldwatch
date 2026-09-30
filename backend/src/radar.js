@@ -15,7 +15,7 @@ const LAYER = process.env.RADAR_LAYER || 'nexrad-n0q-wmst';
 const HOURS = Number(process.env.RADAR_HOURS || 12);
 const STEP_MS = Number(process.env.RADAR_STEP_MINUTES || 10) * 60_000;
 const LAG_MS = 10 * 60_000;     // a composite is available a few minutes after its timestamp
-const HALF_M = 160_000;         // metres from the grounds to the edge of the image
+const HALF_M = 160_000;         // meters from the grounds to the edge of the image
 export const SIZE = 512;
 const UA = process.env.NWS_USER_AGENT || 'Fieldwatch/0.1 (you@example.com)';
 
@@ -24,7 +24,7 @@ const R = 6378137;
 export const mercator = (lat, lon) => ({ x: R * lon * Math.PI / 180, y: R * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)) });
 export const inverseMercator = (x, y) => ({ lon: x / R * 180 / Math.PI, lat: (2 * Math.atan(Math.exp(y / R)) - Math.PI / 2) * 180 / Math.PI });
 
-/** The square every frame is rendered for: metres for the WMS, degrees for the phone. */
+/** The square every frame is rendered for: meters for the WMS, degrees for the phone. */
 export function coverage(f) {
   const c = mercator(f.latitude, f.longitude);
   const bbox = [c.x - HALF_M, c.y - HALF_M, c.x + HALF_M, c.y + HALF_M];

@@ -1,5 +1,5 @@
 // The ground under a festival, as far as free data says: what the surface is (OpenStreetMap land use under the
-// coordinate), how the soil drains (the USDA soil survey's hydrologic group), how much rain fell in the last two days
+// coordinate or within 250 m of it, else the National Land Cover Database's 30 m cell), how the soil drains (the USDA soil survey's hydrologic group), how much rain fell in the last two days
 // (the Iowa Environmental Mesonet's daily point analysis, radar-derived, CONUS), and what staff say when they know
 // better. The lookups are written onto the festival record once; the rain is read every three hours while it is on.
 // The model in incoming.js turns it all into mud tiers and wind lines.
@@ -46,17 +46,55 @@ export function surfaceFromTags(tags = {}) {
   if (['scrub', 'wood'].includes(tags.natural) || ['forest', 'quarry'].includes(tags.landuse)) return ['dirt', false];
   return null;
 }
+const AROUND_M = 250;
 export async function surfaceFromOSM(lat, lon, { fetchImpl = globalThis.fetch } = {}) {
-  const res = await fetchImpl(OVERPASS, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(`[out:json][timeout:10];is_in(${Number(lat).toFixed(5)},${Number(lon).toFixed(5)});out tags;`)}` });
-  if (!res.ok) throw new Error(`Overpass ${res.status}`);
-  const body = await res.json();
-  // The most telling area wins: a surface tag, then a use (parking, pitch), then land cover. Boundaries and places say nothing.
+  const la = Number(lat).toFixed(5), lo = Number(lon).toFixed(5);
+  const ask = async ql => {
+    const res = await fetchImpl(OVERPASS, { method: 'POST', headers: { 'User-Agent': UA, 'content-type': 'application/x-www-form-urlencoded' }, body: `data=${encodeURIComponent(ql)}` });
+    if (!res.ok) throw new Error(`Overpass ${res.status}`);
+    return (await res.json())?.elements || [];
+  };
+  // The most telling feature wins: a surface tag, then a use (parking, pitch), then land cover. Boundaries and places say nothing.
   const rank = t => (t.surface ? 0 : t.amenity || t.leisure || t.aeroway || t.highway ? 1 : 2);
-  const elements = body?.elements || [], camping = elements.some(e => campingFromTags(e.tags || {}));
-  const hits = elements.map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}) })).filter(h => h.read).sort((a, b) => rank(a.tags) - rank(b.tags));
-  if (!hits.length) return camping ? { surface: null, low: false, camping, source: 'OpenStreetMap', tag: 'tourism=camp_site' } : null;
-  const [surface, low] = hits[0].read, t = hits[0].tags;
-  return { surface, low, camping, source: 'OpenStreetMap', tag: ['surface', 'amenity', 'leisure', 'landuse', 'natural', 'aeroway', 'highway'].filter(k => t[k]).map(k => `${k}=${t[k]}`).join(', ') };
+  const tagText = t => ['surface', 'amenity', 'leisure', 'landuse', 'natural', 'aeroway', 'highway'].filter(k => t[k]).map(k => `${k}=${t[k]}`).join(', ');
+  // Under the point first: every area that contains it.
+  const under = await ask(`[out:json][timeout:10];is_in(${la},${lo});out tags;`);
+  let camping = under.some(e => campingFromTags(e.tags || {}));
+  const hits = under.map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}) })).filter(h => h.read).sort((a, b) => rank(a.tags) - rank(b.tags));
+  if (hits.length) { const [surface, low] = hits[0].read; return { surface, low, camping, source: 'OpenStreetMap', tag: tagText(hits[0].tags) }; }
+  // Nothing under it says: the nearest mapped ground within 250 m (a field whose outline stops short of the pin, the lot beside it).
+  const near = await ask(`[out:json][timeout:10];nwr(around:${AROUND_M},${la},${lo})[~"^(surface|landuse|leisure|natural|amenity|aeroway|tourism)$"~"."];out tags center;`);
+  const at = e => e.center || (e.lat != null ? { lat: e.lat, lon: e.lon } : null);
+  const meters = e => { const c = at(e); if (!c) return AROUND_M; const dy = (c.lat - lat) * 111195, dx = (c.lon - lon) * 111195 * Math.cos(lat * Math.PI / 180); return Math.hypot(dx, dy); };
+  camping = camping || near.some(e => campingFromTags(e.tags || {}));
+  const close = near.map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}), m: meters(e) })).filter(h => h.read).sort((a, b) => a.m - b.m || rank(a.tags) - rank(b.tags));
+  if (close.length) { const [surface, low] = close[0].read; return { surface, low, camping, source: 'OpenStreetMap', tag: `${tagText(close[0].tags)}, ${Math.round(close[0].m)} m away` }; }
+  return camping ? { surface: null, low: false, camping, source: 'OpenStreetMap', tag: 'tourism=camp_site' } : null;
+}
+
+// ---- the land cover: the National Land Cover Database at the point (MRLC's map service, 30 m cells), when OpenStreetMap has nothing ----
+const NLCD = process.env.NLCD_URL || 'https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/wms';
+const NLCD_LAYER = process.env.NLCD_LAYER || 'NLCD_2021_Land_Cover_L48';
+/** NLCD classes as ground: [surface, low, name]. Water and ice (11, 12) say nothing about a field. */
+export const NLCD_CLASS = {
+  21: ['grass', false, 'Developed, open space'], 22: ['mixed', false, 'Developed, low intensity'], 23: ['pavement', false, 'Developed, medium intensity'], 24: ['pavement', false, 'Developed, high intensity'],
+  31: ['dirt', false, 'Barren land'], 41: ['dirt', false, 'Deciduous forest'], 42: ['dirt', false, 'Evergreen forest'], 43: ['dirt', false, 'Mixed forest'], 51: ['dirt', false, 'Dwarf scrub'], 52: ['dirt', false, 'Shrub/scrub'],
+  71: ['grass', false, 'Grassland/herbaceous'], 72: ['grass', false, 'Sedge/herbaceous'], 73: ['grass', false, 'Lichens'], 74: ['grass', false, 'Moss'], 81: ['grass', false, 'Pasture/hay'], 82: ['dirt', false, 'Cultivated crops'],
+  90: ['dirt', true, 'Woody wetlands'], 95: ['grass', true, 'Emergent herbaceous wetlands'],
+};
+/** One WMS GetFeatureInfo at the point: the class of the 30 m cell under it, read as ground; null for water or ice. */
+export async function coverFromNLCD(lat, lon, { fetchImpl = globalThis.fetch } = {}) {
+  const d = 0.0005, la = Number(lat), lo = Number(lon);   // a 3 by 3 pixel window about 110 m across, the point in its middle pixel
+  const p = new URLSearchParams({ SERVICE: 'WMS', VERSION: '1.1.1', REQUEST: 'GetFeatureInfo', LAYERS: NLCD_LAYER, QUERY_LAYERS: NLCD_LAYER, SRS: 'EPSG:4326',
+    BBOX: `${(lo - d).toFixed(5)},${(la - d).toFixed(5)},${(lo + d).toFixed(5)},${(la + d).toFixed(5)}`, WIDTH: '3', HEIGHT: '3', X: '1', Y: '1', INFO_FORMAT: 'application/json', FEATURE_COUNT: '1' });
+  const res = await fetchImpl(`${NLCD}?${p}`, { headers: { 'User-Agent': UA, Accept: 'application/json' } });
+  if (!res.ok) throw new Error(`Land cover ${res.status}`);
+  const props = (await res.json())?.features?.[0]?.properties || {};
+  const raw = props.GRAY_INDEX ?? props.PALETTE_INDEX ?? Object.values(props).find(v => v !== '' && Number.isFinite(Number(v)));
+  const code = Number(raw);
+  if (raw == null || !Number.isFinite(code)) throw new Error('Land cover answered with no class');
+  const c = NLCD_CLASS[code];
+  return c ? { surface: c[0], low: c[1], source: `NLCD land cover: ${c[2]}`, code } : null;
 }
 
 // ---- the soil: the USDA soil survey's map unit at the point, its hydrologic group and drainage class ----
@@ -81,9 +119,11 @@ export async function lookupGround(f, { now = Date.now(), fetchImpl = globalThis
   const found = { lookedUpAt: iso(now) }, errors = [];
   try { const s = await surfaceFromOSM(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, ...(s.surface ? [{ surface: s.surface, surfaceSource: `${s.source}: ${s.tag}` }] : []), ...(s.low ? [{ low: true }] : []), ...(s.camping ? [{ camping: true, campingSource: 'OpenStreetMap: a campground under the grounds' }] : [])); }
   catch (e) { errors.push(`surface: ${errorText(e)}`); }
+  if (!found.surface) { try { const c = await coverFromNLCD(f.latitude, f.longitude, { fetchImpl }); if (c) Object.assign(found, { surface: c.surface, surfaceSource: c.source }, ...(c.low ? [{ low: true }] : [])); }
+    catch (e) { errors.push(`cover: ${errorText(e)}`); } }
   try { const s = await soilFromUSDA(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, { soil: s.soil, soilName: s.soilName, drainage: s.drainage, soilSource: s.source, ...(s.low ? { low: true } : {}) }); }
   catch (e) { errors.push(`soil: ${errorText(e)}`); }
-  if (errors.length) found.lookupError = errors.join('; ');
+  found.lookupError = errors.length ? errors.join('; ') : null;   // null, not missing, so a clean run clears an old error on the record
   const ground = { ...(f.ground || {}), ...found };
   if (save) save({ ...f, ground });
   return ground;
@@ -145,7 +185,8 @@ export function reportSummary(q, festivalId, now = Date.now()) {
 const attempted = new Map();
 /** A live festival without a lookup gets one, at most one festival per call and one try per festival per six hours (public services, fair use). */
 export async function ensureGround(festivals, { now = Date.now(), fetchImpl = globalThis.fetch, save } = {}) {
-  const f = festivals.find(x => !x.ground?.lookedUpAt && (attempted.get(x.id) || 0) < now - 6 * HOUR);
+  const stale = g => Boolean(g?.lookedUpAt) && (!g.surface || !g.soil || g.lookupError) && Date.parse(g.lookedUpAt) < now - DAY;   // found nothing, or hit an error: try again after a day
+  const f = festivals.find(x => (!x.ground?.lookedUpAt || stale(x.ground)) && (attempted.get(x.id) || 0) < now - 6 * HOUR);
   if (!f) return null;
   attempted.set(f.id, now);
   const g = await lookupGround(f, { now, fetchImpl, save });

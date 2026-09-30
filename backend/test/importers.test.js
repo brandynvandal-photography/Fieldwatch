@@ -120,7 +120,7 @@ test('the import walks a year in monthly windows with three nets, skips what is 
   };
   const r2 = await importTicketmaster({ key: 'k-test', fetchImpl, now: NOW, pauseMs: 0 });
   assert.deepEqual({ added: r2.added, updated: r2.updated, pruned: r2.pruned }, { added: 0, updated: 2, pruned: 3 });
-  assert.equal(q.festival('tm-big-sky-jam-2026'), null, 'gone from the API before it started: cancelled');
+  assert.equal(q.festival('tm-big-sky-jam-2026'), null, 'gone from the API before it started: canceled');
   assert.equal(q.festival('tm-electric-forest-2026'), null, 'same for a Front Gate listing');
   assert.equal(q.festival('tm-moonrise-fest-2026').startDate, '2026-10-16T17:00:00Z', 'moved dates follow the listing');
   assert.equal(q.festival('tm-hidden-hollow-2026').featured, true, 'what the admin set stays');
@@ -198,8 +198,8 @@ test('normalizeFestival is the one gate: defaults, ranges, urls, and what a base
   const base = { id: 'keep-me', origin: 'community', status: 'pending', name: 'Old', location: 'L', latitude: 39.5, longitude: -105.1, startDate: '2026-10-01T12:00:00Z', endDate: '2026-10-02T08:00:00Z' };
   const edited = normalizeFestival({ name: 'New name', county: 'Some County' }, { base }).festival;
   assert.equal(edited.id, 'keep-me'); assert.equal(edited.origin, 'community'); assert.equal(edited.status, 'pending'); assert.equal(edited.name, 'New name'); assert.equal(edited.featured, false);
-  assert.ok(sameFestival(base, { ...base, latitude: 1.01 }), 'a kilometre apart on the same days is the same festival');
-  assert.ok(!sameFestival(base, { ...base, name: 'Other', latitude: 1.5 }), 'fifty kilometres apart is not');
+  assert.ok(sameFestival(base, { ...base, latitude: 1.01 }), 'a kilometer apart on the same days is the same festival');
+  assert.ok(!sameFestival(base, { ...base, name: 'Other', latitude: 1.5 }), 'fifty kilometers apart is not');
   assert.ok(!sameFestival(base, { ...base, latitude: 1.01, startDate: '2026-11-01T12:00:00Z', endDate: '2026-11-02T08:00:00Z' }), 'the same grounds a month later is not');
 });
 
@@ -306,7 +306,7 @@ test('Edmtrain: one request, festivals only, US only, the event link kept as giv
 });
 
 
-test('what is not a festival stays out: SeatGeek concerts, tours and tributes, cancelled shows, listings outside the weather service area', async () => {
+test('what is not a festival stays out: SeatGeek concerts, tours and tributes, canceled shows, listings outside the weather service area', async () => {
   const { candidate: sg, festivalsFrom: sgFestivals } = await import('../src/importers/seatgeek.js');
   const today = '2026-09-30';
   assert.equal(sg(sgEvent({ title: 'Tracy Byrd', datetime_utc: '2026-10-03T23:45:00', enddatetime_utc: '2026-10-04T00:45:00', performers: [{ name: 'Tracy Byrd' }] })), null, 'an evening show filed under music_festival');

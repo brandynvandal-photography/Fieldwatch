@@ -459,7 +459,7 @@ test('a phone with no festival follows a point: subscribing with a location, pol
   const r = await api('POST', '/push/subscribe', { body: { subscription: sub, point: { latitude: 30.40412, longitude: -82.93951 } } });
   assert.deepEqual(r.json, { ok: true, welcome: { sent: 1 } });
   assert.match(sent[0].payload.body, /wherever this phone is/); assert.equal(sent[0].payload.url, 'https://brandynvandal-photography.github.io/Fieldwatch/?here=1');
-  assert.deepEqual(q.webSubscriptionPoints(), [{ latitude: 30.4, longitude: -82.94 }], 'rounded to about a kilometre');
+  assert.deepEqual(q.webSubscriptionPoints(), [{ latitude: 30.4, longitude: -82.94 }], 'rounded to about a kilometer');
   sent.length = 0;
   nwsState.features = [alertFeature({ id: 'urn:oid:here-1', '@id': 'https://api.weather.gov/alerts/urn:oid:here-1', event: 'Flash Flood Warning', severity: 'Severe' })];
   const fresh = await pollPoint({ latitude: 30.4, longitude: -82.94 });

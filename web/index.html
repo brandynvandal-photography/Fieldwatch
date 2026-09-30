@@ -138,7 +138,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .trio{display:flex;gap:16px;margin-bottom:36px}
 .welcome .btn{max-width:320px}
 
-/* Bubbles: a colour lit from behind, frosted in front. */
+/* Bubbles: a color lit from behind, frosted in front. */
 .bubble{position:relative;display:block;width:100%;padding:0;text-align:center;isolation:isolate}
 .bubble .glow{position:absolute;left:10%;right:10%;top:4%;bottom:12%;border-radius:50%;background:radial-gradient(circle at 50% 40%,hsl(var(--hue) 96% 66% / .95),hsl(calc(var(--hue) + 45) 96% 70% / .55) 48%,transparent 74%);filter:blur(16px);z-index:-1}
 .bubble .glass{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:96px;padding:12px 10px 11px;border-radius:24px}
@@ -564,7 +564,9 @@ async function refresh(f){
   next.checkedAt = new Date().toISOString();
   if (ok) { next.at = next.checkedAt; next.error = null; }
   else next.error = (al.reason && al.reason.message) || (hr.reason && hr.reason.message) || 'unreachable';
-  S.cache[f.id] = next; S.busy = false; save(); render();
+  S.cache[f.id] = next; S.busy = false; save();
+  if (S.screen === 'ground' && !S.groundDirty) startGroundEdit();   // new ground landed while the screen is open and nothing was touched: the chips follow it
+  render();
 }
 
 // ---- radar (mirrors backend/src/radar.js) --------------------------------------------------------------
@@ -590,7 +592,7 @@ async function radarLoop(f){
   for (let t = newest - HOURS * 3600000 + step; t <= newest; t += step) frames.push({ time: isoMin(t), url: iemURL(bbox, t) });
   return { bbox, frames, attribution: ATTRIBUTION, hours: HOURS, step: DIRECT_STEP_MIN };
 }
-/** OpenStreetMap tiles under the radar square, placed in the same Web Mercator metres. Zoom 8 is about 610 m per pixel. */
+/** OpenStreetMap tiles under the radar square, placed in the same Web Mercator meters. Zoom 8 is about 610 m per pixel. */
 function tiles(bbox){
   const z = 8, world = 40075016.686, tileM = world / 2 ** z, mpp = (bbox[2] - bbox[0]) / SIZE, out = [];
   const tx0 = Math.floor((bbox[0] + world / 2) / tileM), tx1 = Math.floor((bbox[2] + world / 2) / tileM);
@@ -685,6 +687,7 @@ function go(name, param, opts){
   S.screen = name; S.param = param || null;
   render(false); window.scrollTo(0, 0);
   if (name === 'radar' && fest()) { startRadar(fest()); locate(); }
+  if (name === 'ground') startGroundEdit();   // the chips open on what the lookups found now, not on a visit from before they landed
   if (name === 'report') locate();
   if (name === 'moderate') loadQueue();
   if (name === 'sources') loadSources();
@@ -900,10 +903,12 @@ function groundLine(g){
 }
 function startGroundEdit(){
   const f = fest(), g = (f && data(f).ground) || {}, o = g.override || {};
+  S.groundDirty = false;
   S.groundEdit = { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: (o.structures || g.structures || ['canopies']).slice(), camping: o.camping ?? g.camping ?? (f && (f.camping === true || f.camping === false) ? f.camping : null) };
 }
 function setGround(k, v){
   const e = S.groundEdit; if (!e) return;
+  S.groundDirty = true;
   if (k === 'structures') { const i = e.structures.indexOf(v); if (i >= 0) e.structures.splice(i, 1); else e.structures.push(v); }
   else e[k] = v;
   render();
@@ -1187,7 +1192,7 @@ const PREP = {
              crew: ['Close the booth and get to high ground', 'Know the route to high ground', 'Leave the car if water is rising around it'],
              during: 'Stay on high ground. Water rises faster than it looks.', after: 'Stay off flooded paths until staff open them. The water hides what it took.' },
   heat:    { label: 'Dangerous heat', shelter: 'Water every twenty minutes, shade at midday, and the medical tent at the first sign of confusion or no sweat.',
-             camping: ['Shade over the tent, not only inside it', 'Freeze water bottles overnight', 'Rest between noon and four', 'Check on neighbours'],
+             camping: ['Shade over the tent, not only inside it', 'Freeze water bottles overnight', 'Rest between noon and four', 'Check on neighbors'],
              day: ['Water every twenty minutes', 'Find shade for the afternoon', 'Rest before it peaks', 'Check on the people around you'],
              crew: ['Water every fifteen minutes', 'Shade over the booth, not only inside it', 'Rotate the crew: work and rest by the flag', 'Check on each other'],
              during: 'Shade, water, rest. Watch each other for confusion, cramps, or skin that stops sweating.', after: 'Keep drinking after sundown. The heat you took in stays with you.' },
@@ -1624,7 +1629,7 @@ const ACTION = {
   hail:    { warn: ['Get under a solid roof', 'Not a tent or canopy.'], watch: ['Know your shelter', 'Lay canopies flat before it comes.'] },
   wind:    { warn: ['Stay clear of tents and stages', 'Get into a vehicle or building if it turns dangerous.'], watch: ['Tie everything down', 'Drop pop-up canopies; they fly.'] },
   flood:   { warn: ['Move to high ground now', 'Never walk or drive through moving water.'], watch: ['Know the route to high ground', 'Move the tent off low ground.'] },
-  heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbours.'] },
+  heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbors.'] },
   rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
 };
 /** [do, and] for an alert: the festival's own protocol for lightning, the timing line for a heads-up, the hazard for a warning. */

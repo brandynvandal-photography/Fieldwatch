@@ -2,7 +2,7 @@
 // SPARQL query. Wikidata knows where a festival is but rarely when this year's edition runs, so
 // the importer reads each festival's own homepage for schema.org JSON-LD (the Festival, Event or
 // MusicEvent blocks sites publish for search engines) and takes the dates from there. Sites are
-// fetched politely and carefully: robots.txt is honoured (the group naming our product token, else
+// fetched politely and carefully: robots.txt is honored (the group naming our product token, else
 // the * group), redirects are followed by hand with the robots check repeated on every new origin,
 // nothing but a public DNS name is ever fetched, at most WIKIDATA_MAX_SITES a run with a pause
 // between them, and each site's result is remembered in the settings table for WIKIDATA_CACHE_DAYS
@@ -206,12 +206,12 @@ export function eventsFrom(html, now = Date.now()) {
   const out = [], seen = new Set();
   for (const n of nodes(String(html || ''))) {
     if (!typeNames(n['@type']).some(t => EVENT_TYPES.has(t))) continue;
-    if (typeNames(n.eventStatus).some(t => NOT_ON.test(t))) continue;                   // cancelled, postponed or moved online; a string or an { "@id" }
+    if (typeNames(n.eventStatus).some(t => NOT_ON.test(t))) continue;                   // canceled, postponed or moved online; a string or an { "@id" }
     if (typeNames(n.eventAttendanceMode).some(t => t.startsWith('online'))) continue;   // a stream is not a place
     const start = stamp(n.startDate);
     if (!start) continue;
     let end = stamp(n.endDate, true);
-    if (!end || Date.parse(end) < Date.parse(start)) end = dayEnd(start);   // no end, or nonsense: the same day, taken from the normalised start
+    if (!end || Date.parse(end) < Date.parse(start)) end = dayEnd(start);   // no end, or nonsense: the same day, taken from the normalized start
     if (Date.parse(end) < now || Date.parse(start) > now + WINDOW_DAYS * DAY) continue;   // last year's page, or the edition after next
     const geo = geoOf(n.location), place = placeOf(n.location), name = typeof n.name === 'string' ? n.name.trim().slice(0, 120) : '';
     const key = `${start}|${end}|${geo?.lat ?? ''}|${geo?.lon ?? ''}`;
@@ -286,7 +286,7 @@ export async function checkSite(website, { fetchImpl = globalThis.fetch, now = D
 }
 
 /**
- * Listings for groupListings, one per event in the first fortnight the page announces: a homepage that also
+ * Listings for groupListings, one per event in the first two weeks the page announces: a homepage that also
  * lists next spring's edition, or a season of shows, gives one festival, not a record spanning months. A block
  * named after the festival carries Wikidata's label and folds with its per-day siblings; a differently named
  * block on the same page (a pre-party, a winter ball) keeps its own name and is its own record. The key is

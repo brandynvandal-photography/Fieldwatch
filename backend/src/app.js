@@ -369,7 +369,7 @@ app.post('/push/subscribe', wrap(async (req, res) => {
   const { subscription, festivalId, point, quiet } = req.body || {};
   if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys is required' });
   if (festivalId && !q.festival(festivalId)) return res.status(404).json({ error: 'no such festival' });
-  // A phone with no festival follows a point: wherever it is, rounded to about a kilometre, so a warning for that spot reaches it.
+  // A phone with no festival follows a point: wherever it is, rounded to about a kilometer, so a warning for that spot reaches it.
   const lat = Number(point?.latitude), lon = Number(point?.longitude);
   const at = !festivalId && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { latitude: Math.round(lat * 100) / 100, longitude: Math.round(lon * 100) / 100 } : null;
   if (!festivalId && !at) return res.status(400).json({ error: 'festivalId or point required' });

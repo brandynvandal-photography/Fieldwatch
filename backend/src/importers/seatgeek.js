@@ -1,7 +1,7 @@
 // SeatGeek Platform API: a free client id (seatgeek.com/account/develop) and a music_festival
 // taxonomy, which reaches a lot of ticketing Ticketmaster does not carry, including smaller
 // independents. Listings fold into festivals exactly as Ticketmaster's do (common.js).
-import { ADD_ON, CAMPING, CANCELLED, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, looksLikeFestival, plainlyNotFestival, errorText } from './common.js';
+import { ADD_ON, CAMPING, CANCELED, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, looksLikeFestival, plainlyNotFestival, errorText } from './common.js';
 import { iso } from '../util.js';
 
 const API = 'https://api.seatgeek.com/2/events';
@@ -19,7 +19,7 @@ export function candidate(ev, { campingAt = null } = {}) {
     if (campingAt && CAMPING.test(name) && v) campingAt.add(v.id ? String(v.id) : `${Number(v.location?.lat).toFixed(2)},${Number(v.location?.lon).toFixed(2)}`);
     return null;
   }
-  if (!name || CANCELLED.test(name) || ev.date_tbd) return null;
+  if (!name || CANCELED.test(name) || ev.date_tbd) return null;
   const festival = ev.type === 'music_festival' || (ev.taxonomies || []).some(t => t.name === 'music_festival');
   if (!festival) return null;
   // SeatGeek files plenty of plain concerts under music_festival. A festival says so in its name, or in the

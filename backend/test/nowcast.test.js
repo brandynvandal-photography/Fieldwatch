@@ -1,4 +1,4 @@
-// The radar nowcast against frames drawn by hand: a coloured blob moving towards the grounds, away from them, or sitting on them.
+// The radar nowcast against frames drawn by hand: a colored blob moving toward the grounds, away from them, or sitting on them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -13,7 +13,7 @@ const { SIZE, frameName } = await import('../src/radar.js');
 const { N, arrival, echoMask, motion, nowcastFor, resetNowcast } = await import('../src/nowcast.js');
 
 const T0 = Date.UTC(2026, 9, 24, 21, 0), STEP = 600_000;
-/** A frame: transparent, with a coloured disc (the archive's green for light rain) at (cx, cy), radius r, plus a grey border like the archive draws. */
+/** A frame: transparent, with a colored disc (the archive's green for light rain) at (cx, cy), radius r, plus a gray border like the archive draws. */
 function frame(blobs) {
   const png = new PNG({ width: SIZE, height: SIZE });
   for (let y = 0; y < SIZE; y++) for (let x = 0; x < SIZE; x++) {
@@ -31,7 +31,7 @@ function write(id, frames) {
   resetNowcast();
 }
 
-test('an echo mask sees colour, not the grey border or the transparent dry', () => {
+test('an echo mask sees color, not the gray border or the transparent dry', () => {
   const m = echoMask(PNG.sync.read(frame([[256, 256, 20]])));
   let cells = 0; for (const v of m) cells += v;
   assert.ok(cells >= 60 && cells <= 90, `a 20 px disc is about 78 cells: ${cells}`);
@@ -43,7 +43,7 @@ test('motion is the shift that lines the masks up; arrival walks upstream from t
   const a = echoMask(PNG.sync.read(frame([[100, 256, 24]]))), b = echoMask(PNG.sync.read(frame([[124, 256, 24]])));
   const v = motion(a, b);
   assert.deepEqual({ dx: v.dx, dy: v.dy }, { dx: 6, dy: 0 }, '24 px east in a step is 6 cells'); assert.ok(v.score > 0.8);
-  assert.equal(arrival(b, v), 26, 'the disc\'s leading edge (124 + 24 px) is 108 px, 27 cells, west of the centre, and the corridor sees it a cell early');
+  assert.equal(arrival(b, v), 26, 'the disc\'s leading edge (124 + 24 px) is 108 px, 27 cells, west of the center, and the corridor sees it a cell early');
   assert.equal(arrival(b, { dx: -6, dy: 0 }), null, 'moving west, away: nothing arrives');
   assert.equal(arrival(echoMask(PNG.sync.read(frame([[256, 256, 20]]))), v), 0, 'over the grounds: raining now');
   assert.equal(motion(echoMask(PNG.sync.read(frame([]))), b), null, 'nothing in the older frame to track');
@@ -54,7 +54,7 @@ test('the nowcast: a blob 38 cells out moving east at 6 cells a step arrives in 
   const f = { id: 'nc-east', latitude: 30.404, longitude: -82.9395 };
   const r = nowcastFor(f, { now: T0 + 2 * STEP + 10 * 60_000 });
   assert.equal(r.tracked, true); assert.equal(r.raining, false); assert.equal(r.heading, 'E'); assert.equal(r.headingDeg, 90);
-  assert.equal(r.speedKmh, 90, 'six cells of 2.5 km in ten minutes'); assert.equal(r.cellsAway, 31, 'leading edge at 128 px, 32 cells from the centre, seen a cell early'); assert.equal(r.distanceKm, 78);
+  assert.equal(r.speedKmh, 90, 'six cells of 2.5 km in ten minutes'); assert.equal(r.cellsAway, 31, 'leading edge at 128 px, 32 cells from the center, seen a cell early'); assert.equal(r.distanceKm, 78);
   assert.equal(r.stepMinutes, 52); assert.equal(r.ageMinutes, 10); assert.equal(r.minutes, 42, 'ten minutes of that have already passed');
   assert.equal(r.at, '2026-10-24T21:20:00Z');
   assert.equal(nowcastFor(f, { now: T0 + 2 * STEP + 30 * 60_000 }).minutes, 22, 'the same frames later: less time left');

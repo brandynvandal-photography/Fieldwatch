@@ -3,7 +3,7 @@
 // self-serve ticketing, where small independents turn up). A free key from developer.ticketmaster.com
 // allows 5,000 calls a day; one run here uses around 150. Per-day listings fold into one festival
 // (common.js), add-ons are dropped, and anything already listed from another source is left alone.
-import { ADD_ON, CAMPING, CANCELLED, FESTY, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, normalizeName, plainlyNotFestival, errorText } from './common.js';
+import { ADD_ON, CAMPING, CANCELED, FESTY, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, fetchRetry, groupListings, listingKey, normalizeName, plainlyNotFestival, errorText } from './common.js';
 import { iso } from '../util.js';
 
 export { normalizeName };
@@ -25,7 +25,7 @@ export function candidate(ev, { trusted = false, campingAt = null } = {}) {
     if (campingAt && CAMPING.test(name) && v) campingAt.add(v.id ? String(v.id) : `${Number(v.location?.latitude).toFixed(2)},${Number(v.location?.longitude).toFixed(2)}`);
     return null;
   }
-  if (!name || CANCELLED.test(name)) return null;
+  if (!name || CANCELED.test(name)) return null;
   if (/^(cancell?ed|postponed)$/i.test(ev.dates?.status?.code || '')) return null;
   if (!trusted && plainlyNotFestival(name)) return null;   // a tour, a benefit concert or a promoter's show styled "festival"
   const c = (ev.classifications || []).find(x => x.primary) || (ev.classifications || [])[0] || {};

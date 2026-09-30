@@ -3,9 +3,9 @@
 // without stepping on another source's record.
 import { db, q } from '../db.js';
 import { normalizeFestival, sameFestival, sameNamedNearby, slug } from '../festivals.js';
-import { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival } from '../names.js';
+import { ADD_ON, CANCELED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival } from '../names.js';
 import { iso } from '../util.js';
-export { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival };
+export { ADD_ON, CANCELED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival };
 
 /** What went wrong, with the cause Node's fetch hides behind "fetch failed" (ENOTFOUND, ECONNREFUSED, a TLS error). */
 export const errorText = e => { const c = e?.cause; return `${e?.message || e}${c ? ` (${c.code || c.message || c})` : ''}`; };
@@ -70,7 +70,7 @@ export function groupListings(listings, { origin, prefix, today = iso().slice(0,
 /**
  * Writes one source's festivals: skips any that another source already lists (same grounds on
  * overlapping dates, or the same name), keeps what an admin set by hand on an existing import,
- * and prunes this source's own records that vanished before they started (cancelled) or ended
+ * and prunes this source's own records that vanished before they started (canceled) or ended
  * a month ago. A run with fetch errors never prunes on absence; it only knows what it fetched.
  */
 export const applyImport = db.transaction(({ origin, found, now = Date.now(), errors = 0 }) => {

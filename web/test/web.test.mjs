@@ -422,9 +422,20 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     // Staff say what the ground is and what is standing; the lookups can be run again from here.
     await page.click('button.row:has-text("Ground and what is standing")'); await page.waitForSelector('h1.title:has-text("Ground")');
     assert.match(await page.textContent('.kv:has-text("Surface")'), /Grass.*assumed, nothing found/s);
+    assert.ok(await page.$('button.chip.on:has-text("Grass")') && await page.$('button.chip.on:has-text("Average")'), 'nothing found yet: the chips show what is assumed');
     await page.click('button:has-text("Look it up again")'); await page.waitForSelector('.toast.show:has-text("Looked up again")');
     assert.match(await page.textContent('.kv:has-text("Soil")'), /Blanton fine sand.*Drains fast \(A\).*USDA soil survey/s);
+    assert.ok(await page.$('button.chip.on:has-text("Fast")'), 'the lookup landed: the soil chip follows it without anyone touching it');
+    // Ground that lands while the screen is open (the backend's own lookup, on the live stream) moves the chips too.
+    store.ground['hulaween-2026'] = { ...(store.ground['hulaween-2026'] || {}), surface: 'sand', surfaceSource: 'OpenStreetMap: natural=beach' };
+    store.emit({ festivalId: 'hulaween-2026', kind: 'ground', at: new Date().toISOString() });
+    await page.waitForSelector('button.chip.on:has-text("Sand")');
     await page.click('button.chip:has-text("Paved")'); await page.click('button.chip:has-text("Stage")'); await page.click('button.chip:has-text("No camping")');
+    // Once staff have touched a chip, a refresh leaves their choices alone.
+    store.ground['hulaween-2026'] = { ...store.ground['hulaween-2026'], surface: 'gravel' };
+    store.emit({ festivalId: 'hulaween-2026', kind: 'ground', at: new Date().toISOString() });
+    await page.waitForFunction(() => /Gravel/.test(document.querySelector('.kv')?.textContent || ''));
+    assert.ok(await page.$('button.chip.on:has-text("Paved")'), 'the readout moved to gravel; the chip staff picked stays');
     assert.ok((await page.$$eval('.chips', rs => rs.map(r => r.getBoundingClientRect().height))).every(h => h < 44), 'every section of chips is one line');
     assert.deepEqual(await page.$$eval('.chips .chip', cs => cs.filter(c => c.scrollWidth > c.clientWidth).map(c => c.textContent)), [], 'and no chip is cut short');
     await page.click('button.btn:has-text("Save")'); await page.waitForSelector('.toast.show:has-text("Saved")');
@@ -546,7 +557,7 @@ test('with location on, the app opens the festival you are standing at, sorts th
   await page.click('button.orb:has-text("Radar")');
   await page.waitForSelector('.rmap .me');
   const dot = await page.$eval('.rmap .me', el => ({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) }));
-  assert.ok(Math.abs(dot.left - 256) < 2 && Math.abs(dot.top - 256) < 2, 'standing on the grounds means the centre of the square');
+  assert.ok(Math.abs(dot.left - 256) < 2 && Math.abs(dot.top - 256) < 2, 'standing on the grounds means the center of the square');
   await shot(page, '12-radar-me');
   await page.click('button[aria-label="Back"]');
   await page.waitForSelector('.sky');
@@ -662,7 +673,7 @@ test('right where you are: alerts, forecast, radar and warnings for the phone\'s
     await page.click('button.orb:has-text("Radar")');
     await page.waitForSelector('.rmap .me');
     const dot = await page.$eval('.rmap .me', el => ({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) }));
-    assert.ok(Math.abs(dot.left - 256) < 2 && Math.abs(dot.top - 256) < 2, 'the radar square is centred on you');
+    assert.ok(Math.abs(dot.left - 256) < 2 && Math.abs(dot.top - 256) < 2, 'the radar square is centered on you');
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.sky');
     await page.goto(`${base}/index.html?here=1`);

@@ -76,8 +76,8 @@ test('festivals outside the weather service area are refused everywhere: no aler
 test('the same festival from two sources: same grounds, or the same name within the sprawl of one', () => {
   const tm = { name: 'Country Calling', latitude: 38.37791, longitude: -75.06907, startDate: '2026-10-02T16:00:00Z', endDate: '2026-10-04T08:00:00Z' };
   const sg = { name: 'Country Calling Festival', latitude: 38.3377, longitude: -75.0816, startDate: '2026-10-02T16:00:00Z', endDate: '2026-10-03T17:00:00Z' };
-  assert.equal(sameFestival(tm, sg), true, 'four kilometres apart, one name');
-  assert.equal(sameFestival(tm, { ...sg, name: 'Boardwalk Reggae Fest' }), false, 'four kilometres apart, another name');
+  assert.equal(sameFestival(tm, sg), true, 'four kilometers apart, one name');
+  assert.equal(sameFestival(tm, { ...sg, name: 'Boardwalk Reggae Fest' }), false, 'four kilometers apart, another name');
   assert.equal(sameFestival(tm, { ...sg, startDate: '2026-11-02T16:00:00Z', endDate: '2026-11-03T17:00:00Z' }), false, 'a month apart');
   assert.equal(sameFestival(tm, { ...sg, name: 'Ocean City Bluegrass', latitude: 38.378, longitude: -75.069 }), true, 'same grounds, any name');
 });

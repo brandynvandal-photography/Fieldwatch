@@ -43,11 +43,11 @@ export const sameCore = (x, y) => { const a = coreName(x), b = coreName(y); retu
 // A listing is a festival, or something sold beside one, or plainly not one.
 export const FESTIVAL_WORD = /\b(fest|festival|festivals|fete|jam|jamboree|jubilee|gathering|revival|revue|roundup|round-up|carnival|fair|palooza|weekender|weekend|campout|camp-out|block party|hoedown|smokeout|smoke-out|fiesta|oktoberfest|brewfest|beerfest|bluesfest|jazzfest|rise up|picnic|rendezvous|powwow|pow-wow|days)\b|fest\b|palooza\b|fest$/i;
 export const NOT_A_FESTIVAL = /\b(tour|tribute|concert|symphony|philharmonic|orchestra|comedy|awards?|gala|screening|conference|convention|expo|seminar|worship night)\b/i;
-export const CANCELLED = /\b(cancell?ed|postponed)\b/i;
+export const CANCELED = /\b(cancell?ed|postponed)\b/i;
 export const ADD_ON = /\b(parking|shuttle|camping|campsite|campground|locker|merch|payment plan|layaway|upgrade|add[- ]?on|glamping|rv pass|car pass|bus pass|car registration|registration|kick-?off|after ?party|pre-?party|fest nights?|meet (and|&) greet|package)\b/i;
 /** A name that says festival, and not a tour, tribute or concert unless it also says fest. */
 export const looksLikeFestival = name => FESTIVAL_WORD.test(name) && !plainlyNotFestival(name);
-// What no festival word redeems: a travelling show, a benefit concert, an orchestra, an awards night, or a
+// What no festival word redeems: a traveling show, a benefit concert, an orchestra, an awards night, or a
 // promoter presenting an act ("Hawaii's Finest Presents High Watah") with no festival named.
 const NEVER_A_FESTIVAL = /\b(tour|benefit concert|concerto|symphony|philharmonic|orchestra|awards?)\b/i;
 export const plainlyNotFestival = name => NEVER_A_FESTIVAL.test(name) || (!/fest/i.test(name) && (NOT_A_FESTIVAL.test(name) || /\bpresents?\b/i.test(name)));

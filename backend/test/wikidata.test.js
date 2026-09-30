@@ -80,7 +80,7 @@ test('JSON-LD events: the right types, @graph and subEvent, bare dates as whole 
     { start: '2026-10-09T22:00:00Z', end: '2026-10-10T08:00:00Z', name: 'Moonrise Fest - Friday', lat: 35.6981, lon: -93.7793, place: 'Mulberry Mountain, Ozark, AR' },
     { start: '2026-10-10T16:00:00Z', end: '2026-10-11T08:00:00Z', name: 'Moonrise Fest - Saturday', lat: 35.6981, lon: -93.7793, place: 'Mulberry Mountain, Ozark, AR' },
     { start: '2026-10-11T16:00:00Z', end: '2026-10-12T08:00:00Z', name: 'Moonrise Fest - Sunday', lat: 35.6981, lon: -93.7793, place: 'Mulberry Mountain, Ozark, AR' },
-  ], 'a broken block is skipped, last year and the cancelled show are dropped, no end means the same day');
+  ], 'a broken block is skipped, last year and the canceled show are dropped, no end means the same day');
   assert.deepEqual(eventsFrom(pages['https://bigskyjam.example/'], NOW), [], 'the edition after next');
   assert.deepEqual(eventsFrom(pages['https://saltflatssound.example/'], NOW), []);
   assert.deepEqual(eventsFrom('<html><body>nothing</body></html>', NOW), []); assert.deepEqual(eventsFrom('', NOW), []);
@@ -89,7 +89,7 @@ test('JSON-LD events: the right types, @graph and subEvent, bare dates as whole 
     [{ start: '2026-10-01T16:00:00Z', end: '2026-10-02T08:00:00Z' }, { start: '2026-10-02T16:00:00Z', end: '2026-10-03T08:00:00Z' }], 'subEvents count; an end before the start is ignored');
   assert.deepEqual(eventsFrom(ld({ '@type': 'Event', startDate: '2026-09-26', endDate: '2026-09-29' }), NOW), [{ start: '2026-09-26T16:00:00Z', end: '2026-09-30T08:00:00Z' }], 'on right now: still listed');
   assert.deepEqual(eventsFrom(ld({ '@type': 'Event', startDate: 'soon' }), NOW), []);
-  // A start that is a date but not YYYY-MM-DD used to throw when the end was missing or earlier; the same-day fallback comes from the normalised start.
+  // A start that is a date but not YYYY-MM-DD used to throw when the end was missing or earlier; the same-day fallback comes from the normalized start.
   assert.deepEqual(eventsFrom(ld({ '@type': 'Event', startDate: 'Fri, 09 Oct 2026 17:00:00 GMT' }), NOW), [{ start: '2026-10-09T17:00:00Z', end: '2026-10-10T08:00:00Z' }]);
   assert.deepEqual(eventsFrom(ld({ '@type': 'Event', startDate: 'Fri, 09 Oct 2026 17:00:00 GMT', endDate: 'Thu, 08 Oct 2026 10:00:00 GMT' }), NOW), [{ start: '2026-10-09T17:00:00Z', end: '2026-10-10T08:00:00Z' }]);
   assert.deepEqual(eventsFrom(ld({ '@type': 'Event', startDate: '2026-10-09T23:30:00-05:00' }), NOW), [{ start: '2026-10-10T04:30:00Z', end: '2026-10-11T08:00:00Z' }], 'the day is the UTC day of the start');
@@ -114,13 +114,13 @@ test('JSON-LD events: the right types, @graph and subEvent, bare dates as whole 
   assert.ok(performance.now() - t0 < 2000, `twenty thousand unclosed tags took ${Math.round(performance.now() - t0)} ms`);
 });
 
-test('listings take the page geo only when near the Wikidata point, fold by name and item, keep the first fortnight, and carry the item in the id', () => {
+test('listings take the page geo only when near the Wikidata point, fold by name and item, keep the first two weeks, and carry the item in the id', () => {
   const [, , moonrise] = parseCandidates(sparqlResult(items));
   const near = listingsFor(moonrise, eventsFrom(pages['https://moonrisefest.example/'], NOW));
   assert.equal(near.length, 3); assert.equal(near[0].lat, 35.6981); assert.equal(near[0].key, 'moonrise fest|Q9003'); assert.equal(near[0].place, 'Mulberry Mountain, Ozark');
   assert.equal(near[0].name, 'Moonrise Fest', 'a block named after the festival carries the Wikidata label');
   const far = listingsFor(parseCandidates(sparqlResult([hulaween]))[0], eventsFrom(pages['https://hulaween.example/'], NOW));
-  assert.equal(far[0].lat, 30.4045); assert.equal(far[0].lon, -82.939, 'a thousand kilometres off: Wikidata wins');
+  assert.equal(far[0].lat, 30.4045); assert.equal(far[0].lon, -82.939, 'a thousand kilometers off: Wikidata wins');
   const list = festivalsFrom([...near, ...far], '2026-09-28');
   assert.deepEqual(list.map(f => [f.id, f.wikidata, f.origin]), [['wd-q9003-moonrise-fest-2026', 'Q9003', 'wikidata'], ['wd-q9006-suwannee-hulaween-2026', 'Q9006', 'wikidata']]);
   assert.equal(list[0].startDate, '2026-10-09T22:00:00Z'); assert.equal(list[0].endDate, '2026-10-12T08:00:00Z');
@@ -129,7 +129,7 @@ test('listings take the page geo only when near the Wikidata point, fold by name
   const [littleRock, wichita] = parseCandidates(sparqlResult(riverfests));
   const rf = festivalsFrom([...listingsFor(littleRock, eventsFrom(pages[littleRock.website], NOW)), ...listingsFor(wichita, eventsFrom(pages[wichita.website], NOW))], '2026-09-28');
   assert.deepEqual(rf.map(f => [f.id, f.name, f.startDate, f.location]), [['wd-q9102-riverfest-2026', 'Riverfest', '2026-10-02T16:00:00Z', 'Little Rock'], ['wd-q9101-riverfest-2026', 'Riverfest', '2026-10-16T16:00:00Z', 'Wichita']]);
-  // One homepage, two editions: only the first fortnight counts, so autumn does not run into spring. The pre-party named after
+  // One homepage, two editions: only the first two weeks counts, so autumn does not run into spring. The pre-party named after
   // the festival folds in; a differently named night is its own record, not a stretch of the festival's dates.
   const [te] = parseCandidates(sparqlResult([twoEditions]));
   const evs = eventsFrom(pages[te.website], NOW); assert.equal(evs.length, 4);
@@ -347,7 +347,7 @@ test('a listing that vanished from its site before it started is pruned on a cle
   const lines = [];
   const r = await importWikidata({ fetchImpl, now: NOW + 8 * DAY, pauseMs: 0, cacheDays: 0, log: { error: m => lines.push(m) } });
   assert.deepEqual(lines, []); assert.equal(r.errors, 0); assert.equal(r.festivals, 0); assert.equal(r.pruned, 2);
-  assert.equal(q.festival('wd-q9003-moonrise-fest-2026'), null, 'the page no longer announces it: cancelled');
+  assert.equal(q.festival('wd-q9003-moonrise-fest-2026'), null, 'the page no longer announces it: canceled');
   assert.equal(q.festival('wd-old-days-2026'), null);
   assert.equal(cache()['https://moonrisefest.example/'].ok, false);
 });

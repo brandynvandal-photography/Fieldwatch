@@ -30,7 +30,7 @@ q.upsertFestival({ ...festival, location: 'x', county: 'Suwannee County', isPart
 
 const NOW = Date.UTC(2026, 9, 24, 21, 17, 30);   // 2026-10-24T21:17:30Z
 
-test('mercator round-trips and the coverage is a 320 km square centred on the grounds', () => {
+test('mercator round-trips and the coverage is a 320 km square centered on the grounds', () => {
   const m = radar.mercator(festival.latitude, festival.longitude);
   const back = radar.inverseMercator(m.x, m.y);
   assert.ok(Math.abs(back.lat - festival.latitude) < 1e-9 && Math.abs(back.lon - festival.longitude) < 1e-9);

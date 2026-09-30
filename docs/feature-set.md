@@ -9,7 +9,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 ## Live today
 
 - Picker lists only what is on: a week before gates to the day after.
-- List from the curated seed, Ticketmaster, SeatGeek, Edmtrain and feed importers (keys), and a keyless Wikidata pass that reads each festival site's own schema.org dates (robots honoured).
+- List from the curated seed, Ticketmaster, SeatGeek, Edmtrain and feed importers (keys), and a keyless Wikidata pass that reads each festival site's own schema.org dates (robots honored).
 - Location opens the festival you are at and sorts by distance.
 - Right where you are: the phone's own spot as a festival for the week (alerts, forecast, radar, push), named by one OpenStreetMap lookup. This replaced adding a festival by hand.
 - Warn people near you: on a warning, the alert text and link go to the share sheet, so AirDrop reaches phones with nothing installed and no signal.
@@ -17,7 +17,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - Forecast: temperature and rain, heat index, gust and thunder panels, day rows with a pack line.
 - On the way: when the next twelve hours turn stormy, windy, wet or dangerously hot, a card under the sky with a live countdown to when it starts, what to do first, and a prep screen behind it (where to shelter, how to solidify camp, a timeline you are somewhere on, what to pack for shelter). The backend pushes the same heads-up up to three hours ahead, once per window.
 - Lightning codes: the backend reads the GOES lightning mapper's 20-second flash files from NOAA's public buckets every 20 seconds while a festival is on and grades each one on the festival safety protocol: red (a flash under 8 miles: rapid evacuation, full work stoppage, all clear 30 minutes after the last one, with the countdown), orange (8 to 12: execute evacuation procedures, staff hold posts to assist attendees), yellow (12 to 20: pay attention, prepare for orange and a work stoppage), green (none within 20 in 15 minutes). A tile on the festival page, a screen with the nearest flash, the counts by ring and the protocol in its own words, the code on the home page, and every change to orange or red pushed. The screen says the festival's own lightning vendor is the authority.
-- Ground: the surface under each festival (OpenStreetMap), how its soil drains (USDA soil survey), low ground, the rain of the last two days (Iowa Mesonet), and a staff screen to set what the lookups cannot see, including what is standing (canopies, inflatables, a stage). Rain heads-ups are judged by the amount the grid forecasts, not the chance, against that ground: wet, soft, deep mud or standing water (slick or runoff on blacktop), each with its own list for who is asking (camping, day visitor, crew; tent and canopy advice only where people camp, and the car is never told to move as if it could), and every task with a start-by time worked back from the arrival, the longest first. Wind is judged against what is standing: inflatables at 20 mph, pop-up canopies at 30, a stage at 40, and the heads-up names the line crossed. One tap on the prep screen reports the ground (fine, soft, mud, water) to everyone there, and the venue learns how much rain it takes from what was reported. Heat is judged for people working or dancing too: an estimated wet-bulb globe temperature from air temperature, humidity, wind and cloud earns a flag (green, yellow, red, black) with work-rest guidance, and red or black is a heads-up on its own. Rain already on the radar is tracked frame to frame on the backend: inside two hours its arrival pulls the countdown in, or makes a heads-up of its own when the forecast has none, with the direction it is coming from and its speed.
+- Ground: the surface under each festival (OpenStreetMap under the point or within 250 m, else the national land cover map's 30 m cell), how its soil drains (USDA soil survey), low ground, the rain of the last two days (Iowa Mesonet), and a staff screen where the lookups' answers come already selected, to correct what they cannot see and to say what is standing (canopies, inflatables, a stage). Rain heads-ups are judged by the amount the grid forecasts, not the chance, against that ground: wet, soft, deep mud or standing water (slick or runoff on blacktop), each with its own list for who is asking (camping, day visitor, crew; tent and canopy advice only where people camp, and the car is never told to move as if it could), and every task with a start-by time worked back from the arrival, the longest first. Wind is judged against what is standing: inflatables at 20 mph, pop-up canopies at 30, a stage at 40, and the heads-up names the line crossed. One tap on the prep screen reports the ground (fine, soft, mud, water) to everyone there, and the venue learns how much rain it takes from what was reported. Heat is judged for people working or dancing too: an estimated wet-bulb globe temperature from air temperature, humidity, wind and cloud earns a flag (green, yellow, red, black) with work-rest guidance, and red or black is a heads-up on its own. Rain already on the radar is tracked frame to frame on the backend: inside two hours its arrival pulls the countdown in, or makes a heads-up of its own when the forecast has none, with the direction it is coming from and its speed.
 - 12-hour radar loop with your position.
 - Live: an open page moves the second the backend does. A server-sent stream (`/events`) announces every alert that lands or ends, heads-up, lightning code, staff post and ground report, and the page refreshes just that festival or the feed; the backend asks the weather service every 30 seconds and the lightning buckets every 20.
 - Alerts for the whole grounds: NWS alerts are pulled by the festival's county and forecast zone and kept when their polygon reaches within about a mile of the grounds, so a warning drawn across the edge of a large site is not missed the way a single-point query misses it.
@@ -63,7 +63,7 @@ How: a "Now" gauge above the gust panel: sustained, gust, direction, station, di
 Needs: nothing for the gauge and lines. The push needs a threshold per subscription on the backend; do it second. Nearest ASOS can be 30 mi away, so print distance and age.
 
 **7. Heat plan and work/rest timer**
-How: the heat panel gains shade windows (hours over the 90 and 103 heat-index guides), sunrise and sunset computed on the phone, and an opt-in drink-water nudge while the app is open. WBGT strip with flag colours where the NWS gridpoint publishes it, estimated and labelled elsewhere. Timer card: workload, acclimatised or not, "work 40 / rest 20", buzz at each change.
+How: the heat panel gains shade windows (hours over the 90 and 103 heat-index guides), sunrise and sunset computed on the phone, and an opt-in drink-water nudge while the app is open. WBGT strip with flag colors where the NWS gridpoint publishes it, estimated and labeled elsewhere. Timer card: workload, acclimatized or not, "work 40 / rest 20", buzz at each change.
 Needs: nothing. WBGT is patchy by office; a week to get the strip right, then hang the timer off it.
 
 **8. Severe outlook on the day rows**
@@ -102,7 +102,7 @@ How: short static cards in the pack, in the walkthrough and a "Know before you g
 Needs: nothing. Highest value per line in this list.
 
 **16. Source and age on every card**
-How: "NWS Fort Worth, 4 min ago", "KDFW gust, 6 min ago". A card past its refresh greys to stale. The offline banner states the pack's age.
+How: "NWS Fort Worth, 4 min ago", "KDFW gust, 6 min ago". A card past its refresh grays to stale. The offline banner states the pack's age.
 Needs: nothing. Nobody stakes a hold on a number with no age.
 
 **17. Getting home card**
@@ -133,7 +133,7 @@ Left: unlock by staff key; Reports within 200 m and 20 minutes group as one card
 Needs: the staff key; category and level on the publish route; a confirm endpoint and an expiry field. The mini-map waits on the tile agreement.
 
 **23. Log export**
-How: one button on the staff screens: every NWS alert, hold, post, incident and report for the festival as CSV and JSON with UTC and local times, through the share sheet. What the promoter, insurer or regulator asks for afterwards.
+How: one button on the staff screens: every NWS alert, hold, post, incident and report for the festival as CSV and JSON with UTC and local times, through the share sheet. What the promoter, insurer or regulator asks for afterward.
 Needs: the staff key, one GET route. An afternoon, and the reason an officer runs holds through the app instead of a chat.
 
 **24. Morning brief**
@@ -147,11 +147,11 @@ How: a curated backend/data/grounds.json (Zilker, Spirit of the Suwannee, Discov
 Needs: a data file with a source per row. Warning polygons are drawn to the mile; this fixes box-office centroids for every importer at once.
 
 **26. Year-round festival registry**
-How: order of trust: curated seed, Ticketmaster, SeatGeek and Edmtrain, your feeds, Wikidata, festival sites, staff and admin suggestions. Every record keeps a source URL; the live window still decides what the picker shows. Steps: turn on the ticketing keys and read the first import report (none has run live); a Wikidata SPARQL gazetteer of US music festivals with coordinates and websites (CC0, a day); iCal and RSS from fairgrounds, parks, arts councils and venues through feeds.js, URLs picked by you; a polite weekly crawl of known festival sites for schema.org Festival JSON-LD dates (robots honoured, registry sites only); an admin coverage report by state and month plus the subscriber-heavy cells that match no festival. Wikidata-fed festivals publish unfeatured; their pins can be the town rather than the grounds, so the sources screen is where an admin fixes a pin (PUT /festivals/:id) and the known-grounds file above snaps the common ones.
-Needs: the existing keys, no new ones. JSON-LD is on perhaps a third of sites; the long tail is admin labour. JamBase (paid) for the jam and camping scene later.
+How: order of trust: curated seed, Ticketmaster, SeatGeek and Edmtrain, your feeds, Wikidata, festival sites, staff and admin suggestions. Every record keeps a source URL; the live window still decides what the picker shows. Steps: turn on the ticketing keys and read the first import report (none has run live); a Wikidata SPARQL gazetteer of US music festivals with coordinates and websites (CC0, a day); iCal and RSS from fairgrounds, parks, arts councils and venues through feeds.js, URLs picked by you; a polite weekly crawl of known festival sites for schema.org Festival JSON-LD dates (robots honored, registry sites only); an admin coverage report by state and month plus the subscriber-heavy cells that match no festival. Wikidata-fed festivals publish unfeatured; their pins can be the town rather than the grounds, so the sources screen is where an admin fixes a pin (PUT /festivals/:id) and the known-grounds file above snaps the common ones.
+Needs: the existing keys, no new ones. JSON-LD is on perhaps a third of sites; the long tail is admin labor. JamBase (paid) for the jam and camping scene later.
 
 **27. Search reaches ahead (your call)**
-How: bubbles and the list stay strictly what is on. A typed search also matches published festivals up to 90 days out, greyed, "opens in 12 days", with one row "Tell me when it's on" that sends a single push at opensAt. Nothing is polled before then.
+How: bubbles and the list stay strictly what is on. A typed search also matches published festivals up to 90 days out, grayed, "opens in 12 days", with one row "Tell me when it's on" that sends a single push at opensAt. Nothing is polled before then.
 Needs: your yes. It bends "only what is on is listed" in CLAUDE.md. Small to build.
 
 ## Later

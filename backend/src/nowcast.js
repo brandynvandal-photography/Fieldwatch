@@ -1,5 +1,5 @@
 // Where the rain on the radar is going, and when it gets here. The newest frames already on disk for a festival (radar.js:
-// a 512 px square every ten minutes, 625 m per pixel, the grounds at the centre) give an echo mask each; the shift that lines
+// a 512 px square every ten minutes, 625 m per pixel, the grounds at the center) give an echo mask each; the shift that lines
 // two masks up best is the storm motion over a step; the first echo upstream of the grounds along that motion, over the
 // speed, is the arrival. Rough, honest and only for the next two hours; the forecast carries the rest.
 import { existsSync, readFileSync } from 'node:fs';
@@ -12,7 +12,7 @@ export const N = 128, CELL_KM = 320 / N;           // the square is 320 km acros
 const SEARCH = 8;                                  // cells per step: 20 km in ten minutes, 120 km/h, as fast as rain moves
 const STEP_MS = 10 * 60_000, CORRIDOR = 2;         // cells either side of the line the rain is on
 
-/** An echo mask from a frame: a cell is echo when a quarter of its pixels are coloured. The archive's palette is colour on transparent; grey is a border or a label. */
+/** An echo mask from a frame: a cell is echo when a quarter of its pixels are colored. The archive's palette is color on transparent; gray is a border or a label. */
 export function echoMask(png) {
   const { width, height, data } = png;
   if (width < 64 || height < 64) return null;
@@ -44,7 +44,7 @@ export function motion(older, newer) {
   return best.score >= 0.3 ? best : null;
 }
 const near = (mask, x, y) => { for (let j = -CORRIDOR; j <= CORRIDOR; j++) for (let i = -CORRIDOR; i <= CORRIDOR; i++) { const xx = x + i, yy = y + j; if (xx >= 0 && yy >= 0 && xx < N && yy < N && mask[yy * N + xx]) return true; } return false; };
-/** Upstream from the centre along the motion: how many cells to the first echo. Zero when it is raining on the grounds; null when nothing is coming this way. */
+/** Upstream from the center along the motion: how many cells to the first echo. Zero when it is raining on the grounds; null when nothing is coming this way. */
 export function arrival(mask, v) {
   const c = N / 2;
   if (near(mask, c, c)) return 0;

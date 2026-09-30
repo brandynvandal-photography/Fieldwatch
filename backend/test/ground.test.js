@@ -5,12 +5,15 @@ import assert from 'node:assert/strict';
 
 process.env.DB_PATH = ':memory:';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
-const { effectiveGround, ensureGround, groundFor, learnedThreshold, lookupGround, pastRain, reportGround, reportSummary, soilFromUSDA, surfaceFromOSM, surfaceFromTags, validOverride } = await import('../src/ground.js');
+const { coverFromNLCD, effectiveGround, ensureGround, groundFor, learnedThreshold, lookupGround, pastRain, reportGround, reportSummary, soilFromUSDA, surfaceFromOSM, surfaceFromTags, validOverride } = await import('../src/ground.js');
+const { iso } = await import('../src/util.js');
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
 const fest = { id: 'ground-test', name: 'Ground Test', location: 'Live Oak, FL', latitude: 30.404, longitude: -82.9395, startDate: '2026-09-29T00:00:00Z', endDate: '2026-10-02T00:00:00Z' };
 const overpass = elements => json({ version: 0.6, elements });
 const sda = rows => json({ Table: [['mukey', 'muname', 'compname', 'hydgrp', 'drainagecl', 'comppct_r'], ...rows] });
+const nlcd = code => json({ type: 'FeatureCollection', features: [{ type: 'Feature', id: '', geometry: null, properties: { GRAY_INDEX: code } }] });
+const DAY = 86400000;
 
 test('tags read for the ground: a surface tag first, then a use, then land cover; boundaries say nothing', () => {
   assert.deepEqual(surfaceFromTags({ surface: 'asphalt', amenity: 'parking' }), ['pavement', false]);
@@ -37,6 +40,33 @@ test('the surface from Overpass: the most telling area under the point wins, a c
   const camp = await surfaceFromOSM(0, 0, { fetchImpl: async () => overpass([{ type: 'area', id: 1, tags: { tourism: 'camp_site', name: 'Spirit of the Suwannee' } }, { type: 'area', id: 2, tags: { landuse: 'meadow' } }]) });
   assert.equal(camp.camping, true, 'a campground under the grounds: people camp here'); assert.equal(camp.surface, 'grass'); assert.equal(s.camping, false);
   await assert.rejects(surfaceFromOSM(0, 0, { fetchImpl: async () => new Response('busy', { status: 429 }) }), /Overpass 429/);
+});
+
+test('nothing under the point: the nearest mapped ground within 250 m, its distance in the source', async () => {
+  const bodies = [];
+  const fetchImpl = async (url, init) => { bodies.push(decodeURIComponent(init.body)); return bodies.length === 1 ? overpass([{ type: 'area', id: 1, tags: { boundary: 'administrative' } }])
+    : overpass([{ type: 'way', id: 7, center: { lat: fest.latitude + 0.0018, lon: fest.longitude }, tags: { amenity: 'parking', surface: 'asphalt' } },
+                { type: 'way', id: 8, center: { lat: fest.latitude + 0.0005, lon: fest.longitude }, tags: { landuse: 'farmland' } },
+                { type: 'node', id: 9, lat: fest.latitude + 0.002, lon: fest.longitude, tags: { tourism: 'camp_site' } }]); };
+  const s = await surfaceFromOSM(fest.latitude, fest.longitude, { fetchImpl });
+  assert.equal(bodies.length, 2); assert.match(bodies[0], /is_in\(30\.40400,-82\.93950\)/); assert.match(bodies[1], /nwr\(around:250,30\.40400,-82\.93950\)/); assert.match(bodies[1], /out tags center/);
+  assert.deepEqual(s, { surface: 'grass', low: false, camping: true, source: 'OpenStreetMap', tag: 'landuse=farmland, 56 m away' }, 'the field 56 m off beats the lot 200 m off; the campground beside it says people camp');
+});
+
+test('the land cover at the point when OpenStreetMap has nothing: an NLCD class read as ground', async () => {
+  let url = '';
+  const c = await coverFromNLCD(fest.latitude, fest.longitude, { fetchImpl: async u => { url = String(u); return nlcd(81); } });
+  assert.deepEqual(c, { surface: 'grass', low: false, source: 'NLCD land cover: Pasture/hay', code: 81 });
+  const u = new URL(url);
+  assert.equal(u.searchParams.get('REQUEST'), 'GetFeatureInfo'); assert.equal(u.searchParams.get('BBOX'), '-82.94000,30.40350,-82.93900,30.40450', 'a window about 110 m across, the point in its middle pixel');
+  assert.equal(u.searchParams.get('X'), '1'); assert.equal(u.searchParams.get('INFO_FORMAT'), 'application/json');
+  assert.deepEqual(await coverFromNLCD(0, 0, { fetchImpl: async () => nlcd(23) }), { surface: 'pavement', low: false, source: 'NLCD land cover: Developed, medium intensity', code: 23 });
+  assert.deepEqual(await coverFromNLCD(0, 0, { fetchImpl: async () => nlcd(82) }), { surface: 'dirt', low: false, source: 'NLCD land cover: Cultivated crops', code: 82 });
+  assert.deepEqual(await coverFromNLCD(0, 0, { fetchImpl: async () => nlcd(95) }), { surface: 'grass', low: true, source: 'NLCD land cover: Emergent herbaceous wetlands', code: 95 }, 'a wetland is low ground');
+  assert.deepEqual(await coverFromNLCD(0, 0, { fetchImpl: async () => json({ features: [{ properties: { PALETTE_INDEX: '21' } }] }) }), { surface: 'grass', low: false, source: 'NLCD land cover: Developed, open space', code: 21 }, 'a paletted answer reads the same');
+  assert.equal(await coverFromNLCD(0, 0, { fetchImpl: async () => nlcd(11) }), null, 'open water says nothing about a field');
+  await assert.rejects(coverFromNLCD(0, 0, { fetchImpl: async () => json({ type: 'FeatureCollection', features: [] }) }), /no class/);
+  await assert.rejects(coverFromNLCD(0, 0, { fetchImpl: async () => new Response('down', { status: 502 }) }), /Land cover 502/);
 });
 
 test('the soil from the USDA survey: hydrologic group and drainage, a dual group read as its wetter letter, poorly drained is low', async () => {
@@ -67,7 +97,7 @@ test('a lookup lands on the record, the override sits on top, and the effective 
     : sda([['1', 'Urban land', 'Urban land', 'D', 'Well drained', '95']]);
   const saved = [];
   const g = await lookupGround(fest, { fetchImpl, save: f => saved.push(f) });
-  assert.equal(g.surface, 'pavement'); assert.equal(g.surfaceSource, 'OpenStreetMap: surface=asphalt, amenity=parking'); assert.equal(g.soil, 'D'); assert.equal(g.soilName, 'Urban land'); assert.equal(g.lookupError, undefined);
+  assert.equal(g.surface, 'pavement'); assert.equal(g.surfaceSource, 'OpenStreetMap: surface=asphalt, amenity=parking'); assert.equal(g.soil, 'D'); assert.equal(g.soilName, 'Urban land'); assert.equal(g.lookupError, null, 'a clean lookup writes null, so an old error clears');
   assert.equal(saved.length, 1); assert.equal(saved[0].ground.surface, 'pavement');
   const eff = effectiveGround(saved[0]);
   assert.deepEqual({ surface: eff.surface, soil: eff.soil, low: eff.low, structures: eff.structures, surfaceSource: eff.surfaceSource }, { surface: 'pavement', soil: 'D', low: false, structures: ['canopies'], surfaceSource: 'OpenStreetMap: surface=asphalt, amenity=parking' });
@@ -82,8 +112,10 @@ test('a lookup lands on the record, the override sits on top, and the effective 
   assert.equal(e2.surface, 'grass'); assert.equal(e2.surfaceSource, 'staff'); assert.equal(e2.soil, 'D'); assert.equal(e2.low, true); assert.deepEqual(e2.structures, ['canopies', 'stage']);
   assert.match(validOverride({ surface: 'lava' }).error, /surface must be one of/); assert.match(validOverride({ structures: ['tents', 'x'] }).error, /structures must be some of/);
   // One service down: the other still lands, and the error is on the record for the sources screen.
-  const half = await lookupGround(fest, { fetchImpl: async url => String(url).includes('overpass') ? new Response('no', { status: 504 }) : sda([['1', 'Blanton fine sand', 'Blanton', 'A', 'Well drained', '90']]) });
-  assert.equal(half.surface, undefined); assert.equal(half.soil, 'A'); assert.match(half.lookupError, /surface: Overpass 504/);
+  const half = await lookupGround(fest, { fetchImpl: async url => String(url).includes('overpass') ? new Response('no', { status: 504 }) : String(url).includes('mrlc') ? nlcd(82) : sda([['1', 'Blanton fine sand', 'Blanton', 'A', 'Well drained', '90']]) });
+  assert.equal(half.surface, 'dirt', 'OpenStreetMap down: the land cover map stands in'); assert.equal(half.surfaceSource, 'NLCD land cover: Cultivated crops'); assert.equal(half.soil, 'A'); assert.match(half.lookupError, /^surface: Overpass 504$/);
+  const dark = await lookupGround(fest, { fetchImpl: async url => String(url).includes('overpass') ? overpass([]) : String(url).includes('mrlc') ? new Response('down', { status: 502 }) : sda([['1', 'Blanton fine sand', 'Blanton', 'A', 'Well drained', '90']]) });
+  assert.equal(dark.surface, undefined); assert.match(dark.lookupError, /^cover: Land cover 502$/, 'nothing mapped and the cover service down: no guess, the error on the record');
   // groundFor: the effective ground plus the recent rain, the rain kept from the cache when the analysis is down.
   const gf = await groundFor(withOverride, { fetchImpl: async () => json({ data: [{ date: '2026-09-30', daily_precip_in: 0.3 }] }) });
   assert.equal(gf.surface, 'grass'); assert.equal(gf.past.in24, 0.3);
@@ -102,6 +134,19 @@ test('a festival that is on gets its lookup once; one festival per pass, none tr
   assert.ok(saved.has('eg-b'), 'the next pass takes the next festival'); assert.equal(second.soil, 'B');
   assert.equal(await ensureGround([saved.get('eg-a'), saved.get('eg-b')], { fetchImpl, save }), null, 'both looked up: nothing to do');
   assert.equal(await ensureGround([a], { fetchImpl, save }), null, 'a record still without a lookup (a failed save) is not retried within six hours');
+});
+
+test('a lookup that found nothing is tried again after a day; one that found the ground is left alone', async () => {
+  const now = Date.now(), urls = [];
+  const fetchImpl = async url => { urls.push(String(url)); return String(url).includes('overpass') ? overpass([]) : String(url).includes('mrlc') ? nlcd(82) : sda([['1', 'Loam', 'Loam', 'B', 'Well drained', '90']]); };
+  const saved = new Map(); const save = f => saved.set(f.id, f);
+  const empty = { ...fest, id: 'eg-empty', ground: { lookedUpAt: iso(now - 2 * DAY), lookupError: 'surface: Overpass 504' } };
+  const full = { ...fest, id: 'eg-full', ground: { lookedUpAt: iso(now - 2 * DAY), surface: 'grass', soil: 'B' } };
+  const fresh = { ...fest, id: 'eg-fresh', ground: { lookedUpAt: iso(now - 2 * 3600000) } };
+  const g = await ensureGround([full, fresh, empty], { now, fetchImpl, save });
+  assert.equal(g.surface, 'dirt'); assert.equal(g.surfaceSource, 'NLCD land cover: Cultivated crops'); assert.equal(g.soil, 'B'); assert.equal(g.lookupError, null);
+  assert.ok(saved.has('eg-empty') && !saved.has('eg-full') && !saved.has('eg-fresh'), 'the empty one from two days ago is tried again; the full one and the one from two hours ago are not');
+  assert.equal(await ensureGround([full, fresh, saved.get('eg-empty')], { now, fetchImpl, save }), null, 'and once it has the ground, nothing to do');
 });
 
 test('the venue learns how much rain it takes from what people report, and a report carries the rain counted at the time', async () => {
