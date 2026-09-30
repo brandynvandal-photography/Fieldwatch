@@ -45,7 +45,8 @@ export async function point(lat, lon) {
 export async function gridpoint(lat, lon) {
   const p = await point(lat, lon);
   const g = (await nws(p.forecastGridData)).properties;
-  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder };
+  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder, quantitativePrecipitation: g.quantitativePrecipitation,
+    temperature: g.temperature, relativeHumidity: g.relativeHumidity, windSpeed: g.windSpeed, skyCover: g.skyCover };
 }
 
 export async function hourly(lat, lon) {

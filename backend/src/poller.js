@@ -2,6 +2,7 @@ import './env.js';
 import { q } from './db.js';
 import { activeAlerts, gridpoint, hourly, point } from './nws.js';
 import { headsUpAlert, incoming, spreadGrid } from './incoming.js';
+import { groundFor } from './ground.js';
 import { pushAlert } from './push.js';
 import { pushWeb } from './webpush.js';
 import { isLive } from './festivals.js';
@@ -76,7 +77,8 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   if ((headsUpAt.get(f.id) || 0) > now - every) return null;
   headsUpAt.set(f.id, now);
   const [periods, g, p] = await Promise.all([hourly(f.latitude, f.longitude), gridpoint(f.latitude, f.longitude), point(f.latitude, f.longitude)]);
-  const inc = incoming({ hourly: periods, grid: spreadGrid(g), alerts: q.activeAlerts(f.id), now });
+  const ground = await groundFor(f, { now });
+  const inc = incoming({ hourly: periods, grid: spreadGrid(g, periods), alerts: q.activeAlerts(f.id), ground, now });
   if (!inc || inc.source === 'alert' || inc.minutes > HEADS_UP_HOURS * 60 || inc.minutes < 10) return null;
   const key = `headsup:${f.id}`, prev = JSON.parse(q.setting(key) || 'null');
   if (prev && prev.hazard === inc.hazard && Math.abs(Date.parse(prev.startsAt) - Date.parse(inc.startsAt)) < 90 * 60_000 && now - Date.parse(prev.at) < 6 * 3_600_000) return null;

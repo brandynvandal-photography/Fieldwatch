@@ -62,7 +62,7 @@ export const hourly = {
 
 // The raw grid behind the forecasts (/gridpoints/{wfo}/{x},{y}): values carry an ISO interval with a duration,
 // in metric units. Hours 0-47 from the same 18:00Z start as `hourly`. Heat index peaks at 96 F around hour 3,
-// gusts at 34 mph around hour 5, thunder at 60% at hours 6-7.
+// gusts at 34 mph around hour 5, thunder at 60% at hours 6-7, a tenth of an inch of rain over hours 0-5 and half an inch over hours 6-11.
 const gridTime = (h, dur = 'PT1H') => `${new Date(Date.UTC(2026, 9, 23, 18 + h)).toISOString().replace('.000Z', '+00:00')}/${dur}`;
 const fToC = f => Math.round((f - 32) * 5 / 9 * 100) / 100;
 export const grid = {
@@ -76,6 +76,9 @@ export const grid = {
     windGust: { uom: 'wmoUnit:km_h-1', values: [
       { validTime: gridTime(0, 'PT2H'), value: 24.14 }, { validTime: gridTime(2, 'PT2H'), value: 40.23 }, { validTime: gridTime(4), value: 48.28 },
       { validTime: gridTime(5), value: 54.72 }, { validTime: gridTime(6, 'PT6H'), value: 32.19 }, { validTime: gridTime(12, 'P1DT12H'), value: 16.09 },
+    ] },
+    quantitativePrecipitation: { uom: 'wmoUnit:mm', values: [
+      { validTime: gridTime(0, 'PT6H'), value: 2.54 }, { validTime: gridTime(6, 'PT6H'), value: 12.7 }, { validTime: gridTime(12, 'P1DT6H'), value: 0 },
     ] },
     probabilityOfThunder: { uom: 'wmoUnit:percent', values: [
       { validTime: gridTime(0, 'PT3H'), value: 20 }, { validTime: gridTime(3, 'PT3H'), value: 40 }, { validTime: gridTime(6, 'PT2H'), value: 60 },

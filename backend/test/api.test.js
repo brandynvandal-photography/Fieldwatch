@@ -103,6 +103,9 @@ test('pack carries festival, normalized NWS alerts, forecast, posts and incident
   assert.equal(pack.radar.festivalId, FEST);
   assert.ok(Array.isArray(pack.radar.frames));
   assert.equal(pack.lightning, null, 'no lightning grade until the mapper has been read');
+  assert.equal(pack.ground.past, null, 'the rain analysis is out of reach in tests'); assert.match(pack.ground.pastError, /IEMRE 404/);
+  const ground = (await api('GET', `/festivals/${FEST}/ground`)).json;
+  assert.equal(ground.past, null); assert.match(ground.at, /^\d{4}-/);
   assert.deepEqual((await api('GET', `/festivals/${FEST}/lightning`)).json, { code: 'none', at: (await api('GET', `/festivals/${FEST}/lightning`)).json.at, on: true, source: 'GOES GLM' });
   assert.match(pack.generatedAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/, 'no fractional seconds');
 });
@@ -501,7 +504,7 @@ test('a heads-up goes out hours before the forecast turns: once per window, push
   assert.equal(a.channel, 'headsup'); assert.equal(a.event, 'Storms expected around 5:00 PM'); assert.equal(a.minutes, 150); assert.equal(a.severity, 'moderate');
   assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'stored with the festival\'s alerts');
   assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Storms expected around 5:00 PM'); assert.equal(sent[0].opts.urgency, 'normal');
-  assert.equal(sent[0].payload.body, 'Suwannee Hulaween. The forecast has a 60% chance of thunder. Secure camp now, charge phones, fill water, and decide where you will shelter.');
+  assert.equal(sent[0].payload.body, 'Suwannee Hulaween. The forecast has a 60% chance of thunder and 0.6 in of rain. Secure camp now, charge phones, fill water, and decide where you will shelter.');
   assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&alert=${encodeURIComponent(a.id)}`);
   assert.equal(await headsUp(q.festival(FEST), { now: now + 25 * 60_000 }), null, 'the same window is not announced twice');
   assert.equal(sent.length, 1);

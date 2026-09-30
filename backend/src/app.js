@@ -16,6 +16,7 @@ import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
 import { lightningFor, lightningOn, lightningStatus } from './lightning.js';
+import { groundFor, groundStatus } from './ground.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -109,6 +110,7 @@ app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
   nwsUserAgent: !process.env.NWS_USER_AGENT || /example\.com/.test(process.env.NWS_USER_AGENT) ? 'placeholder' : 'set',
   sources: { ticketmaster: Boolean(process.env.TICKETMASTER_KEY), seatgeek: Boolean(process.env.SEATGEEK_CLIENT_ID), edmtrain: Boolean(process.env.EDMTRAIN_KEY), wikidata: wikidataSkipped() || 'on', feeds: Boolean(process.env.FESTIVAL_FEEDS) },
   lightning: lightningStatus(),
+  ground: groundStatus(),
   imports: { running: imports.running, lastStartedAt: imports.last?.startedAt || null, lastFinishedAt: imports.last?.finishedAt || null,
     // Per source, what the last run managed and the last error it hit, so a failing key or a blocked host shows here.
     sources: Object.fromEntries(Object.entries(imports.last || {}).filter(([, v]) => v && typeof v === 'object')
@@ -189,6 +191,9 @@ app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
   noteInterest(req.festival.id); refreshRadarSoon(req.festival);
   res.json(await buildPack(req.festival));
 }));
+
+/** The ground under the festival: what the record says about it, and the rain of the last two days (ground.js). */
+app.get('/festivals/:id/ground', loadFestival, wrap(async (req, res) => res.set('Cache-Control', 'no-store').json(await groundFor(req.festival))));
 
 /** Lightning near the festival right now (lightning.js): the code, the nearest flash, counts by ring, the all-clear time. */
 app.get('/festivals/:id/lightning', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(lightningFor(req.festival.id) || { code: 'none', at: iso(), on: lightningOn(), source: 'GOES GLM' }));

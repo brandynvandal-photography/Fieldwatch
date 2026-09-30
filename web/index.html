@@ -506,25 +506,10 @@ async function loadHourly(f){
   return fc.properties.periods.slice(0, 36).map(x => ({ startTime: x.startTime, temperature: x.temperature, shortForecast: x.shortForecast, windSpeed: x.windSpeed, precipChance: x.probabilityOfPrecipitation?.value ?? null }));
 }
 
-// The grid behind the forecast (/gridpoints/{wfo}/{x},{y}): heat index, wind gusts, chance of thunder. Values come as
-// an ISO interval with a duration, in metric; they are spread hour by hour and keyed by the hour so they line up with the forecast.
-const DURATION = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/;
-const hourKey = t => Math.floor(t / 3600000);
-function spread(series, convert){
-  const out = {};
-  for (const v of (series && series.values) || []) {
-    if (v.value == null) continue;
-    const [start, dur] = String(v.validTime).split('/'), m = DURATION.exec(dur || 'PT1H') || [];
-    const hours = Math.max(1, Number(m[1] || 0) * 24 + Number(m[2] || 0) + (Number(m[3] || 0) ? 1 : 0)), t0 = Date.parse(start);
-    if (Number.isNaN(t0)) continue;
-    for (let h = 0; h < hours && h < 72; h++) out[hourKey(t0 + h * 3600000)] = convert(v.value);
-  }
-  return out;
-}
-const cToF = c => c * 9 / 5 + 32, kmhToMph = k => k / 1.609;
+// The grid behind the forecast (/gridpoints/{wfo}/{x},{y}), raw: the shared block below spreads it hour by hour once the hourly forecast is in.
 async function loadGrid(f){
   const g = (await getJSON((await pointFor(f)).forecastGridData, GEO)).properties;
-  return { heat: spread(g.heatIndex, cToF), gust: spread(g.windGust, kmhToMph), thunder: spread(g.probabilityOfThunder, v => v) };
+  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder, quantitativePrecipitation: g.quantitativePrecipitation };
 }
 async function loadDaily(f){
   const point = await pointFor(f), fc = await getJSON(point.forecast, GEO);
@@ -539,12 +524,13 @@ async function refresh(f){
   if (!f || S.busy) return;
   S.busy = true; render();
   const b = backend();
-  const [al, hr, po, inc, gr, dy, lt] = await Promise.allSettled([
+  const [al, hr, po, inc, gr, dy, lt, gd] = await Promise.allSettled([
     loadAlerts(f), loadHourly(f),
     b ? getJSON(`${b}/festivals/${f.id}/posts`) : Promise.resolve(data(f).posts || []),
     b ? getJSON(`${b}/festivals/${f.id}/incidents`) : Promise.resolve(null),
     loadGrid(f), loadDaily(f),
     b ? getJSON(`${b}/festivals/${f.id}/lightning`) : Promise.resolve(null),
+    b ? getJSON(`${b}/festivals/${f.id}/ground`) : Promise.resolve(null),
   ]);
   const next = { ...data(f) };
   let ok = false;
@@ -559,7 +545,8 @@ async function refresh(f){
   if (hr.status === 'fulfilled') { next.hourly = hr.value; ok = true; }
   if (po.status === 'fulfilled') next.posts = po.value;
   if (inc.status === 'fulfilled') next.incidents = inc.value;
-  if (gr.status === 'fulfilled') next.grid = gr.value;
+  if (gr.status === 'fulfilled') next.grid = spreadGrid(gr.value, next.hourly || data(f).hourly || []);
+  if (gd.status === 'fulfilled') next.ground = gd.value;
   if (dy.status === 'fulfilled') next.daily = dy.value;
   if (lt.status === 'fulfilled') next.lightning = lt.value;
   next.checkedAt = new Date().toISOString();
@@ -884,33 +871,82 @@ function lightningTile(f){
   return `<button class="bolt glass ${esc(l.code)}" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(head)} · ${esc(c.label)}</div><div class="s">${sub}</div></div>${I.chev}</button>`;
 }
 
-// ---- what is coming (mirrors backend/src/incoming.js: keep the thresholds, the camp lists and the timing lines the same) ----
-const THRESHOLDS = { thunder: 30, gustMph: 35, precip: 60, heatF: 100 };
+// ==== shared: start ====
+// Fieldwatch's weather logic, byte for byte the same in backend/src/incoming.js and web/index.html: the backend pushes
+// from it, the phone draws from it, and backend/test/mirror.test.js fails when the two differ. Pure functions only:
+// nothing from the page or the server, no imports.
+const HOUR = 3600000;
+// Lines the forecast has to cross: chance of thunder (%), gusts (mph), rain in the window (inches) with the chance of
+// rain (%) standing in when the grid has no amount, hourly rain that counts as raining (inches), heat index (°F).
+const THRESHOLDS = { thunder: 30, gustMph: 35, precip: 60, rainIn: 0.25, rainInHr: 0.02, heatF: 100 };
 const PRIORITY = ['tornado', 'storms', 'hail', 'wind', 'flood', 'rain', 'heat'];
 const ALERT_HAZARD = [[/tornado/i, 'tornado'], [/thunderstorm|lightning/i, 'storms'], [/hail/i, 'hail'], [/wind|gale/i, 'wind'], [/flood/i, 'flood'], [/heat/i, 'heat'], [/rain|storm/i, 'rain']];
+const LABEL = { tornado: 'Tornado', storms: 'Storms', hail: 'Hail', wind: 'Strong wind', flood: 'Flooding', rain: 'Heavy rain', heat: 'Dangerous heat' };
+const DURATION = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/;
+const hourKey = t => Math.floor(t / HOUR);
+/** The hours an ISO interval with a duration covers, keyed by the hour, at most three days of them. */
+function intervalHours(validTime) {
+  const [start, dur] = String(validTime).split('/'), m = DURATION.exec(dur || 'PT1H') || [];
+  const hours = Math.max(1, Number(m[1] || 0) * 24 + Number(m[2] || 0) + (Number(m[3] || 0) ? 1 : 0)), t0 = Date.parse(start), keys = [];
+  if (!Number.isNaN(t0)) for (let h = 0; h < hours && h < 72; h++) keys.push(hourKey(t0 + h * HOUR));
+  return keys;
+}
+/** A gridpoint series (an ISO interval with a duration, in metric) spread hour by hour: every hour of the interval holds its value. */
+function spread(series, convert = v => v) {
+  const out = {};
+  for (const v of (series && series.values) || []) { if (v.value == null) continue; for (const k of intervalHours(v.validTime)) out[k] = convert(v.value); }
+  return out;
+}
+/** An amount over an interval (rain, in mm) shared out to its hours, in inches: by each hour's chance of rain when the forecast has one for every hour, evenly otherwise. */
+function allocate(series, hourly = []) {
+  const chance = {};
+  for (const h of hourly) { const t = Date.parse(h.startTime); if (Number.isFinite(t) && h.precipChance != null) chance[hourKey(t)] = Number(h.precipChance); }
+  const out = {};
+  for (const v of (series && series.values) || []) {
+    if (v.value == null) continue;
+    const keys = intervalHours(v.validTime), w = keys.map(k => chance[k]), sum = w.every(Number.isFinite) ? w.reduce((a, b) => a + b, 0) : 0;
+    keys.forEach((k, i) => { out[k] = (out[k] || 0) + (v.value / 25.4) * (sum > 0 ? w[i] / sum : 1 / keys.length); });
+  }
+  return out;
+}
+const cToF = c => c * 9 / 5 + 32, kmhToMph = k => k / 1.609;
+/** The grid's hour-by-hour numbers the model reads: heat index (°F), gusts (mph), chance of thunder (%), rain (inches in the hour). */
+const spreadGrid = (g, hourly = []) => ({ heat: spread(g?.heatIndex, cToF), gust: spread(g?.windGust, kmhToMph), thunder: spread(g?.probabilityOfThunder), rain: allocate(g?.quantitativePrecipitation, hourly) });
 const alertHazard = event => (ALERT_HAZARD.find(([re]) => re.test(event || '')) || [null, null])[1];
-/** The first stretch of the next twelve hours the forecast calls stormy, windy, wet or dangerously hot, or a watch or warning still ahead. */
-function incoming({ hourly = [], grid = {}, alerts = [], now = Date.now(), hours = 12 } = {}){
-  const H = 3600000, end = now + hours * H;
-  const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + H > now && x.t < end).sort((a, b) => a.t - b.t)
+/**
+ * What is coming: { hazard, startsAt, endsAt, minutes, source: 'forecast' | 'alert', event?, peak } or null. The forecast window
+ * is the first run of hours over a line; rain counts by amount when the grid has one (a run must add up to rainIn), by chance
+ * when it does not. A watch or warning with an onset still ahead wins when it comes first.
+ */
+function incoming({ hourly = [], grid = {}, alerts = [], now = Date.now(), hours = 12 } = {}) {
+  const end = now + hours * HOUR;
+  const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
-      const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null;
+      const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
       if (gust >= THRESHOLDS.gustMph) hazards.push('wind');
-      if (precip >= THRESHOLDS.precip) hazards.push('rain');
       if (heat >= THRESHOLDS.heatF) hazards.push('heat');
-      return { t, hazards, thunder, gust, heat, precip };
+      return { t, hazards, thunder, gust, heat, precip, rain, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
+  // A run of wet hours is rain when it adds up: a drizzle that never reaches rainIn is not worth a heads-up.
+  for (let i = 0; i < marks.length; i++) {
+    if (!marks[i].wet) continue;
+    let j = i; while (j + 1 < marks.length && marks[j + 1].wet && marks[j + 1].t - marks[j].t <= HOUR) j++;
+    const run = marks.slice(i, j + 1), known = run.some(m => m.rain != null), total = run.reduce((s, m) => s + (m.rain || 0), 0);
+    if (!known || total >= THRESHOLDS.rainIn) for (const m of run) m.hazards.push('rain');
+    i = j;
+  }
   let forecast = null;
   const i = marks.findIndex(m => m.hazards.length);
   if (i >= 0) {
     let j = i;
-    while (j + 1 < marks.length && marks[j + 1].hazards.length && marks[j + 1].t - marks[j].t <= H) j++;
+    while (j + 1 < marks.length && marks[j + 1].hazards.length && marks[j + 1].t - marks[j].t <= HOUR) j++;
     const win = marks.slice(i, j + 1), all = new Set(win.flatMap(m => m.hazards));
     const peakOf = key => win.reduce((b, m) => (m[key] != null && (b == null || m[key] > b) ? m[key] : b), null);
-    forecast = { hazard: PRIORITY.find(p => all.has(p)), startsAt: new Date(Math.max(now, marks[i].t)).toISOString(), endsAt: new Date(marks[j].t + H).toISOString(),
-      source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat') } };
+    const rainIn = win.some(m => m.rain != null) ? Math.round(win.reduce((s, m) => s + (m.rain || 0), 0) * 100) / 100 : null;
+    forecast = { hazard: PRIORITY.find(p => all.has(p)), startsAt: new Date(Math.max(now, marks[i].t)).toISOString(), endsAt: new Date(marks[j].t + HOUR).toISOString(),
+      source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100 } };
   }
   let watch = null;
   for (const a of alerts) {
@@ -921,6 +957,8 @@ function incoming({ hourly = [], grid = {}, alerts = [], now = Date.now(), hours
   const pick = watch && (!forecast || Date.parse(watch.startsAt) <= Date.parse(forecast.startsAt)) ? watch : forecast;
   return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)) } : null;
 }
+/** Rain in a sentence: "0.6 in of rain" when the grid says how much, "a 70% chance of rain" when it only says how likely. */
+const rainWords = p => p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.rainIn.toFixed(1)} in of rain` : p.precip != null ? `a ${Math.round(p.precip)}% chance of rain` : '';
 // Where to shelter, how to solidify camp, what it is like while it is here, and after. The push says the first two, shorter.
 const PREP = {
   storms:  { label: 'Storms', shelter: 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter.',
@@ -947,15 +985,16 @@ const PREP = {
 };
 const SHELTER_PACK = ['Phone and a battery pack', 'Water and a snack', 'Rain shell and a warm layer', 'ID, cash, keys, medication', 'A light'];
 /** What to do with the time there is, the same line the push carries. */
-function timing(hazard, m){
+function timing(hazard, m) {
   if (hazard === 'heat') return m <= 20 ? 'Get into shade now, and drink.' : m <= 60 ? 'Find your shade for the afternoon and fill every bottle.' : m <= 180 ? 'Fill water, find shade for the afternoon, and rest before it peaks.' : 'Freeze bottles, plan the afternoon in shade, and check back in an hour.';
   return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes, then head for shelter with fifteen to spare.'
     : m <= 180 ? 'Secure camp now, charge phones, fill water, and decide where you will shelter.' : 'Secure what you would hate to lose, and check back in an hour.';
 }
+// ==== shared: end ====
 /** What is on the way at this festival: read from the forecast on the phone, or the backend's own heads-up when there is no forecast yet. */
 function incomingFor(f){
   const d = data(f), alerts = (d.alerts || []).filter(isActive);
-  const inc = d.hourly ? incoming({ hourly: d.hourly, grid: d.grid || {}, alerts }) : null;
+  const inc = d.hourly ? incoming({ hourly: d.hourly, grid: d.grid || {}, alerts, ground: d.ground || {} }) : null;
   if (inc) return inc;
   const hu = alerts.find(a => a.channel === 'headsup' && a.onset);
   return hu ? { hazard: hu.hazard || alertHazard(hu.event) || 'storms', startsAt: hu.onset, endsAt: hu.expiresAt || null, source: 'headsup', event: hu.event, peak: {}, alertId: hu.id,
@@ -975,7 +1014,7 @@ function incomingLine(inc){
   const p = inc.peak || {}, bits = [];
   if (inc.hazard === 'storms' && p.thunder != null) bits.push(`thunder ${Math.round(p.thunder)}%`);
   if (p.gust >= THRESHOLDS.gustMph) bits.push(`gusts to ${Math.round(p.gust)} mph`);
-  if (p.precip >= THRESHOLDS.precip) bits.push(`rain ${Math.round(p.precip)}%`);
+  if (p.rainIn != null ? p.rainIn >= THRESHOLDS.rainIn : p.precip >= THRESHOLDS.precip) bits.push(rainWords(p));
   if (p.heat >= THRESHOLDS.heatF) bits.push(`heat index ${Math.round(p.heat)}°`);
   return `${span}${bits.length ? ' · ' + bits.join(', ') : ''}`;
 }
