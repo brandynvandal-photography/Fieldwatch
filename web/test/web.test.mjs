@@ -93,6 +93,11 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   assert.match(await page.textContent('h1.title'), /warning|advisor|All clear|Checking|No signal/, 'the home page is what is happening, not a list');
   await page.click('button.row:has-text("All festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
+  // The list has a way back to the home page.
+  await page.click('button[aria-label="Back"]');
+  await page.waitForSelector('span.eyebrow:has-text("Right now")');
+  await page.click('button.row:has-text("All festivals")');
+  await page.waitForSelector('h1.title:has-text("Which festival?")');
   const on = FESTS.filter(f => isLive(f)), off = FESTS.filter(f => !isLive(f));
   assert.ok(on.length >= 2 && off.length >= 2, 'the fixture has festivals on and festivals not on');
   const names = (await page.$$eval('.bubble .t, .row .t', els => els.map(e => e.textContent))).filter(n => n !== 'Right where you are');

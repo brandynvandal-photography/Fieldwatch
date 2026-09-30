@@ -1180,7 +1180,7 @@ screens.picker = () => {
   } else {
     body = `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
   }
-  return topbar('', '', gearBtn()) + `
+  return topbar(backBtn(), '', gearBtn()) + `
     <h1 class="title">Which festival?</h1>
     ${on.length ? `<label class="search glass">${I.search}<input id="q" type="search" placeholder="Search festivals" autocomplete="off" value="${esc(S.query)}" oninput="filterFests(this.value)"></label>` : ''}
     ${body}
