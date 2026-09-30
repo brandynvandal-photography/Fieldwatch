@@ -97,7 +97,7 @@ async function publishAndPush(festival, incident) {
 
 // A page to open in a browser when the app says it cannot reach the backend: which build this is, where its data
 // lives, which sources have keys and whether an import has run. No secrets: a key is reported as set or not.
-app.get('/health', (req, res) => res.json({
+app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
   ok: true, at: iso(),
   build: (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || null,
   uptimeSeconds: Math.round(process.uptime()),
