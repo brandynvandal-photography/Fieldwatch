@@ -115,6 +115,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .card h3{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:22px;line-height:1.1;margin-bottom:6px}
 .card p{color:var(--muted);font-size:15px;line-height:1.45;max-width:32ch;margin:0 auto}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;padding:12px 22px;border-radius:999px;background:var(--grad);color:#fff;font-weight:700;font-size:17px;box-shadow:0 12px 30px rgba(155,123,255,.38);margin-bottom:12px;text-align:center}
+.btn svg{width:22px;height:22px;flex:none}
 .btn.quiet{background:var(--glass);color:var(--ink);box-shadow:var(--shadow-2);border:1px solid var(--glass-border)}
 .search{display:flex;align-items:center;gap:10px;border-radius:999px;padding:12px 18px;margin-bottom:24px}
 .search svg{width:18px;height:18px;color:var(--muted);flex:none}
@@ -680,7 +681,8 @@ function pick(id){ later(() => { S.fest = id; save(); go('home', null, { reset: 
 function changeFestival(){ S.autoPicked = true; go('feed', null, { reset: true }); locate(); }
 
 // ---- icons: one stroke family, 1.9px, rounded ------------------------------------------------------------
-const svg = (body, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${body}</svg>`;
+// width and height on the element: without them Safari sizes an SVG in a flex row at 300x150, so the icon swallows the button.
+const svg = (body, extra = '') => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${body}</svg>`;
 const I = {
   back: svg('<path d="M15 5l-7 7 7 7"/>'),
   chev: svg('<path d="M9 5l7 7-7 7"/>', 'class="chev"'),

@@ -78,6 +78,8 @@ async function newPage(opts = {}) {
 // The home page is the alerts feed; the picker is one tap away on it.
 const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
+/** Icons that grew past their box: an SVG outside a chart or the radar wider than 70 px is a button swallowed by its icon (Safari does this to an unsized SVG in a flex row). */
+const oversizedIcons = page => page.$$eval('svg', els => els.filter(e => !e.closest('.chart, .rmap, #crew') && e.getBoundingClientRect().width > 70).map(e => `${e.parentElement.className || e.parentElement.tagName} ${Math.round(e.getBoundingClientRect().width)}px`));
 
 test('the walkthrough opens once; then only what is on: bubbles first, the rest a list, search, and a way to add one', async () => {
   const { page, context, seen } = await newPage();
@@ -188,6 +190,8 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   // A warning can be handed to the phones around you: text plus the link, over AirDrop where it exists, the clipboard here.
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   assert.ok(await page.$('button.warnbtn:has-text("Warn people near you")'));
+  assert.deepEqual(await oversizedIcons(page), [], 'the share icon sits beside the label, not over it');
+  assert.equal(Math.round((await page.locator('button.warnbtn svg').boundingBox()).width), 22);
   await page.click('button.warnbtn');
   await page.waitForSelector('.toast.show:has-text("Copied")');
   const clip = await page.evaluate(() => navigator.clipboard.readText());
@@ -377,6 +381,15 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     assert.ok(store.calls.includes('POST /festivals/hulaween-2026/incidents/rep-1/publish'));
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('#admin');
+
+    // The incidents screen, with the report button at the size of a button.
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    await page.click('button.row:has-text("Incidents")'); await page.waitForSelector('h1.title:has-text("Incidents")');
+    assert.ok(await page.$('button.btn:has-text("Report a hazard")'));
+    assert.deepEqual(await oversizedIcons(page), [], 'the flag on Report a hazard is an icon, not the button');
+    await shot(page, '25-incidents');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('#admin');
 
     // What feeds the list.
     await page.click('button:has-text("Festival sources")');
