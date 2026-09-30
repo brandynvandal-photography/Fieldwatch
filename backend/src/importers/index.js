@@ -6,11 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { importTicketmaster } from './ticketmaster.js';
 import { importSeatGeek } from './seatgeek.js';
 import { importEdmtrain } from './edmtrain.js';
-import { importWikidata } from './wikidata.js';
+import { importWikidata, skipReason as wikidataSkipped } from './wikidata.js';
 import { importFeeds } from './feeds.js';
 
-// Wikidata needs no key and is on unless switched off, so imports run on a bare deployment.
-export const importsConfigured = () => process.env.WIKIDATA_IMPORT !== 'false' || Boolean(process.env.TICKETMASTER_KEY || process.env.SEATGEEK_CLIENT_ID || process.env.EDMTRAIN_KEY || process.env.FESTIVAL_FEEDS);
+// Wikidata needs no key and is on unless switched off (or NWS_USER_AGENT is still the placeholder), so imports run on a bare deployment.
+export const importsConfigured = () => !wikidataSkipped() || Boolean(process.env.TICKETMASTER_KEY || process.env.SEATGEEK_CLIENT_ID || process.env.EDMTRAIN_KEY || process.env.FESTIVAL_FEEDS);
 export const imports = { last: null };
 let running = null;
 

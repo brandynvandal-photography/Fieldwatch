@@ -9,7 +9,7 @@ This repo was scaffolded in a chat session on a phone, then worked over in a Cla
 | Path | What | Status |
 |---|---|---|
 | `ios/` | SwiftUI app, iOS 17+, XcodeGen spec | written and reviewed, not compiled |
-| `backend/` | Node 20 + Express + SQLite. NWS poller, APNs push, incidents, the festival list (curated seed, Ticketmaster, SeatGeek and Edmtrain imports, feed URLs, community suggestions with moderation) | runs; `npm test` covers every route with a mocked NWS |
+| `backend/` | Node 20 + Express + SQLite. NWS poller, APNs push, incidents, the festival list (curated seed; Ticketmaster, SeatGeek and Edmtrain imports; Wikidata plus each festival site's schema.org JSON-LD, robots honoured; feed URLs; community suggestions with moderation) | runs; `npm test` covers every route with a mocked NWS |
 | `node/` | Raspberry Pi receiver: trunk-recorder + on-device Whisper + local API + uploader | runs; `python3 test_uploader.py`; never run against a real SDR |
 | `web/` | The app in a browser: opens on the festival you are at or on your own spot, live NWS alerts, forecast with heat/gust/thunder panels and a day-by-day outlook, the radar loop, web push warnings, AirDrop warn-people-near-you, share with a QR code, hazard reports, staff screens (post, moderate, sources) | runs; `npm test` drives it in headless Chromium against fixture responses and a fake backend |
 | `prototype/index.html` | Tap-through HTML prototype of every screen. Source of truth for UX | done |
@@ -45,7 +45,7 @@ The phone downloads a **festival pack** (`FestivalPack`: festival, alerts, posts
 
 ## Shared data shapes
 
-`Festival` records come from `backend/src/festivals.js` (`normalizeFestival`), whatever the source. `SafetyAlert`, `Incident` and `RadarLoop` are defined in `ios/Fieldwatch/Models/Models.swift` and produced by `backend/src/nws.js`, `backend/src/app.js` (`incidentToAlert`), `backend/src/radar.js` (`radarLoop`) and `node/uploader.py`. `web/index.html` consumes all three and re-implements the NWS normalizer and the radar square; change them in step. Keep them in sync by hand; there's no codegen. Dates are ISO 8601; the Swift decoder accepts with or without fractional seconds, the backend emits without (`util.js: iso()`).
+`Festival` records come from `backend/src/festivals.js` (`normalizeFestival`), whatever the source: the curated seed, the Ticketmaster, SeatGeek and Edmtrain APIs, Wikidata plus each festival site's schema.org JSON-LD (`backend/src/importers/wikidata.js`, a polite crawler: robots.txt honoured, redirects followed by hand, public DNS names only, off until `NWS_USER_AGENT` is a real contact), feed URLs and community suggestions. `SafetyAlert`, `Incident` and `RadarLoop` are defined in `ios/Fieldwatch/Models/Models.swift` and produced by `backend/src/nws.js`, `backend/src/app.js` (`incidentToAlert`), `backend/src/radar.js` (`radarLoop`) and `node/uploader.py`. `web/index.html` consumes all three and re-implements the NWS normalizer and the radar square; change them in step. Keep them in sync by hand; there's no codegen. Dates are ISO 8601; the Swift decoder accepts with or without fractional seconds, the backend emits without (`util.js: iso()`).
 
 Hazard categories live in two places on purpose (node must classify offline): `backend/src/incidents.js` and the `CATEGORIES` list in `node/uploader.py`. Change both, and add a line to `backend/test/fixtures/hazard-samples.json`; both test suites run every sample through their own classifier, so a drift fails one of them.
 
