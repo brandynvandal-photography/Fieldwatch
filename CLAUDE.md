@@ -11,7 +11,7 @@ This repo was scaffolded in a chat session on a phone, then worked over in a Cla
 | `ios/` | SwiftUI app, iOS 17+, XcodeGen spec | written and reviewed, not compiled |
 | `backend/` | Node 20 + Express + SQLite. NWS poller, APNs push, incidents, the festival list (curated seed, Ticketmaster, SeatGeek and Edmtrain imports, feed URLs, community suggestions with moderation) | runs; `npm test` covers every route with a mocked NWS |
 | `node/` | Raspberry Pi receiver: trunk-recorder + on-device Whisper + local API + uploader | runs; `python3 test_uploader.py`; never run against a real SDR |
-| `web/` | The app in a browser: opens on the festival you are at, live NWS alerts, forecast with heat/gust/thunder panels and a day-by-day outlook, the radar loop, web push warnings, share with a QR code, hazard reports, add-a-festival and an admin review screen | runs; `npm test` drives it in headless Chromium against fixture responses and a fake backend |
+| `web/` | The app in a browser: opens on the festival you are at or on your own spot, live NWS alerts, forecast with heat/gust/thunder panels and a day-by-day outlook, the radar loop, web push warnings, AirDrop warn-people-near-you, share with a QR code, hazard reports, staff screens (post, moderate, sources) | runs; `npm test` drives it in headless Chromium against fixture responses and a fake backend |
 | `prototype/index.html` | Tap-through HTML prototype of every screen. Source of truth for UX | done |
 | `docs/decisions.md` | Why the product is shaped this way, including the legal lines | read this first |
 | `docs/roadmap.md` | Open items in priority order | |

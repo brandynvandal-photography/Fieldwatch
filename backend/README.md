@@ -37,7 +37,8 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | PUT | `/festivals/:id` | Add or edit a festival (admin key) |
 | GET | `/festivals/:id/qr.svg` | A QR code that opens the web build on this festival (print it at the gate) |
 | GET | `/push/vapid` | The public VAPID key the web build subscribes with; 404 until keys are set |
-| POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings |
+| POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings, or `{ subscription, point: { latitude, longitude } }` for wherever it is; either way one test notification comes straight back |
+| GET | `/admin/import` | The last festival import report (admin key) |
 | DELETE | `/push/subscribe` | `{ endpoint }` and it stops |
 | POST | `/devices` | `{ token, festivalId }` subscribe a phone |
 | DELETE | `/devices/:token` | Unsubscribe |
@@ -117,7 +118,7 @@ Deploys again on every push to `main` that touches `backend/`.
 
 Push is optional everywhere: leave the `APNS_*` lines out until there is a key, and the server starts without them (alerts are stored and served, just not pushed).
 
-**Web push** (warnings on a phone's Home Screen, no app store) needs nothing: the server makes a VAPID key pair on first boot and keeps it in the database on the volume. To bring your own pair, run `npm run vapid` and set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`; set `SITE_URL` if the web build does not live at the GitHub Pages address. A subscription made against an earlier pair is dropped on the next send and the phone switches warnings on again. From then on every new warning, watch and staff post reaches every browser that switched warnings on for that festival; advisories are not pushed. Dead subscriptions are dropped on the next send. The switch is in the web build's home screen; on an iPhone it works once the site is on the Home Screen (iOS 16.4+).
+**Web push** (warnings on a phone's Home Screen, no app store) needs nothing: the server makes a VAPID key pair on first boot and keeps it in the database on the volume. To bring your own pair, run `npm run vapid` and set `VAPID_PUBLIC_KEY` and `VAPID_PRIVATE_KEY`; set `SITE_URL` if the web build does not live at the GitHub Pages address. A subscription made against an earlier pair is dropped on the next send and the phone switches warnings on again. From then on every new warning, watch and staff post reaches every browser that switched warnings on for that festival; advisories are not pushed. A browser that follows a point instead of a festival is polled the same way: the poller asks the weather service about every distinct point (rounded to about a kilometre) that some phone follows. Dead subscriptions are dropped on the next send. The switch is in the web build's home screen; on an iPhone it works once the site is on the Home Screen (iOS 16.4+).
 
 ## Radar
 

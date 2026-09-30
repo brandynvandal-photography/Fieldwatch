@@ -64,6 +64,10 @@ db.exec(`
 if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
   db.exec(`ALTER TABLE festivals ADD COLUMN status TEXT NOT NULL DEFAULT 'published'`);
 }
+// Added later: a browser may follow a point on the map (wherever the phone is) instead of a festival.
+if (!db.prepare(`PRAGMA table_info(web_subscriptions)`).all().some(c => c.name === 'latitude')) {
+  db.exec(`ALTER TABLE web_subscriptions ADD COLUMN latitude REAL; ALTER TABLE web_subscriptions ADD COLUMN longitude REAL`);
+}
 
 const s = {
   upsertFestival: db.prepare(`INSERT INTO festivals (id, json, start_date, end_date, status) VALUES (?, ?, ?, ?, ?)
@@ -98,10 +102,12 @@ const s = {
   deleteDevice: db.prepare(`DELETE FROM devices WHERE token = ?`),
   tokensFor: db.prepare(`SELECT token FROM devices WHERE festival_id = ?`),
 
-  upsertWebSubscription: db.prepare(`INSERT INTO web_subscriptions (endpoint, festival_id, json, updated_at) VALUES (?, ?, ?, ?)
-    ON CONFLICT(endpoint) DO UPDATE SET festival_id = excluded.festival_id, json = excluded.json, updated_at = excluded.updated_at`),
+  upsertWebSubscription: db.prepare(`INSERT INTO web_subscriptions (endpoint, festival_id, json, updated_at, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET festival_id = excluded.festival_id, json = excluded.json, updated_at = excluded.updated_at, latitude = excluded.latitude, longitude = excluded.longitude`),
   deleteWebSubscription: db.prepare(`DELETE FROM web_subscriptions WHERE endpoint = ?`),
   webSubscriptionsFor: db.prepare(`SELECT endpoint, json FROM web_subscriptions WHERE festival_id = ?`),
+  webSubscriptionsAt: db.prepare(`SELECT endpoint, json FROM web_subscriptions WHERE festival_id IS NULL AND round(latitude, 2) = ? AND round(longitude, 2) = ?`),
+  webSubscriptionPoints: db.prepare(`SELECT DISTINCT round(latitude, 2) AS latitude, round(longitude, 2) AS longitude FROM web_subscriptions WHERE festival_id IS NULL AND latitude IS NOT NULL AND longitude IS NOT NULL`),
 
   setting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
   setSetting: db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`),
@@ -137,9 +143,11 @@ export const q = {
   deleteDevice: token => s.deleteDevice.run(token),
   tokensFor: festivalId => s.tokensFor.all(festivalId).map(r => r.token),
 
-  upsertWebSubscription: (endpoint, festivalId, subscription) => s.upsertWebSubscription.run(endpoint, festivalId || null, JSON.stringify(subscription), iso()),
+  upsertWebSubscription: (endpoint, festivalId, subscription, point) => s.upsertWebSubscription.run(endpoint, festivalId || null, JSON.stringify(subscription), iso(), point?.latitude ?? null, point?.longitude ?? null),
   deleteWebSubscription: endpoint => s.deleteWebSubscription.run(endpoint),
   webSubscriptionsFor: festivalId => s.webSubscriptionsFor.all(festivalId).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json) })),
+  webSubscriptionsAt: (latitude, longitude) => s.webSubscriptionsAt.all(Math.round(latitude * 100) / 100, Math.round(longitude * 100) / 100).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json) })),
+  webSubscriptionPoints: () => s.webSubscriptionPoints.all(),
 
   setting: key => s.setting.get(key)?.value ?? null,
   setSetting: (key, value) => s.setSetting.run(key, value),

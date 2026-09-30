@@ -40,7 +40,7 @@ globalThis.fetch = async (url, opts = {}) => {
 
 const { app } = await import('../src/app.js');
 const { q } = await import('../src/db.js');
-const { pollFestival } = await import('../src/poller.js');
+const { pollFestival, pollPoint } = await import('../src/poller.js');
 const { refreshRadar, radarWanted, noteInterest } = await import('../src/radar.js');
 const { setWebPushTransport } = await import('../src/webpush.js');
 setWebPushTransport(async () => {});
@@ -413,4 +413,29 @@ test('the QR code for a festival opens the web build on that festival', async ()
   const png = PNG.sync.read(await QRCode.toBuffer(festivalLink(FEST), { errorCorrectionLevel: 'M', margin: 1, scale: 4 }));
   const decoded = jsQR(new Uint8ClampedArray(png.data), png.width, png.height);
   assert.equal(decoded?.data, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}`);
+});
+
+test('a phone with no festival follows a point: subscribing with a location, polling it, and a warning for that spot', async () => {
+  const sent = [];
+  setWebPushTransport(async (sub, payload, opts) => { sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload), opts }); });
+  const sub = { endpoint: 'https://push.example.test/here-1', keys: { p256dh: 'p', auth: 'a' } };
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub } })).status, 400, 'a festival or a point is required');
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub, point: { latitude: 'x', longitude: 2 } } })).status, 400);
+  const r = await api('POST', '/push/subscribe', { body: { subscription: sub, point: { latitude: 30.40412, longitude: -82.93951 } } });
+  assert.deepEqual(r.json, { ok: true, welcome: { sent: 1 } });
+  assert.match(sent[0].payload.body, /wherever this phone is/); assert.equal(sent[0].payload.url, 'https://brandynvandal-photography.github.io/Fieldwatch/?here=1');
+  assert.deepEqual(q.webSubscriptionPoints(), [{ latitude: 30.4, longitude: -82.94 }], 'rounded to about a kilometre');
+  sent.length = 0;
+  nwsState.features = [alertFeature({ id: 'urn:oid:here-1', '@id': 'https://api.weather.gov/alerts/urn:oid:here-1', event: 'Flash Flood Warning', severity: 'Severe' })];
+  const fresh = await pollPoint({ latitude: 30.4, longitude: -82.94 });
+  assert.equal(fresh.length, 1);
+  assert.equal(sent.length, 1); assert.equal(sent[0].endpoint, sub.endpoint); assert.equal(sent[0].payload.title, 'Flash Flood Warning');
+  assert.equal(sent[0].payload.url, 'https://brandynvandal-photography.github.io/Fieldwatch/?here=1&alert=urn%3Aoid%3Ahere-1');
+  assert.ok(nwsState.calls.some(u => u.includes('/alerts/active?point=30.4000,-82.9400')), 'polled at the rounded point');
+  assert.equal((await pollPoint({ latitude: 30.4, longitude: -82.94 })).length, 0, 'seen already');
+  assert.equal((await api('DELETE', '/push/subscribe', { body: { endpoint: sub.endpoint } })).json.ok, true);
+  assert.deepEqual(q.webSubscriptionPoints(), []);
+  nwsState.features = [alertFeature()];
+  assert.equal((await api('GET', '/admin/import')).status, 401);
+  assert.ok('never' in (await api('GET', '/admin/import', { headers: admin })).json || 'startedAt' in (await api('GET', '/admin/import', { headers: admin })).json);
 });

@@ -62,7 +62,8 @@ async function newPage(opts = {}) {
   await page.route(/fonts\.(googleapis|gstatic)\.com/, r => { seen.fonts++; r.fulfill({ status: 200, contentType: 'text/css', body: '' }); });
   // The built-in backend is down in these tests, so the page has to fall back to NWS and the archive on its own.
   await page.route(/fieldwatch-production\.up\.railway\.app/, r => { seen.backend++; r.abort('failed'); });
-  await page.route(/api\.weather\.gov\/alerts\/active/, r => { seen.alerts++; live.nws ? r.fulfill(json({ type: 'FeatureCollection', features: [alertFeature()] })) : r.abort('failed'); });
+  seen.alertUrls = [];
+  await page.route(/api\.weather\.gov\/alerts\/active/, r => { seen.alerts++; seen.alertUrls.push(r.request().url()); live.nws ? r.fulfill(json({ type: 'FeatureCollection', features: [alertFeature()] })) : r.abort('failed'); });
   await page.route(/api\.weather\.gov\/points\//, r => { seen.points++; live.nws ? r.fulfill(json(points)) : r.abort('failed'); });
   await page.route(/gridpoints\/.*\/forecast\/hourly/, r => { seen.hourly++; live.nws ? r.fulfill(json(hourly)) : r.abort('failed'); });
   await page.route(/gridpoints\/[^/]+\/[\d,]+\/forecast$/, r => { seen.daily++; live.nws ? r.fulfill(json(dailyShifted)) : r.abort('failed'); });
@@ -88,7 +89,7 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   const on = FESTS.filter(f => isLive(f)), off = FESTS.filter(f => !isLive(f));
   assert.ok(on.length >= 2 && off.length >= 2, 'the fixture has festivals on and festivals not on');
-  const names = (await page.$$eval('.bubble .t, .row .t', els => els.map(e => e.textContent))).filter(n => n !== 'Add a festival');
+  const names = (await page.$$eval('.bubble .t, .row .t', els => els.map(e => e.textContent))).filter(n => n !== 'Right where you are');
   assert.deepEqual(new Set(names), new Set(on.map(f => f.name)), 'exactly the festivals whose grounds are open, nothing that is weeks away or over');
   assert.equal(await page.$$eval('.bubble', els => els.length), Math.min(6, on.length));
   assert.equal(await page.textContent('.bubble .t'), 'Suwannee Hulaween', 'the one happening now comes first');
@@ -98,20 +99,11 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   assert.match(await page.textContent('.note'), /week before gates/);
   await shot(page, '1-picker');
   await page.fill('#q', 'hulaween');
-  assert.deepEqual(await page.$$eval('button.row .t', els => els.map(e => e.textContent)), ['Suwannee Hulaween', 'Add a festival']);
+  assert.deepEqual(await page.$$eval('button.row .t', els => els.map(e => e.textContent)), ['Suwannee Hulaween', 'Right where you are']);
   await page.fill('#q', 'orlando');   // EDC Orlando is weeks out
   assert.match(await page.textContent('.empty'), /Not on right now/);
+  assert.ok(await page.$('button.row:has-text("Right where you are")'), 'your own spot is always an option');
   await page.fill('#q', '');
-  await page.click('button:has-text("Add a festival")');
-  await page.waitForSelector('#f-name');   // the built-in backend takes suggestions
-  await page.click('button[aria-label="Back"]');
-  await page.waitForSelector('h1.title:has-text("Which festival?")');
-  // Told to go without a backend, there is nowhere to send one.
-  await page.goto(`${base}/index.html?backend=none`);
-  await page.waitForSelector('h1.title:has-text("Which festival?")');
-  await page.click('button:has-text("Add a festival")');
-  await page.waitForSelector('h1.title:has-text("Add a festival")');
-  assert.match(await page.textContent('.card'), /Needs the backend/);
   await page.goto(`${base}/index.html`);
   await page.waitForSelector('h1.title');
   assert.equal(await page.textContent('h1.title'), 'Which festival?', 'the welcome step is shown once');
@@ -189,6 +181,15 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   assert.deepEqual(parsed.sections.map(s => s.label), ['What', 'Where', 'When']);
   assert.deepEqual(parsed.paragraphs, ['Secure tents before 2 PM.']);
   await shot(page, '4-alert');
+  // A warning can be handed to the phones around you: text plus the link, over AirDrop where it exists, the clipboard here.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  assert.ok(await page.$('button.warnbtn:has-text("Warn people near you")'));
+  await page.click('button.warnbtn');
+  await page.waitForSelector('.toast.show:has-text("Copied")');
+  const clip = await page.evaluate(() => navigator.clipboard.readText());
+  assert.match(clip, /^Severe Thunderstorm Warning for Suwannee; Columbia\. /);
+  assert.match(clip, /For your protection move to an interior room/);
+  assert.match(clip, /\?f=hulaween-2026&alert=urn%3Aoid/);
   assert.deepEqual(seen.errors, []);
   await context.close();
 });
@@ -266,7 +267,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], subs: [], reports: [], calls: [] };
+  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [] };
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-allow-headers': 'Content-Type, x-admin-key' };
   const server = http.createServer((req, res) => {
     let raw = ''; req.on('data', c => { raw += c; }); req.on('end', () => {
@@ -287,6 +288,17 @@ function fakeBackend(list) {
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
       if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' });
+      const post = path.match(/^\/festivals\/([^/]+)\/posts$/);
+      if (m === 'POST' && post) { const b = JSON.parse(raw); store.posts.push({ festival: post[1], key, ...b }); return send(201, { id: String(store.posts.length), push: { sent: 0, skipped: true }, web: { sent: 2, gone: 0, failed: 0 } }); }
+      const pend = path.match(/^\/festivals\/([^/]+)\/incidents\/pending$/);
+      if (m === 'GET' && pend) return send(200, store.pendingReports);
+      const pub = path.match(/^\/festivals\/([^/]+)\/incidents\/([^/]+)\/publish$/);
+      if (m === 'POST' && pub) { store.pendingReports = store.pendingReports.filter(i => i.id !== pub[2]); return send(200, { id: pub[2], push: {} }); }
+      const delInc = path.match(/^\/festivals\/([^/]+)\/incidents\/([^/]+)$/);
+      if (m === 'DELETE' && delInc) { store.pendingReports = store.pendingReports.filter(i => i.id !== delInc[2]); return send(200, { ok: true }); }
+      const report = () => ({ startedAt: '2026-10-23T09:00:00Z', finishedAt: '2026-10-23T09:01:00Z', ticketmaster: { skipped: 'TICKETMASTER_KEY not set' }, seatgeek: { skipped: 'SEATGEEK_CLIENT_ID not set' }, edmtrain: { calls: 1, errors: 0, events: 40, festivals: 12, added: 3, updated: 9, duplicates: 2, pruned: 0 }, feeds: { skipped: 'FESTIVAL_FEEDS not set' } });
+      if (m === 'GET' && path === '/admin/import') return send(200, report());
+      if (m === 'POST' && path === '/admin/import') { store.imports++; return send(200, report()); }
       if (m === 'GET' && path === '/festivals/pending') return send(200, store.pending);
       const ap = path.match(/^\/festivals\/([^/]+)\/approve$/);
       if (m === 'POST' && ap) { const i = store.pending.findIndex(f => f.id === ap[1]); if (i < 0) return send(404, {}); const [f] = store.pending.splice(i, 1); store.list.push({ ...f, status: 'published' }); return send(200, f); }
@@ -298,16 +310,11 @@ function fakeBackend(list) {
   return new Promise(r => server.listen(0, '127.0.0.1', () => r({ server, store, base: `http://127.0.0.1:${server.address().port}` })));
 }
 
-test('with a backend: its live list is the list, anyone can add a festival, and an admin approves it from Settings', async () => {
+test('with a backend: its live list is the list, and the admin key unlocks posting, moderation and the sources screen', async () => {
   const { page, context, seen } = await newPage();
   const hula = FESTS.find(f => f.id === 'hulaween-2026');
   const extra = { ...hula, id: 'sub-blackwater-xyz', name: 'Blackwater Gathering', location: 'Lake Wales, FL', latitude: 27.9, longitude: -81.58, origin: 'community', status: 'published', featured: false, feeds: [], site: [], isPartner: false };
   const { server, store, base: api } = await fakeBackend([...FESTS, extra]);
-  let geocodes = 0;
-  await page.route(/nominatim\.openstreetmap\.org/, r => { geocodes++; assert.match(r.request().url(), /countrycodes=us/); r.fulfill(json([
-    { name: 'Spirit of the Suwannee Music Park', display_name: 'Spirit of the Suwannee Music Park, 3076, 95th Drive, Live Oak, Suwannee County, Florida, 32060, United States', lat: '30.4040', lon: '-82.9395', address: { city: 'Live Oak', county: 'Suwannee County', state: 'Florida' } },
-    { name: 'Live Oak', display_name: 'Live Oak, Suwannee County, Florida, United States', lat: '30.2949', lon: '-82.9840', address: { town: 'Live Oak', county: 'Suwannee County', state: 'Florida' } },
-  ])); });
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Find your festival")');
@@ -315,64 +322,49 @@ test('with a backend: its live list is the list, anyone can add a festival, and 
     await page.waitForSelector('button.row:has-text("Blackwater Gathering")');
     assert.ok(store.calls.includes('GET /festivals'), 'the list came from the backend');
     assert.ok(!(await page.$$eval('.bubble .t', els => els.map(e => e.textContent))).includes('Blackwater Gathering'), 'a community festival is listed, not featured');
-    assert.equal(await page.textContent('.bubble .t'), 'Suwannee Hulaween');
+    await page.click('button:has-text("Suwannee Hulaween")');
+    await page.waitForSelector('.sky.warn');
 
-    await page.click('button:has-text("Add a festival")');
-    await page.waitForSelector('#f-name');
-    assert.ok(await page.$('#f-send[disabled]'), 'nothing to send yet');
-    await page.fill('#f-name', 'Moon Hollow Gathering');
-    await page.fill('#f-where', 'Spirit of the Suwannee, Live Oak FL');
-    await page.click('#f-find');
-    await page.waitForSelector('button.row:has-text("Spirit of the Suwannee Music Park")');
-    assert.equal(geocodes, 1);
-    assert.equal(await page.$$eval('button.row', els => els.length), 2, 'two places to choose from');
-    await page.click('button.row:has-text("Spirit of the Suwannee Music Park")');
-    await page.waitForSelector('.row:has-text("Spirit of the Suwannee Music Park, Live Oak, Florida")');
-    const today = ymd(Date.now()), in2 = ymd(Date.now() + 2 * DAY);
-    await page.fill('#f-start', today);
-    await page.fill('#f-end', in2);
-    await page.fill('#f-site', 'moonhollow.org');
-    assert.equal(await page.$('#f-send[disabled]'), null, 'ready to send');
-    await shot(page, '8-add');
-    await page.click('#f-send');
-    await page.waitForSelector('h1.title:has-text("Sent")');
-    assert.equal(store.pending.length, 1);
-    const sent = store.pending[0];
-    assert.equal(sent.name, 'Moon Hollow Gathering');
-    assert.equal(sent.location, 'Spirit of the Suwannee Music Park, Live Oak, Florida');
-    assert.equal(sent.latitude, 30.404); assert.equal(sent.longitude, -82.9395);
-    assert.equal(sent.startDate, today); assert.equal(sent.endDate, in2);
-    assert.equal(sent.website, 'moonhollow.org');
-    await shot(page, '9-sent');
-    await page.click('button:has-text("Back to festivals")');
-    await page.waitForSelector('h1.title:has-text("Which festival?")');
-    assert.ok(!(await page.textContent('#app')).includes('Moon Hollow'), 'not listed until approved');
-
-    // The admin: a key in Settings unlocks the queue.
     await page.click('button[aria-label="Settings"]');
     await page.waitForSelector('#admin');
-    assert.equal(await page.$('button:has-text("Review festivals")'), null);
+    assert.equal(await page.$('button:has-text("Post an update")'), null, 'nothing staff-only without the key');
     await page.fill('#admin', 'k-admin');
     await page.locator('#admin').blur();
-    await page.waitForSelector('button:has-text("Review festivals")');
-    await page.click('button:has-text("Review festivals")');
-    await page.waitForSelector('.pend:has-text("Moon Hollow Gathering")');
-    assert.match(await page.textContent('.pend'), /moonhollow\.org/);
-    await shot(page, '10-review');
-    await page.click('.pend button:has-text("Approve")');
+    await page.waitForSelector('button:has-text("Post an update")');
+
+    // Post an update as staff: it goes out as an alert and a push.
+    await page.click('button:has-text("Post an update")');
+    await page.waitForSelector('#p-title');
+    assert.ok(await page.$('#p-send[disabled]'), 'nothing to post yet');
+    await page.fill('#p-title', 'Medical tent has moved');
+    await page.fill('#p-body', 'Now beside the water station at the east gate.');
+    await page.click('button.chip:has-text("Heads up")');
+    await shot(page, '16-post');
+    await page.click('#p-send');
+    await page.waitForSelector('.toast.show:has-text("Pushed to 2 phones")');
+    assert.deepEqual(store.posts, [{ festival: 'hulaween-2026', key: 'k-admin', title: 'Medical tent has moved', body: 'Now beside the water station at the east gate.', severity: 'moderate' }]);
+    await page.waitForSelector('#admin');
+
+    // Review what people reported, before it goes out.
+    store.pendingReports.push({ id: 'rep-1', category: 'flood', level: 'warning', summary: 'Flooding behind Stage 2, avoid the path', location: 'Stage 2', source: 'attendee', occurredAt: new Date().toISOString() });
+    await page.click('button:has-text("Review reports")');
+    await page.waitForSelector('.pend:has-text("Flooding behind Stage 2")');
+    await shot(page, '17-moderate');
+    await page.click('.pend button:has-text("Publish")');
     await page.waitForSelector('.empty:has-text("Nothing waiting")');
-    assert.ok(store.calls.includes('POST /festivals/sub-moon-hollow-gathering-abc123/approve'));
-    assert.ok(store.list.some(f => f.name === 'Moon Hollow Gathering'));
+    assert.ok(store.calls.includes('POST /festivals/hulaween-2026/incidents/rep-1/publish'));
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('#admin');
-    await page.click('button[aria-label="Back"]');
-    await page.waitForSelector('button.row:has-text("Moon Hollow Gathering")', { timeout: 5000 });
 
-    // With the backend gone, the last list it gave is what shows.
-    server.closeAllConnections(); await new Promise(r => server.close(r));
-    await page.reload();
-    await page.waitForSelector('h1.title:has-text("Which festival?")');
-    assert.ok(await page.$('button.row:has-text("Moon Hollow Gathering")'), 'the last live list survives a dead backend');
+    // What feeds the list.
+    await page.click('button:has-text("Festival sources")');
+    await page.waitForSelector('.row:has-text("Edmtrain") .pill.on');
+    assert.match(await page.textContent('.row:has-text("Ticketmaster")'), /No key/);
+    assert.match(await page.textContent('.row:has-text("Edmtrain")'), /3 added, 9 updated, 2 already listed/);
+    await shot(page, '18-sources');
+    await page.click('button:has-text("Run now")');
+    await page.waitForSelector('.toast.show:has-text("Imported")');
+    assert.equal(store.imports, 1);
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
@@ -499,6 +491,49 @@ test('a hazard report goes to the moderation queue with your location attached',
     assert.ok(Math.abs(r.latitude - 30.4051) < 1e-6 && Math.abs(r.longitude + 82.9401) < 1e-6, 'your position rides along');
     await page.click('button:has-text("Done")');
     await page.waitForSelector('.sky');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('right where you are: alerts, forecast, radar and warnings for the phone\'s own spot, festival or not', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['geolocation', 'notifications']);
+  await context.setGeolocation({ latitude: 39.7392, longitude: -104.9903 });   // Denver: nothing on nearby
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  await page.route(/nominatim\.openstreetmap\.org\/reverse/, r => r.fulfill(json({ name: 'Denver', address: { city: 'Denver', county: 'Denver County', state: 'Colorado' } })));
+  await page.addInitScript(() => {
+    const sub = { endpoint: 'https://push.example.test/den', unsubscribe: async () => { window.__subscribed = false; return true; }, toJSON: () => ({ endpoint: 'https://push.example.test/den', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }) };
+    window.__subscribed = false;
+    const reg = { pushManager: { getSubscription: async () => (window.__subscribed ? sub : null), subscribe: async () => { window.__subscribed = true; return sub; } } };
+    Object.defineProperty(navigator.serviceWorker, 'ready', { get: () => Promise.resolve(reg) });
+    window.PushManager = function PushManager(){};
+  });
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Find your festival")');
+    await page.waitForSelector('button.row:has-text("Right where you are")');
+    await page.click('button.row:has-text("Right where you are")');
+    await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('h1.title'), 'Right here');
+    await page.waitForFunction(() => /Denver, Colorado/.test(document.querySelector('.sub')?.textContent || ''));
+    assert.match(await page.textContent('.eyebrow'), /Your location/);
+    assert.ok(seen.alertUrls.some(u => /point=39\.739\d?,-104\.990\d?/.test(u)), 'the weather service is asked about your spot');
+    assert.equal(await page.$('button.row:has-text("Report a hazard")'), null, 'no festival, no festival rows');
+    assert.equal(await page.$('button[aria-label="Share"]'), null);
+    await shot(page, '19-here');
+    await page.click('button.row:has-text("Warnings on this phone")');
+    await page.waitForSelector('.pill.on');
+    assert.deepEqual(store.subs[0].point, { latitude: 39.7392, longitude: -104.9903 }, 'warnings follow the spot');
+    assert.equal(store.subs[0].festivalId, undefined);
+    await page.click('button.orb:has-text("Radar")');
+    await page.waitForSelector('.rmap .me');
+    const dot = await page.$eval('.rmap .me', el => ({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) }));
+    assert.ok(Math.abs(dot.left - 256) < 2 && Math.abs(dot.top - 256) < 2, 'the radar square is centred on you');
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('.sky');
+    await page.goto(`${base}/index.html?here=1`);
+    await page.waitForSelector('.sky');
+    assert.equal(await page.textContent('h1.title'), 'Right here', 'a link brings your spot back');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

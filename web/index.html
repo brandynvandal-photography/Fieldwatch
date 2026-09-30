@@ -276,6 +276,9 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .qr{margin:22px auto 14px;width:264px;height:264px;border-radius:30px;display:grid;place-items:center;padding:12px}
 .qr img{width:240px;height:240px;display:block}
 .share-link{text-align:center;color:var(--muted);font-size:14px;word-break:break-all;margin:0 auto 18px;max-width:34ch}
+.field textarea{flex:1;border:0;background:none;outline:none;min-width:0;min-height:88px;resize:none;font:inherit;color:inherit;line-height:1.4}
+.chips{display:flex;gap:8px;justify-content:center;margin:0 0 16px}
+.chip{padding:8px 16px;border-radius:999px;font-size:14px;font-weight:600;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink)}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
 .pill.on{background:var(--ok);color:#fff}
 
@@ -327,24 +330,29 @@ const IN_PREVIEW = !!(window.claude && typeof window.claude.use === 'function');
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
 const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
-function blankDraft(){ return { name: '', where: '', place: null, start: '', end: '', website: '', error: null }; }
 const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false,
-  fests: null, admin: '', draft: blankDraft(), places: null, finding: false, sending: false, sent: null, pending: null, reviewing: false,
-  push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
-  report: { what: '', where: '', error: null }, reporting: false, reported: null };
+  fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
+  hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
+  post: { title: '', body: '', severity: 'minor', error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied, hereFest: S.hereFest })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
 const backend = () => { const v = (new URLSearchParams(location.search).get('backend') || S.backend || DEFAULT_BACKEND).replace(/\/+$/, ''); return v === 'none' ? '' : v; };
-const fest = () => FESTS.find(f => f.id === S.fest);
+// 'here' is a festival of your own: wherever the phone is, for the week. Everything keyed by latitude and longitude just works.
+const fest = () => (S.fest === 'here' ? hereFest() : FESTS.find(f => f.id === S.fest));
+function hereFest(){
+  const h = S.hereFest; if (!h) return null;
+  return { id: 'here', origin: 'here', name: 'Right here', location: h.location || '', county: h.county || '', latitude: h.latitude, longitude: h.longitude,
+    startDate: new Date(Date.now() - DAY).toISOString(), endDate: new Date(Date.now() + 7 * DAY).toISOString(), isPartner: false, feeds: [], site: [], at: h.at };
+}
 const data = f => S.cache[f.id] || {};
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 
@@ -402,8 +410,9 @@ async function loadAlerts(f){
 // /points rarely changes; one request per festival per session feeds the hourly, the grid and the days.
 const POINTS = {};
 function pointFor(f){
-  if (!POINTS[f.id]) POINTS[f.id] = getJSON(`${NWS}/points/${pt(f)}`, GEO).then(r => r.properties).catch(e => { delete POINTS[f.id]; throw e; });
-  return POINTS[f.id];
+  const k = pt(f);
+  if (!POINTS[k]) POINTS[k] = getJSON(`${NWS}/points/${k}`, GEO).then(r => r.properties).catch(e => { delete POINTS[k]; throw e; });
+  return POINTS[k];
 }
 async function loadHourly(f){
   const point = await pointFor(f);
@@ -589,7 +598,8 @@ function go(name, param, opts){
   render(false); window.scrollTo(0, 0);
   if (name === 'radar' && fest()) { startRadar(fest()); locate(); }
   if (name === 'report') locate();
-  if (name === 'review') loadPending();
+  if (name === 'moderate') loadQueue();
+  if (name === 'sources') loadSources();
 }
 function back(){
   stopRadar();
@@ -881,17 +891,17 @@ screens.picker = () => {
   const bubbles = (top.length ? top : on).slice(0, 6), rest = on.filter(f => !bubbles.includes(f));
   const bubble = f => `<button class="bubble" style="--hue:${hue(f)}" onclick="pick('${f.id}')"><i class="glow"></i><span class="glass"><span class="t">${esc(f.name)}</span><span class="d">${esc(fmtRange(f))}</span><span class="ph">${esc(phase(f).text)}${esc(distNote(f))}</span></span></button>`;
   const row = f => `<button class="row" onclick="pick('${f.id}')"><span class="dotc" style="--hue:${hue(f)}"></span><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}${esc(distNote(f))}</div>${I.chev}</button>`;
-  const addRow = `<div class="group glass"><button class="row" onclick="later(function(){ go('add') })"><span class="lead">${I.plus}</span><div class="main"><div class="t">Add a festival</div><div class="s">Small ones too</div></div>${I.chev}</button></div>`;
+  const hereRow = `<div class="group glass"><button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button></div>`;
   let body;
   if (!FESTS.length) {
     body = `<div class="card glass"><h3>Nothing loaded</h3><p>The festival list did not load.</p></div>`;
   } else if (!on.length) {
-    body = `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>${addRow}`;
+    body = `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>${hereRow}`;
   } else if (q) {
     const hits = on.filter(f => `${f.name} ${f.location} ${f.county || ''}`.toLowerCase().includes(q));
-    body = (hits.length ? `<div class="group glass">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + addRow;
+    body = (hits.length ? `<div class="group glass">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
   } else {
-    body = `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass">${rest.map(row).join('')}</div>` : ''}${addRow}`;
+    body = `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
   }
   return topbar('', '', gearBtn()) + `
     <h1 class="title">Which festival?</h1>
@@ -908,7 +918,7 @@ screens.home = () => {
   const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories`) : lv === 'ok' ? 'All clear' : lv === 'none' ? 'No weather data' : '';
   const line = lv === 'warn' ? 'Take shelter now. Stages and tents are not safe shelter.'
              : lv === 'watch' ? (al[0].expiresAt ? `Until ${fmtWhen(al[0].expiresAt)}` : 'Tap for details')
-             : lv === 'ok' ? outlook(f) || `No alerts for ${f.county}`
+             : lv === 'ok' ? outlook(f) || `No alerts for ${f.county || 'this spot'}`
              : lv === 'none' ? statusLine(f) : '';
   const target = lv === 'ok' || lv === 'none' ? "go('weather')" : lv === 'loading' ? '' : `go('alert','${esc((al.find(isWarning) || al[0]).id)}')`;
   const glow = lv === 'ok' ? 'var(--ok)' : lv === 'none' ? 'var(--muted)' : 'var(--violet)';
@@ -920,10 +930,11 @@ screens.home = () => {
         ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
         <span class="foot">${esc(statusLine(f))}</span>
       </span></button>`;
-  return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', shareBtn() + refreshBtn() + gearBtn()) + `
-    <span class="eyebrow num">${esc(fmtRange(f))} · ${esc(phase(f).text)}</span>
+  const here = f.id === 'here';
+  return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', (here ? '' : shareBtn()) + refreshBtn() + gearBtn()) + `
+    <span class="eyebrow num">${here ? `Your location${f.at ? ' · ' + esc(ago(f.at)) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
     <h1 class="title">${esc(f.name)}</h1>
-    <p class="sub">${esc(f.location)}</p>
+    <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
     ${sky}
     <div class="orbrow">
       ${orb('Radar', I.radar, 262, "go('radar')")}
@@ -931,9 +942,9 @@ screens.home = () => {
       ${orb('Forecast', I.chart, 190, "go('weather')")}
     </div>
     <div class="group glass">
-      <button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
+      ${here ? '' : `<button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
-      <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>
+      <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>`}
       ${pushRow()}
     </div>
     ${listingNote(f)}
@@ -956,7 +967,7 @@ screens.weather = () => {
   const d = data(f), al = activeAlerts(f), hr = (d.hourly || []).slice(0, 24);
   const alerts = al.length
     ? `<p class="h">Active alerts</p><div class="group glass">${al.map(a => `<button class="alert" onclick="go('alert','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${a.expiresAt ? 'Until ' + esc(fmtWhen(a.expiresAt)) : esc(a.area)}</div></div>${I.chev}</button>`).join('')}</div>`
-    : d.alerts ? `<div class="card glass"><h3>No active alerts</h3><p>Nothing in effect for ${esc(f.county)}.</p></div>`
+    : d.alerts ? `<div class="card glass"><h3>No active alerts</h3><p>Nothing in effect for ${esc(f.county || 'this spot')}.</p></div>`
     : `<div class="card glass"><h3>${S.busy ? 'Checking' : 'No data yet'}</h3><p>${esc(statusLine(f))}</p></div>`;
   const chart = hr.length
     ? `<div class="chart glass"><div class="lbl">Next ${hr.length} hours</div>${chartSVG(hr)}<div class="tip" id="tip"></div></div>
@@ -1006,9 +1017,10 @@ screens.alert = id => {
   if (!a) return topbar(backBtn(), '', '') + (S.busy && !data(f).alerts ? `<div class="card glass" style="margin-top:22px"><h3>Checking</h3></div>` : `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`);
   const warn = isWarning(a), { sections, paragraphs } = parseNWS(a.body);
   const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim();
-  return topbar(backBtn(), '', navigator.share ? `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>` : '') + `
+  return topbar(backBtn(), '', `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>`) + `
     <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p>${a.expiresAt ? 'Until ' + esc(fmtFull(a.expiresAt)) : esc(a.area)}</p></div>
     ${instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">What to do</div><p>${esc(instruction)}</p></div></div>` : ''}
+    ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'AirDrop reaches phones nearby with no signal. Ask them to set AirDrop to Everyone for 10 minutes.' : 'Nearby share reaches phones with no signal. Or text it.'}</p>` : ''}
     ${sections.length ? `<div class="group glass">${sections.map(s => `<div class="kv"><span class="k">${esc(s.label)}</span><span class="v">${esc(s.text)}</span></div>`).join('')}</div>` : ''}
     ${paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('')}
     <div class="group glass">
@@ -1086,49 +1098,91 @@ async function sendReport(){
   S.reporting = false; render();
 }
 
-screens.add = () => {
-  const d = S.draft;
-  if (S.sent) return topbar(backBtn(), '', '') + `
-    <div class="welcome">
-      <div class="mark"><i class="glow"></i><span class="glass">${I.check}</span></div>
-      <h1 class="title">Sent</h1>
-      <p class="sub">A human checks it, then it shows up here while it is on.</p>
-      <button class="btn" onclick="later(function(){ S.sent = null; back() })">Back to festivals</button>
-    </div>`;
-  if (!backend()) return topbar(backBtn(), '', '') + `
-    <h1 class="title">Add a festival</h1>
-    <div class="card glass" style="margin-top:22px"><h3>Needs the backend</h3><p>New festivals go to the Fieldwatch backend for a check. Set its address in Settings.</p></div>
-    <div class="group glass"><button class="row" onclick="later(function(){ go('settings') })"><span class="lead">${I.gear}</span><div class="main"><div class="t">Settings</div></div>${I.chev}</button></div>`;
-  const places = S.places === null ? '' : S.places.length
-    ? `<p class="h">Which one?</p><div class="group glass">${S.places.map((p, i) => `<button class="row" onclick="pickPlace(${i})"><span class="lead">${I.pin}</span><div class="main"><div class="t">${esc(p.label)}</div></div>${I.chev}</button>`).join('')}</div>`
-    : `<div class="empty"><b>Not found</b>Try the venue, or the town and the state.</div>`;
+screens.post = () => {
+  const f = fest(); if (!f || f.id === 'here') return screens.picker();
+  const p = S.post;
   return topbar(backBtn(), '', '') + `
-    <h1 class="title">Add a festival</h1>
-    <p class="sub">Small ones welcome.</p>
+    <span class="eyebrow">${esc(f.name)}</span>
+    <h1 class="title">Post an update</h1>
+    <p class="sub">Goes to every phone that switched warnings on.</p>
     <div class="group glass">
-      <label class="field"><span class="k">Name</span><input id="f-name" value="${esc(d.name)}" placeholder="Moon Hollow Gathering" autocomplete="off" oninput="setDraft('name', this.value)"></label>
-      <label class="field"><span class="k">Where</span><input id="f-where" value="${esc(d.where)}" placeholder="Venue, or town and state" autocomplete="off" oninput="setDraft('where', this.value)" onchange="findPlace()"></label>
+      <label class="field"><span class="k">Title</span><input id="p-title" value="${esc(p.title)}" placeholder="Medical tent has moved" autocomplete="off" oninput="setPost('title', this.value)"></label>
+      <label class="field"><textarea id="p-body" placeholder="Now beside the water station at the east gate." oninput="setPost('body', this.value)">${esc(p.body)}</textarea></label>
     </div>
-    ${d.place ? `<div class="group glass"><button class="row" onclick="S.draft.place = null; render()"><span class="lead">${I.pin}</span><div class="main"><div class="t">${esc(d.place.label)}</div><div class="s">Tap to change</div></div></button></div>`
-      : places || `<button class="btn quiet" id="f-find" onclick="findPlace()" ${d.where.trim().length < 3 ? 'disabled' : ''}>${S.finding ? 'Looking' : 'Find it on the map'}</button>`}
-    <div class="group glass">
-      <label class="field"><span class="k">First day</span><input id="f-start" type="date" value="${esc(d.start)}" onchange="setDraft('start', this.value)"></label>
-      <label class="field"><span class="k">Last day</span><input id="f-end" type="date" value="${esc(d.end)}" onchange="setDraft('end', this.value)"></label>
-      <label class="field"><span class="k">Site</span><input id="f-site" value="${esc(d.website)}" placeholder="optional" inputmode="url" autocapitalize="off" autocorrect="off" oninput="setDraft('website', this.value)"></label>
-    </div>
-    <button class="btn" id="f-send" ${canSend() && !S.sending ? '' : 'disabled'} onclick="sendFestival()">${S.sending ? 'Sending' : 'Send it in'}</button>
-    <p class="note">${d.error ? esc(d.error) : 'A human checks it first. No account needed.'}</p>`;
+    <div class="chips">${['minor', 'moderate', 'severe'].map(x => `<button class="chip ${p.severity === x ? 'on' : ''}" onclick="setPost('severity', '${x}'); render()">${x === 'minor' ? 'Notice' : x === 'moderate' ? 'Heads up' : 'Urgent'}</button>`).join('')}</div>
+    <button class="btn" id="p-send" ${p.title.trim() && p.body.trim() && !S.posting ? '' : 'disabled'} onclick="sendPost()">${S.posting ? 'Posting' : 'Post'}</button>
+    <p class="note">${p.error ? esc(p.error) : 'Signed as festival staff. Keep it short.'}</p>`;
 };
+function setPost(k, v){ S.post[k] = v; S.post.error = null; const b = document.getElementById('p-send'); if (b) b.disabled = !(S.post.title.trim() && S.post.body.trim()); }
+async function sendPost(){
+  const f = fest(), p = S.post; if (!f || !p.title.trim() || !p.body.trim() || S.posting) return;
+  S.posting = true; p.error = null; render();
+  try{
+    const r = await fetch(`${backend()}/festivals/${encodeURIComponent(f.id)}/posts`, { method: 'POST', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ title: p.title.trim(), body: p.body.trim(), severity: p.severity }) });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 401) throw new Error('Wrong admin key');
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    const n = (j.web && j.web.sent) || 0;
+    S.post = { title: '', body: '', severity: 'minor', error: null }; S.posting = false;
+    toast(n ? `Posted. Pushed to ${n} phone${n === 1 ? '' : 's'}.` : 'Posted.', 3500); back(); refresh(f); return;
+  }catch(e){ p.error = /fetch/i.test(e.message) ? "Couldn't reach the backend" : e.message; }
+  S.posting = false; render();
+}
 
-screens.review = () => topbar(backBtn(), '', '') + `
-  <h1 class="title">Waiting</h1>
-  ${S.pending === null ? `<div class="card glass" style="margin-top:22px"><h3>${S.reviewing ? 'Checking' : 'Cannot reach the backend'}</h3>${S.reviewing ? '' : '<p>Check the address and the admin key in Settings.</p>'}</div>`
-    : !S.pending.length ? `<div class="empty"><b>Nothing waiting</b>New festivals land here.</div>`
-    : `<div class="group glass" style="margin-top:22px">${S.pending.map(f => `<div class="pend"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div><div class="s num">${esc(fmtRange(f))}</div>${f.website ? `<a class="link" href="${esc(f.website)}" target="_blank" rel="noopener">${esc(f.website.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>` : ''}${f.note ? `<div class="s">${esc(f.note)}</div>` : ''}<div class="acts"><button class="btn small" onclick="decide('${esc(f.id)}', true)">Approve</button><button class="btn quiet small" onclick="decide('${esc(f.id)}', false)">Remove</button></div></div>`).join('')}</div>`}
-  <p class="note">Approved festivals are listed while they are on.</p>`;
+screens.moderate = () => {
+  const f = fest(); if (!f || f.id === 'here') return screens.picker();
+  const q = S.queue;
+  return topbar(backBtn(), '', '') + `
+    <span class="eyebrow">${esc(f.name)}</span>
+    <h1 class="title">Reports</h1>
+    ${q === null ? `<div class="card glass" style="margin-top:22px"><h3>${S.queueBusy ? 'Checking' : 'Cannot reach the backend'}</h3>${S.queueBusy ? '' : '<p>Check the address and the admin key in Settings.</p>'}</div>`
+      : !q.length ? `<div class="empty"><b>Nothing waiting</b>Reports land here before they go out.</div>`
+      : `<div class="group glass" style="margin-top:22px">${q.map(i => `<div class="pend"><div class="t">${esc(i.category)}</div><div class="s">${esc(i.summary)}</div><div class="s num">${esc(fmtFull(i.occurredAt))}${i.location ? ' · ' + esc(i.location) : ''}${i.source ? ' · ' + esc(i.source) : ''}</div><div class="acts"><button class="btn small" onclick="decideReport('${esc(i.id)}', true)">Publish</button><button class="btn quiet small" onclick="decideReport('${esc(i.id)}', false)">Remove</button></div></div>`).join('')}</div>`}
+    <p class="note">Published reports reach every phone here as an alert.</p>`;
+};
+async function loadQueue(){
+  const f = fest(), b = backend(); if (!f || f.id === 'here' || !b || !S.admin) { S.queue = null; return; }
+  S.queueBusy = true; render();
+  try{ S.queue = await getJSON(`${b}/festivals/${encodeURIComponent(f.id)}/incidents/pending`, adminHeaders()); }catch(e){ S.queue = null; }
+  S.queueBusy = false; render();
+}
+async function decideReport(id, ok){
+  const f = fest(); if (!f) return;
+  try{
+    const r = await fetch(`${backend()}/festivals/${encodeURIComponent(f.id)}/incidents/${encodeURIComponent(id)}${ok ? '/publish' : ''}`, { method: ok ? 'POST' : 'DELETE', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: ok ? '{}' : undefined });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    toast(ok ? 'Published' : 'Removed');
+  }catch(e){ toast(e.message === 'HTTP 401' ? 'Wrong admin key' : "Couldn't reach the backend"); }
+  loadQueue();
+}
+
+const SOURCE_NAMES = { ticketmaster: 'Ticketmaster', seatgeek: 'SeatGeek', edmtrain: 'Edmtrain', wikidata: 'Wikidata and festival sites', feeds: 'Your feeds' };
+screens.sources = () => {
+  const r = S.sources;
+  const line = (k, v) => !v ? '' : v.skipped ? 'No key' : v.error ? `Failed: ${v.error}` : `${v.added || 0} added, ${v.updated || 0} updated${v.duplicates ? `, ${v.duplicates} already listed` : ''}${v.errors ? `, ${v.errors} errors` : ''}`;
+  return topbar(backBtn(), '', '') + `
+    <h1 class="title">Festival sources</h1>
+    <p class="sub">${r && r.startedAt ? `Last run ${esc(fmtFull(r.startedAt))}` : r && r.never ? 'No import has run yet' : S.sourcesBusy ? 'Checking' : 'Cannot reach the backend'}</p>
+    ${r && !r.never ? `<div class="group glass">${Object.keys(SOURCE_NAMES).filter(k => r[k]).map(k => `<div class="row"><div class="main"><div class="t">${SOURCE_NAMES[k]}</div><div class="s">${esc(line(k, r[k]))}</div></div><span class="pill ${r[k].skipped || r[k].error ? '' : 'on'}">${r[k].skipped ? 'Off' : r[k].error ? 'Error' : 'On'}</span></div>`).join('')}</div>` : ''}
+    <button class="btn quiet" ${S.sourcesBusy ? 'disabled' : ''} onclick="runSources()">${S.sourcesBusy ? 'Running' : 'Run now'}</button>
+    <p class="note">Keys go in the backend's variables: TICKETMASTER_KEY, SEATGEEK_CLIENT_ID, EDMTRAIN_KEY.</p>`;
+};
+async function loadSources(){
+  const b = backend(); if (!b || !S.admin) { S.sources = null; return; }
+  S.sourcesBusy = true; render();
+  try{ S.sources = await getJSON(`${b}/admin/import`, adminHeaders()); }catch(e){ S.sources = null; }
+  S.sourcesBusy = false; render();
+}
+async function runSources(){
+  const b = backend(); if (!b || !S.admin || S.sourcesBusy) return;
+  S.sourcesBusy = true; render();
+  try{ const r = await fetch(`${b}/admin/import`, { method: 'POST', headers: adminHeaders() }); if (!r.ok) throw new Error(`HTTP ${r.status}`); S.sources = await r.json(); toast('Imported'); }
+  catch(e){ toast(e.message === 'HTTP 401' ? 'Wrong admin key' : "Couldn't run the import"); }
+  S.sourcesBusy = false; render();
+}
 
 screens.share = () => {
-  const f = fest(); if (!f) return screens.picker();
+  const f = fest(); if (!f || f.id === 'here') return screens.picker();
   const b = backend(), url = shareURL(f);
   return topbar(backBtn(), '', '') + `
     <span class="eyebrow">Share</span>
@@ -1156,13 +1210,13 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <p class="note">Empty uses the default. Type none to go without.</p>
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at, and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
   <p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `<button class="row" onclick="later(function(){ go('review') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review festivals</div><div class="s">What people sent in</div></div>${I.chev}</button>` : ''}</div>
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button>` : ''}</div>
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
   <p class="note">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. Listings: Ticketmaster, SeatGeek, Edmtrain and people here. No account, no login.</p>`;
 
 function setBackend(v){ S.backend = v.trim().replace(/\/+$/, ''); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); }
-function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.draft = blankDraft(); S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
+function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.hereFest = null; S.push = null; S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
 
 // ---- the festival list: the bundled copy first, the backend's live list when one is set -------------------
 function mergeLists(a, b){ const m = new Map(); for (const f of [...(a || []), ...(b || [])]) m.set(f.id, f); return [...m.values()]; }
@@ -1182,68 +1236,42 @@ async function syncFestivals(){
   }catch(e){}
 }
 
-// ---- adding a festival: a name, a place found on the map, dates; the backend holds it until a human approves --
-const canSend = () => { const d = S.draft; return d.name.trim().length >= 3 && !!d.place && !!d.start && !!d.end && d.end >= d.start; };
-function setDraft(k, v){
-  S.draft[k] = v; S.draft.error = null;
-  const send = document.getElementById('f-send'); if (send) send.disabled = !canSend();
-  const find = document.getElementById('f-find'); if (find) find.disabled = S.draft.where.trim().length < 3;
-}
-const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
-function placeLabel(p){
-  const a = p.address || {}, first = p.name || String(p.display_name || '').split(',')[0].trim();
-  const town = a.city || a.town || a.village || a.hamlet || a.county || '';
-  return [first, town, a.state || ''].filter((x, i, arr) => x && arr.indexOf(x) === i).join(', ');
-}
-async function findPlace(){
-  const q = S.draft.where.trim(); if (q.length < 3 || S.finding) return;
-  S.finding = true; S.places = null; S.draft.place = null; render();
-  try{
-    const r = await getJSON(`${NOMINATIM}?format=jsonv2&addressdetails=1&limit=4&countrycodes=us&q=${encodeURIComponent(q)}`, { Accept: 'application/json' });
-    S.places = r.map(p => ({ label: placeLabel(p), lat: Number(p.lat), lon: Number(p.lon) })).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lon));
-  }catch(e){ S.places = []; }
-  S.finding = false; render();
-}
-function pickPlace(i){ S.draft.place = S.places[i] || null; S.places = null; render(); }
-async function sendFestival(){
-  if (!canSend() || S.sending) return;
-  const d = S.draft; S.sending = true; d.error = null; render();
-  const site = d.website.trim();
-  const body = { name: d.name.trim(), location: d.place.label, latitude: d.place.lat, longitude: d.place.lon, startDate: d.start, endDate: d.end };
-  if (site) { body.website = site; body.source = site; }
-  try{
-    const r = await fetch(`${backend()}/festivals`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-    S.sent = j.id; S.draft = blankDraft();
-  }catch(e){ d.error = /fetch/i.test(e.message) ? "Couldn't reach the backend" : e.message; }
-  S.sending = false; render();
-}
-
-// ---- admin: approving what people sent in ---------------------------------------------------------------
+// ---- staff: the admin key unlocks posting, moderation and the sources screen --------------------------------
 function setAdmin(v){ S.admin = v.trim(); save(); toast(S.admin ? 'Admin key saved' : 'Admin key cleared'); render(); }
 const adminHeaders = () => ({ 'x-admin-key': S.admin });
-async function loadPending(){
-  const b = backend(); if (!b || !S.admin) { S.pending = null; return; }
-  S.reviewing = true; render();
-  try{ S.pending = await getJSON(`${b}/festivals/pending`, adminHeaders()); }catch(e){ S.pending = null; }
-  S.reviewing = false; render();
-}
-async function decide(id, ok){
-  try{
-    const r = await fetch(`${backend()}/festivals/${encodeURIComponent(id)}${ok ? '/approve' : ''}`, { method: ok ? 'POST' : 'DELETE', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: ok ? '{}' : undefined });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    toast(ok ? 'Approved' : 'Removed');
-  }catch(e){ toast(e.message === 'HTTP 401' ? 'Wrong admin key' : "Couldn't reach the backend"); }
-  loadPending(); if (ok) syncFestivals();
-}
 
 // ---- where you are ------------------------------------------------------------------------------------------
+const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
+/** Alerts, forecast and radar for wherever the phone is, festival listed or not. */
+function useHere(){
+  if (S.here) { goHere(); return; }
+  if (S.geoDenied) { toast('Allow location for this site in your browser settings, then try again.', 4500); return; }
+  if (!('geolocation' in navigator)) { toast('This browser cannot find your location.'); return; }
+  S.wantHere = true; toast('Finding you'); locate();
+}
+function goHere(){
+  const h = S.here; if (!h) return;
+  S.hereFest = { ...(S.hereFest || {}), latitude: h.latitude, longitude: h.longitude, at: h.at };
+  S.fest = 'here'; S.wantHere = false; save();
+  go('home', null, { reset: true }); refresh(fest()); resubscribePush(); placeHere();
+}
+/** A name for the spot, from OpenStreetMap: the town and the county, which the weather wording uses. */
+async function placeHere(){
+  const h = S.hereFest; if (!h) return;
+  try{
+    const p = await getJSON(`${NOMINATIM_REVERSE}?format=jsonv2&lat=${h.latitude}&lon=${h.longitude}&zoom=12`, { Accept: 'application/json' });
+    const a = p.address || {}, town = a.city || a.town || a.village || a.hamlet || a.municipality || '';
+    S.hereFest = { ...S.hereFest, location: [town, a.state].filter(Boolean).join(', ') || p.name || '', county: a.county || '' }; save();
+    if (S.fest === 'here') render();
+  }catch(e){}
+}
 function locate(){
   if (!('geolocation' in navigator) || S.geoDenied || S.locating || IN_PREVIEW) return;
   S.locating = true;
   navigator.geolocation.getCurrentPosition(p => {
     S.locating = false; S.here = { latitude: p.coords.latitude, longitude: p.coords.longitude, at: Date.now() };
+    if (S.wantHere) { goHere(); return; }
+    if (S.fest === 'here' && S.hereFest && distKm(S.here, S.hereFest) > 2) { S.hereFest = { ...S.hereFest, latitude: S.here.latitude, longitude: S.here.longitude, at: S.here.at, location: '', county: '' }; save(); refresh(fest()); resubscribePush(true); placeHere(); }
     if (S.screen === 'picker' && !S.fest && !S.autoPicked) {
       const near = live().map(f => ({ f, km: away(f) })).sort((a, b) => a.km - b.km)[0];
       if (near && near.km <= NEAR_KM) {
@@ -1255,7 +1283,7 @@ function locate(){
     if (S.screen === 'picker' && document.activeElement !== document.getElementById('q')) render();
     if ((S.screen === 'report' || S.screen === 'settings') && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) render();
     if (S.screen === 'radar') { const st = document.getElementById('stage'); if (st && !document.querySelector('.rmap .me')) st.insertAdjacentHTML('beforeend', meDot(coverage(fest()))); }
-  }, err => { S.locating = false; if (err && err.code === 1) { S.geoDenied = true; save(); if (S.screen === 'settings') render(); } }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+  }, err => { S.locating = false; if (S.wantHere) { S.wantHere = false; toast(err && err.code === 1 ? 'Location is blocked for this site.' : "Couldn't find your location.", 4000); } if (err && err.code === 1) { S.geoDenied = true; save(); if (S.screen === 'settings') render(); } }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
 }
 function retryLocate(){ S.geoDenied = false; save(); locate(); toast('Asking for your location'); }
 /** A blue dot on the radar square, if you are inside it. */
@@ -1273,7 +1301,7 @@ function pushRow(){
   const need = !PUSH_OK ? (IOS && !STANDALONE ? 'Add to Home Screen first' : 'Not in this browser')
     : Notification.permission === 'denied' ? 'Blocked in browser settings' : '';
   const tap = need ? (IOS && !STANDALONE ? "later(function(){ go('settings') })" : '') : 'togglePush()';
-  return `<button class="row" onclick="${tap}" ${tap ? '' : 'disabled'}><span class="lead">${I.bell}</span><div class="main"><div class="t">Warnings on this phone</div><div class="s">${esc(need || 'Even when the app is closed')}</div></div><span class="pill ${on ? 'on' : ''}">${on ? 'On' : 'Off'}</span></button>`;
+  return `<button class="row" onclick="${tap}" ${tap ? '' : 'disabled'}><span class="lead">${I.bell}</span><div class="main"><div class="t">Warnings on this phone</div><div class="s">${esc(need || (S.fest === 'here' ? 'For wherever this phone is' : 'Even when the app is closed'))}</div></div><span class="pill ${on ? 'on' : ''}">${on ? 'On' : 'Off'}</span></button>`;
 }
 const b64url = s => { const pad = '='.repeat((4 - s.length % 4) % 4), raw = atob((s + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(raw, c => c.charCodeAt(0)); };
 async function vapidKey(){ if (!S.vapid) S.vapid = (await getJSON(`${backend()}/push/vapid`)).key; return S.vapid; }
@@ -1290,19 +1318,21 @@ async function togglePush(){
     if (Notification.permission !== 'granted' && (await Notification.requestPermission()) !== 'granted') { toast('Notifications are blocked'); render(); return; }
     const key = await vapidKey();
     const sub = cur || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64url(key) });
-    const r = await postJSON(`${b}/push/subscribe`, { subscription: sub.toJSON(), festivalId: S.fest });
+    const r = await postJSON(`${b}/push/subscribe`, pushTarget(sub));
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    S.push = { endpoint: sub.endpoint, fest: S.fest }; save(); toast(`On for ${fest().name}. A test notification is on its way.`, 4000);
+    S.push = { endpoint: sub.endpoint, fest: S.fest }; save(); toast(`On for ${S.fest === 'here' ? 'this spot' : fest().name}. A test notification is on its way.`, 4000);
   }catch(e){ toast(/404/.test(e.message) ? 'The backend has no push keys yet' : "Couldn't turn warnings on"); }
   render();
 }
-/** Warnings follow the festival you chose. */
-async function resubscribePush(){
-  if (!PUSH_OK || !S.push || !S.fest || S.push.fest === S.fest || !backend()) return;
+/** What a subscription follows: the festival, or the spot the phone is at. */
+const pushTarget = sub => (S.fest === 'here' ? { subscription: sub.toJSON(), point: { latitude: S.hereFest.latitude, longitude: S.hereFest.longitude } } : { subscription: sub.toJSON(), festivalId: S.fest });
+/** Warnings follow the festival you chose, or your spot when it moves. */
+async function resubscribePush(moved){
+  if (!PUSH_OK || !S.push || !S.fest || (S.push.fest === S.fest && !moved) || !backend()) return;
   try{
     const reg = await navigator.serviceWorker.ready, cur = await reg.pushManager.getSubscription();
     if (!cur) { S.push = null; save(); render(); return; }
-    const r = await postJSON(`${backend()}/push/subscribe`, { subscription: cur.toJSON(), festivalId: S.fest });
+    const r = await postJSON(`${backend()}/push/subscribe`, pushTarget(cur));
     if (r.ok) { S.push = { endpoint: cur.endpoint, fest: S.fest }; save(); render(); }
   }catch(e){}
 }
@@ -1310,8 +1340,15 @@ async function resubscribePush(){
 // ---- links straight to a festival: a push notification, a QR code at the gate ------------------------------
 function applyLink(){
   const l = S.link; if (!l) return false;
-  const f = FESTS.find(x => x.id === l.fest); if (!f) return false;
-  S.fest = f.id; S.stack = []; S.screen = 'home'; S.param = null; S.welcomed = true;
+  if (l.here) {
+    S.link = null; S.welcomed = true;
+    if (!S.hereFest) { S.wantHere = true; return false; }
+    S.fest = 'here';
+  } else {
+    const f = FESTS.find(x => x.id === l.fest); if (!f) return false;
+    S.fest = f.id;
+  }
+  S.stack = []; S.screen = 'home'; S.param = null; S.welcomed = true;
   if (l.alert) { S.stack = [{ name: 'home', param: null }]; S.screen = 'alert'; S.param = l.alert; }
   S.link = null; save();
   resubscribePush();
@@ -1322,9 +1359,13 @@ let toastTimer;
 function toast(msg, ms){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2200); }
 function alarm(a){ try{ if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 600]); }catch(e){} toast(`New warning: ${a.event}`, 6000); }
 async function share(id){
-  const a = (data(fest()).alerts || []).find(x => x.id === id); if (!a) return;
-  const text = `${a.event} for ${a.area}. ${a.headline || a.body.slice(0, 200)}`;
-  try{ await navigator.share({ title: a.event, text }); }catch(e){ if (e && e.name !== 'AbortError') toast("Couldn't share on this device"); }
+  const f = fest(), a = (data(f).alerts || []).find(x => x.id === id); if (!f || !a) return;
+  const text = `${a.event} for ${a.area}. ${(a.headline || a.body || '').slice(0, 200)}${a.instruction ? ` ${a.instruction.replace(/\s+/g, ' ').slice(0, 160)}` : ''}`;
+  const url = f.id === 'here' ? `${location.origin}${location.pathname}?here=1` : `${shareURL(f)}&alert=${encodeURIComponent(a.id)}`;
+  try{
+    if (navigator.share) await navigator.share({ title: a.event, text, url });
+    else { await navigator.clipboard.writeText(`${text} ${url}`); toast('Copied. Send it to whoever needs it.'); }
+  }catch(e){ if (!e || e.name !== 'AbortError') toast("Couldn't share on this device"); }
 }
 
 function render(rev){
@@ -1341,16 +1382,16 @@ async function boot(){
   try{ bundled = await (await fetch('festivals.json', { cache: 'no-cache' })).json(); }catch(e){}
   FESTS = backend() && S.fests ? mergeLists(bundled, S.fests) : bundled;
   const qs = new URLSearchParams(location.search);
-  if (qs.get('f')) {
-    S.link = { fest: qs.get('f'), alert: qs.get('alert') || null };
-    qs.delete('f'); qs.delete('alert');
+  if (qs.get('f') || qs.get('here')) {
+    S.link = { fest: qs.get('f'), here: !!qs.get('here'), alert: qs.get('alert') || null };
+    qs.delete('f'); qs.delete('here'); qs.delete('alert');
     try{ history.replaceState(null, '', location.pathname + (qs.toString() ? `?${qs}` : '')); }catch(e){}
   }
   const linked = applyLink();
   if (S.fest && !(fest() && isLive(fest()))) S.fest = null;
   if (!linked || !S.fest) S.screen = !S.welcomed ? 'welcome' : S.fest ? 'home' : 'picker';
   render();
-  if (S.screen === 'picker') locate();
+  if (S.screen === 'picker' || S.wantHere) locate();
   if (fest()) refresh(fest());
   syncFestivals();
   setInterval(() => { if (fest() && document.visibilityState === 'visible' && !S.busy) refresh(fest()); }, 5 * 60000);

@@ -36,26 +36,32 @@ const worthPushing = a => a.channel !== 'weather' || ['extreme', 'severe', 'mode
 /** One notification to the browser that just subscribed, so the person sees the chain work before any warning does. */
 export async function pushWelcome(subscription, festival) {
   if (!enabled || !festival) return { sent: 0 };
+  const here = festival.id === 'here';
   const payload = JSON.stringify({
-    title: 'Warnings are on', body: `${festival.name}. Warnings, watches and staff posts will show up here, even with the app closed.`,
-    tag: 'welcome', urgent: false, url: `${SITE}?f=${encodeURIComponent(festival.id)}`,
+    title: 'Warnings are on', body: here ? 'For wherever this phone is. Warnings and watches will show up here, even with the app closed.'
+      : `${festival.name}. Warnings, watches and staff posts will show up here, even with the app closed.`,
+    tag: 'welcome', urgent: false, url: here ? `${SITE}?here=1` : `${SITE}?f=${encodeURIComponent(festival.id)}`,
   });
   try { await transport(subscription, payload, { TTL: 600, urgency: 'normal' }); return { sent: 1 }; }
   catch (e) { return { sent: 0, error: e?.statusCode || e?.message || String(e) }; }
 }
 
-/** One notification to every browser subscribed to this festival. Dead subscriptions are dropped. */
+/**
+ * One notification to every browser subscribed to this festival, or, for a point (a phone following
+ * wherever it is, festival.id 'here'), to every browser at that point. Dead subscriptions are dropped.
+ */
 export async function pushWeb(festival, alert) {
   if (!enabled) return { sent: 0, skipped: true };
   if (!worthPushing(alert)) return { sent: 0, minor: true };
-  const subs = q.webSubscriptionsFor(festival.id);
+  const here = festival.id === 'here';
+  const subs = here ? q.webSubscriptionsAt(festival.latitude, festival.longitude) : q.webSubscriptionsFor(festival.id);
   if (!subs.length) return { sent: 0 };
   const urgent = alert.severity === 'extreme' || alert.severity === 'severe';
   const payload = JSON.stringify({
     title: alert.event,
     body: `${festival.name}. ${String(alert.headline || alert.body || '').replace(/\s+/g, ' ').slice(0, 160)}`,
     tag: alert.id, urgent, severity: alert.severity,
-    url: `${SITE}?f=${encodeURIComponent(festival.id)}&alert=${encodeURIComponent(alert.id)}`,
+    url: here ? `${SITE}?here=1&alert=${encodeURIComponent(alert.id)}` : `${SITE}?f=${encodeURIComponent(festival.id)}&alert=${encodeURIComponent(alert.id)}`,
   });
   let sent = 0, gone = 0, failed = 0;
   await Promise.all(subs.map(async ({ endpoint, subscription }) => {

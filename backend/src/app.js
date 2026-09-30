@@ -13,7 +13,7 @@ import QRCode from 'qrcode';
 import { RADAR_DIR, noteInterest, radarLoop, refreshRadarSoon } from './radar.js';
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
-import { runImports } from './importers/index.js';
+import { imports, runImports } from './importers/index.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -268,13 +268,19 @@ app.delete('/devices/:token', (req, res) => { q.deleteDevice(req.params.token); 
 app.get('/push/vapid', (req, res) => (webPushEnabled() ? res.json({ key: vapidPublicKey() }) : res.status(404).json({ error: 'web push not configured' })));
 app.post('/push/subscribe', wrap(async (req, res) => {
   if (!webPushEnabled()) return res.status(404).json({ error: 'web push not configured' });
-  const { subscription, festivalId } = req.body || {};
+  const { subscription, festivalId, point } = req.body || {};
   if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys is required' });
   if (festivalId && !q.festival(festivalId)) return res.status(404).json({ error: 'no such festival' });
+  // A phone with no festival follows a point: wherever it is, rounded to about a kilometre, so a warning for that spot reaches it.
+  const lat = Number(point?.latitude), lon = Number(point?.longitude);
+  const at = !festivalId && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { latitude: Math.round(lat * 100) / 100, longitude: Math.round(lon * 100) / 100 } : null;
+  if (!festivalId && !at) return res.status(400).json({ error: 'festivalId or point required' });
   const clean = { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } };
-  q.upsertWebSubscription(subscription.endpoint, festivalId || null, clean);
-  res.json({ ok: true, welcome: festivalId ? await pushWelcome(clean, q.festival(festivalId)) : { sent: 0 } });
+  q.upsertWebSubscription(subscription.endpoint, festivalId || null, clean, at);
+  const target = festivalId ? q.festival(festivalId) : { id: 'here', name: 'Where you are', ...at };
+  res.json({ ok: true, welcome: await pushWelcome(clean, target) });
 }));
+app.get('/admin/import', requireAdmin, (req, res) => res.json(imports.last || { never: true }));
 app.delete('/push/subscribe', (req, res) => {
   const endpoint = req.body?.endpoint || req.query.endpoint;
   if (!endpoint) return res.status(400).json({ error: 'endpoint required' });

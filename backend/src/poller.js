@@ -44,9 +44,35 @@ export function polledRecently(id, ms = 5 * 60_000) {
   return Date.now() - (lastPolled.get(id) || 0) < ms;
 }
 
+/** A point some phone follows, dressed as a festival so the same poll and push path serves it. */
+export const pointFestival = p => ({ id: 'here', name: 'Where you are', latitude: p.latitude, longitude: p.longitude, county: '', pointId: `pt:${p.latitude.toFixed(2)},${p.longitude.toFixed(2)}` });
+
+/** Like pollFestival, for a point: alerts are stored under the point's id, pushes go to the phones at that point. */
+export async function pollPoint(p) {
+  const f = pointFestival(p);
+  const fresh = await activeAlerts(f.latitude, f.longitude);
+  const seenNow = new Set(fresh.map(a => a.id));
+  const brandNew = [];
+  for (const a of fresh) {
+    if (q.alert(a.id)) q.updateAlert(a);
+    else { q.insertAlert(f.pointId, a); brandNew.push(a); }
+  }
+  for (const id of q.activeAlertIds(f.pointId)) {
+    if (!seenNow.has(id)) { const a = q.alert(id); if (a) q.updateAlert({ ...a, expiresAt: iso() }); }
+  }
+  for (const a of brandNew) {
+    const w = await pushWeb(f, a);
+    console.log(`[${f.pointId}] new: ${a.event} (${a.severity}) web=${JSON.stringify(w)}`);
+  }
+  return brandNew;
+}
+
 export async function pollOnce() {
   for (const f of festivalsInWindow()) {
     try { await pollFestival(f); } catch (e) { console.error(`[${f.id}] poll failed:`, e.message); }
+  }
+  for (const p of q.webSubscriptionPoints()) {
+    try { await pollPoint(p); } catch (e) { console.error(`[pt:${p.latitude},${p.longitude}] poll failed:`, e.message); }
   }
   q.purgeAlerts(daysFromNow(-7));
 }
