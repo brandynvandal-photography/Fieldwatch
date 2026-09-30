@@ -10,6 +10,9 @@ export const wdItem = ({ qid, label, lat, lon, website, venue, admin }) => ({
   ...(admin ? { adminLabel: lit(admin, { 'xml:lang': 'en' }) } : {}),
 });
 export const sparqlResult = bindings => ({ head: { vars: ['item', 'itemLabel', 'coord', 'website', 'venueLabel', 'adminLabel'] }, results: { bindings } });
+export const classResult = qids => ({ head: { vars: ['class'] }, results: { bindings: qids.map(q => ({ class: { type: 'uri', value: `http://www.wikidata.org/entity/${q}` } })) } });
+/** The two-step query as the tests see it: the kinds of festival first, then the items of those kinds. */
+export const answerSparql = (url, items) => new URL(url).searchParams.get('query').includes('?class WHERE') ? classResult(['Q868557', 'Q132241', 'Q1362001']) : (typeof items === 'function' ? items() : sparqlResult(items));
 
 // Five items the query would return (a dissolved one never reaches us; the query filters P576 out).
 export const items = [

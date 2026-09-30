@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { items, hulaween, riverfests, twoEditions, sparqlResult, pages, robots, wdItem } from './fixtures/wikidata.js';
+import { items, hulaween, riverfests, twoEditions, sparqlResult, classResult, answerSparql, pages, robots, wdItem } from './fixtures/wikidata.js';
 
 process.env.DB_PATH = ':memory:';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';   // a real-looking contact: the placeholder's example.com switches the importer off
@@ -8,7 +8,7 @@ delete process.env.WIKIDATA_IMPORT;
 
 const { q } = await import('../src/db.js');
 const { seedAll } = await import('../src/seed.js');
-const { importWikidata, parseCandidates, eventsFrom, robotsAllows, ruleMatches, listingsFor, festivalsFrom, checkSite, publicHost, skipReason, productToken, CACHE_KEY, SPARQL } = await import('../src/importers/wikidata.js');
+const { importWikidata, parseCandidates, eventsFrom, robotsAllows, ruleMatches, listingsFor, festivalsFrom, checkSite, publicHost, skipReason, productToken, CACHE_KEY, CLASSES_SPARQL, CLASS_CHUNK, itemsSparql, parseClasses } = await import('../src/importers/wikidata.js');
 const { importsConfigured } = await import('../src/importers/index.js');
 seedAll();
 const NOW = Date.parse('2026-09-28T12:00:00Z'), DAY = 86_400_000;
@@ -38,7 +38,12 @@ test('SPARQL results become candidates: WKT coordinates, one per item, no label 
   assert.deepEqual(parseCandidates(sparqlResult([wdItem({ qid: 'Q2', label: 'Two', lat: 1, lon: 2, website: 'https://two.example/other' }), wdItem({ qid: 'Q2', label: 'Two', lat: 1, lon: 2, website: 'https://two.example/' })])).map(x => x.website),
     ['https://two.example/'], 'the shortest of an item\'s sites is its homepage, in any order');
   assert.deepEqual(parseCandidates({}), []); assert.deepEqual(parseCandidates(null), []);
-  for (const s of ['wd:Q868557', 'wd:Q132241', 'wd:Q30', 'wdt:P625', 'wdt:P856', 'wdt:P576', 'wikibase:label']) assert.ok(SPARQL.includes(s), s);
+  for (const s of ['wd:Q868557', 'wd:Q132241', 'wdt:P279*']) assert.ok(CLASSES_SPARQL.includes(s), s);
+  const q = itemsSparql(['Q868557', 'Q1362001']);
+  for (const s of ['VALUES ?class { wd:Q868557 wd:Q1362001 }', 'wdt:P31 ?class', 'wd:Q30', 'wdt:P625', 'wdt:P856', 'wdt:P576', 'wikibase:label']) assert.ok(q.includes(s), s);
+  assert.ok(!q.includes('P279'), 'no property path in the item query: that is what timed out');
+  assert.deepEqual(parseClasses(classResult(['Q1', 'Q1', 'Q2', 'bad'])), ['Q1', 'Q2']);
+  assert.ok(CLASS_CHUNK >= 100 && CLASS_CHUNK <= 500);
 });
 
 test('robots.txt: the group naming us over *, wildcards and $ as written, the longest matching rule wins, nothing said means yes', () => {
@@ -161,8 +166,8 @@ test('the import: one query, polite site reads, a cache that makes the next run 
     assert.equal(opts.headers?.['User-Agent'], process.env.NWS_USER_AGENT, 'every request says who we are');
     if (url.startsWith('https://query.wikidata.org/sparql?')) {
       const p = new URL(url).searchParams;
-      assert.equal(opts.headers.Accept, 'application/sparql-results+json'); assert.equal(p.get('format'), 'json'); assert.ok(p.get('query').includes('wd:Q30'));
-      const body = serve.sparql();
+      assert.equal(opts.headers.Accept, 'application/sparql-results+json'); assert.equal(p.get('format'), 'json'); assert.ok(p.get('query').includes('?class WHERE') || p.get('query').includes('wd:Q30'), 'the kinds query, or an item query for the US');
+      const body = answerSparql(url, serve.sparql);
       return new Response(JSON.stringify(body), { status: body.status || 200, headers: { 'content-type': 'application/sparql-results+json' } });
     }
     assert.equal(opts.redirect, 'manual', 'a site is followed by hand');
@@ -175,7 +180,7 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   const opts = { fetchImpl, now: NOW, pauseMs: 0, log: { error: () => {} } };
 
   const r = await importWikidata(opts);
-  assert.deepEqual(r, { calls: 8, errors: 0, candidates: 5, sitesChecked: 4, festivals: 1, added: 1, updated: 0, duplicates: 0, pruned: 0 }, 'the query, robots.txt and a page per site, only robots.txt where it says no');
+  assert.deepEqual(r, { calls: 9, errors: 0, candidates: 5, sitesChecked: 4, festivals: 1, added: 1, updated: 0, duplicates: 0, pruned: 0 }, 'the two queries, robots.txt and a page per site, only robots.txt where it says no');
   assert.ok(!fetched.includes('https://hiddenhollow.example/'), 'a site whose robots.txt disallows us is never read');
   assert.ok(fetched.includes('https://moonrisefest.example/robots.txt') && fetched.includes('https://moonrisefest.example/'));
   const m = q.festival('wd-q9003-moonrise-fest-2026');
@@ -195,7 +200,7 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   // The next day: the query runs, no site is read, and the festival is still there (not pruned as vanished).
   fetched.length = 0;
   const r2 = await importWikidata({ ...opts, now: NOW + DAY });
-  assert.deepEqual(fetched, ['https://query.wikidata.org/sparql?' + fetched[0]?.split('?')[1]], 'one request');
+  assert.deepEqual(fetched.map(u => u.split('?')[0]), ['https://query.wikidata.org/sparql', 'https://query.wikidata.org/sparql'], 'the two queries and nothing else');
   assert.deepEqual({ sitesChecked: r2.sitesChecked, updated: r2.updated, pruned: r2.pruned, festivals: r2.festivals }, { sitesChecked: 0, updated: 1, pruned: 0, festivals: 1 });
   // A week later the sites are read again (hits and misses alike); with a cap of one, the rest keep what they said last time.
   fetched.length = 0;
@@ -251,7 +256,7 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   serve.sparql = () => ({ status: 503 });
   const lines = [];
   const bad = await importWikidata({ ...opts, log: { error: m => lines.push(m) } });
-  assert.deepEqual(bad, { calls: 1, errors: 1, lastError: 'SPARQL 503', candidates: 0, sitesChecked: 0, festivals: 0, added: 0, updated: 0, duplicates: 0, pruned: 0 });
+  assert.deepEqual(bad, { calls: 2, errors: 1, lastError: 'SPARQL 503', candidates: 0, sitesChecked: 0, festivals: 0, added: 0, updated: 0, duplicates: 0, pruned: 0 });
   assert.deepEqual(lines, ['wikidata: SPARQL 503']);
   assert.ok(q.festival('wd-q9003-moonrise-fest-2026'), 'kept through a bad run'); assert.equal(Object.keys(cache()).length, 4);
   const dead = await importWikidata({ ...opts, fetchImpl: async () => { throw new Error('fetch failed'); } });
@@ -300,7 +305,7 @@ test('sites never seen are read first, then the longest unchecked; a private add
   const fetched = []; const serve = { items, fail: null };
   const fetchImpl = async u => {
     const url = String(u); fetched.push(url);
-    if (url.includes('wikidata.org')) return new Response(JSON.stringify(sparqlResult(serve.items)), { status: 200 });
+    if (url.includes('wikidata.org')) return new Response(JSON.stringify(answerSparql(url, serve.items)), { status: 200 });
     if (url === serve.fail) throw new Error('socket hang up');
     if (url.endsWith('/robots.txt')) return new Response(robots[url] || '', { status: robots[url] ? 200 : 404 });
     return new Response(pages[url] || '', { status: pages[url] ? 200 : 404 });
@@ -335,7 +340,7 @@ test('a listing that vanished from its site before it started is pruned on a cle
   const empty = { ...pages, 'https://moonrisefest.example/': '<html><head><title>Moonrise Fest</title></head><body>See you next year</body></html>' };
   const fetchImpl = async u => {
     const url = String(u);
-    if (url.includes('wikidata.org')) return new Response(JSON.stringify(sparqlResult(items)), { status: 200 });
+    if (url.includes('wikidata.org')) return new Response(JSON.stringify(answerSparql(url, items)), { status: 200 });
     if (url.endsWith('/robots.txt')) return new Response(robots[url] || '', { status: robots[url] ? 200 : 404 });
     return new Response(empty[url] || '', { status: empty[url] ? 200 : 404 });
   };

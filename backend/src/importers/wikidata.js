@@ -23,9 +23,17 @@ const OFF = new Set(['false', '0', 'no']);
 
 // Instances (or instances of subclasses) of music festival or festival, in the United States, with
 // coordinates, not dissolved; the official website, the venue and the town when Wikidata has them.
-export const SPARQL = `SELECT DISTINCT ?item ?itemLabel ?coord ?website ?venueLabel ?adminLabel WHERE {
-  VALUES ?class { wd:Q868557 wd:Q132241 }
-  ?item wdt:P31/wdt:P279* ?class ;
+// Two cheap steps instead of one query the service gives up on (a property path over every kind of festival,
+// joined with every US item that has coordinates, ran past Wikidata's minute): every kind of festival first,
+// then the US items of those kinds, a few hundred kinds per query.
+export const CLASSES_SPARQL = `SELECT DISTINCT ?class WHERE {
+  VALUES ?root { wd:Q868557 wd:Q132241 }
+  ?class wdt:P279* ?root .
+}`;
+export const CLASS_CHUNK = 300;
+export const itemsSparql = classes => `SELECT DISTINCT ?item ?itemLabel ?coord ?website ?venueLabel ?adminLabel WHERE {
+  VALUES ?class { ${classes.map(c => `wd:${c}`).join(' ')} }
+  ?item wdt:P31 ?class ;
         wdt:P17 wd:Q30 ;
         wdt:P625 ?coord .
   OPTIONAL { ?item wdt:P856 ?website . }
@@ -34,6 +42,8 @@ export const SPARQL = `SELECT DISTINCT ?item ?itemLabel ?coord ?website ?venueLa
   FILTER NOT EXISTS { ?item wdt:P576 ?dissolved . }
   SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul". }
 }`;
+/** The kinds of festival the first query found, as QIDs, each once. */
+export const parseClasses = body => [...new Set((body?.results?.bindings || []).map(b => String(b.class?.value || '').split('/').pop()).filter(id => /^Q\d+$/.test(id)))];
 
 /**
  * Why a run would not happen: WIKIDATA_IMPORT=false, 0 or no switches it off; otherwise it is on, but only
@@ -318,13 +328,23 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
   const skipped = skipReason({ enabled, userAgent });
   if (skipped) return { skipped };
   let calls = 0, errors = 0, sitesChecked = 0, candidates = [], queried = false, lastError = null;
-  try {
+  const sparql = async query => {
     const u = new URL(SPARQL_ENDPOINT);
-    u.searchParams.set('query', SPARQL); u.searchParams.set('format', 'json');
+    u.searchParams.set('query', query); u.searchParams.set('format', 'json');
     const res = await fetchImpl(u, { headers: { Accept: 'application/sparql-results+json', 'User-Agent': userAgent }, signal: AbortSignal.timeout(SPARQL_TIMEOUT_MS) });
     calls++;
     if (!res.ok) throw new Error(`SPARQL ${res.status}`);
-    candidates = parseCandidates(await res.json());
+    return res.json();
+  };
+  try {
+    const classes = parseClasses(await sparql(CLASSES_SPARQL));
+    if (!classes.length) throw new Error('SPARQL returned no kinds of festival');   // never prune on an answer that cannot be right
+    const bindings = [];
+    for (let i = 0; i < classes.length; i += CLASS_CHUNK) {
+      if (i) await sleep(pauseMs);
+      bindings.push(...((await sparql(itemsSparql(classes.slice(i, i + CLASS_CHUNK))))?.results?.bindings || []));
+    }
+    candidates = parseCandidates({ results: { bindings } });   // one pass, so a site two items share still goes to the lowest QID
     queried = true;
   } catch (e) { errors++; lastError = errorText(e); log.error(`wikidata: ${lastError}`); }
 
