@@ -35,6 +35,10 @@ const CLEAN = [
   ['Los Lonely Boys: Rockpango Fest 2026 - canceled', 'Los Lonely Boys: Rockpango Fest'],
   ['Suwannee Hulaween', 'Suwannee Hulaween'], ['Austin City Limits, Weekend 1', 'Austin City Limits, Weekend 1'], ['Sick New World Texas', 'Sick New World Texas'],
   ['Vans Warped Tour Orlando', 'Vans Warped Tour Orlando'], ['Aftershock - Friday', 'Aftershock'], ['Aftershock 3 Day Pass', 'Aftershock'], ['  ', ''],
+  ['Winnetka Music Festival 2027', 'Winnetka Music Festival'], ['2027 CMA Fest presented by SoFi', 'CMA Fest'], ['K-ERA Fest 2026: TAEMIN', 'K-ERA Fest: TAEMIN'],
+  ['Iron Fest XVII Night One', 'Iron Fest XVII'], ['Decadence Denver - Night Two', 'Decadence Denver'], ['Magnolia Park - Halloween Fest presented by WJRR', 'Magnolia Park - Halloween Fest'],
+  ['Voltaege Fest 2026, Kept on Hold, WIPEOUT, Follow The Protocol, Nicole Alexis, When The Sun Sets, Vampire Cowgirl', 'Voltaege Fest'],
+  ['Depeche Mode, Bauhaus, The Cure, Siouxie & The Banshees, Joy Divsion Tributes - Dark Wave Festival', 'Depeche Mode, Bauhaus, The Cure, Siouxie & The Banshees, Joy Divsion Tributes - Dark Wave Festival'],
 ];
 
 test('a listing name comes down to the festival: no day, pass, lineup, age note, status or year', () => {
@@ -56,8 +60,9 @@ test('a name that says festival, and not a tour, tribute or concert unless it al
   for (const [n, want] of [['Tracy Byrd', false], ['Morrissey - Live in Concert', false], ['The Concert: A Tribute To ABBA', false], ['Latin Grammy Awards', false],
     ['MOVEMENTS - HAPPIER NOW USA TOUR', false], ['Halloween Bash', false], ['Fort Collins Symphony - Signature Concert 1', false],
     ['Michigan Renaissance Festival', true], ['Dark Star Jubilee', true], ['Red Steagall Cowboy Gathering', true], ['Tom Petty Weekend', true],
-    ['Wurst Fest', true], ['Sun BrewFest', true], ['Cotton and Crude Fest', true], ['Rocktoberfest', true], ['Levitate Flannel Jam', true],
-    ['Gregory Porter - DC Jazz Festival Benefit Concert', true]]) assert.equal(looksLikeFestival(n), want, n);
+    ['Wurst Fest', true], ['Sun BrewFest', true], ['Cotton and Crude Fest', true], ['Rocktoberfest', true], ['Levitate Flannel Jam', true], ['Matisyahu - Festival of Lights', true],
+    ['Gregory Porter - DC Jazz Festival Benefit Concert', false], ['Matisyahu - Festival of Lights Tour', false], ["Hawaii's Finest Presents High Watah", false],
+    ["Joey's Song Presents The Freezing Man Festival", true], ['Midori & Festival Strings Lucerne Perform Tchaikovsky\'s Violin Concerto', false], ['Latin Grammy Awards', false]]) assert.equal(looksLikeFestival(n), want, n);
 });
 
 test('festivals outside the weather service area are refused everywhere: no alerts are possible there', () => {

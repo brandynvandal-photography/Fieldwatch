@@ -5,22 +5,26 @@
 const DAYS = String.raw`(?:mon|tue|tues|wed|wednes|thu|thur|thurs|fri|sat|satur|sun)(?:day)?`;
 const PASS = String.raw`(?:(?:vip|ga|general admission|premium|platinum|deluxe|super|weekend|day|night|\d+[- ]?day|(?:one|two|three|four|single|multi)[- ]day)\s+)*pass(?:es)?`;
 // A segment (after " - ", ": " or " | ") that names a day, a pass, a lineup or a status rather than the festival.
-const TAIL = new RegExp(String.raw`^(?:${DAYS}\b|\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?\b|(?:\d+|one|two|three|four|five|single|multi)[- ]?(?:day|night)s?\b|(?:day|night|weekend)\s*\d|${PASS}\b|w(?:ith|\/)\b|feat(?:uring|\.)?\b|ft\.?\s|starring\b|presented by\b|sponsored by\b|cancell?ed\b|postponed\b|rescheduled\b|sold out\b|\d\d\+|all ages\b|ages?\s+\d|after ?party\b|kick-?off\b|pre-?party\b|late night\b|official\b|tickets?\b|single day\b|admission\b)`, 'i');
+const TAIL = new RegExp(String.raw`^(?:${DAYS}\b|\d{1,2}[\/.]\d{1,2}(?:[\/.]\d{2,4})?\b|(?:\d+|one|two|three|four|five|single|multi)[- ]?(?:day|night)s?\b|(?:day|night|weekend)\s*(?:\d|one|two|three|four|five)\b|${PASS}\b|w(?:ith|\/)\b|feat(?:uring|\.)?\b|ft\.?\s|starring\b|presented by\b|sponsored by\b|cancell?ed\b|postponed\b|rescheduled\b|sold out\b|\d\d\+|all ages\b|ages?\s+\d|after ?party\b|kick-?off\b|pre-?party\b|late night\b|official\b|tickets?\b|single day\b|admission\b)`, 'i');
 const LINEUP = /\s+(?:with|w\/|feat\.?|featuring|ft\.?)\s+.+$/i;
 const TRAIL_DATE = new RegExp(String.raw`\s+(?:${DAYS}\s+)?\d{1,2}\/\d{1,2}(?:\/\d{2,4})?$`, 'i');
-const TRAIL_DAYS = new RegExp(String.raw`\s+(?:\d+\s*days?|${PASS}|${DAYS}|20\d\d)$`, 'i');
+const TRAIL_DAYS = new RegExp(String.raw`\s+(?:\d+\s*days?|${PASS}|${DAYS}|20\d\d|(?:day|night)\s+(?:one|two|three|four|five|\d))$`, 'i');
 const LEAD_DAYS = /^(?:\d+|one|two|three|four)[- ]day\s+/i;
+const BY_LINE = /\s+(?:presented|sponsored|powered|brought to you) by\s+.*$/i;
 
 /** The festival in a listing's name: no parenthetical, no day, pass, lineup or status, no trailing year. */
 export function cleanName(raw) {
   let s = String(raw ?? '').replace(/\s+/g, ' ').trim();
   if (!s) return '';
   s = s.replace(/\s*\([^)]*\)/g, '').replace(/\s*\[[^\]]*\]/g, '');
-  s = s.replace(LEAD_DAYS, '');
+  s = s.replace(LEAD_DAYS, '').replace(/^20\d\d\s+/, '').replace(/\s+20\d\d\b/g, '');
+  // "Voltaege Fest, Kept on Hold, WIPEOUT, Follow The Protocol": a fest before the first comma and a bill after it.
+  const comma = s.indexOf(',');
+  if (comma > 0 && /fest/i.test(s.slice(0, comma)) && (s.slice(comma + 1).match(/,/g) || []).length >= 2) s = s.slice(0, comma);
   const parts = s.split(/(\s+[-–—|]\s+|\s+[-–—]\s*|:\s+)/);
   let out = parts[0];
   for (let i = 1; i < parts.length; i += 2) { const seg = parts[i + 1] || ''; if (TAIL.test(seg)) break; out += parts[i] + seg; }
-  s = out.replace(LINEUP, '');
+  s = out.replace(LINEUP, '').replace(BY_LINE, '');
   for (let i = 0; i < 3; i++) s = s.replace(TRAIL_DATE, '').replace(TRAIL_DAYS, '');
   s = s.replace(/[\s\-–—:|,]+$/, '').replace(/^[\s\-–—:|,]+/, '').trim();
   return s || String(raw).trim();
@@ -42,4 +46,8 @@ export const NOT_A_FESTIVAL = /\b(tour|tribute|concert|symphony|philharmonic|orc
 export const CANCELLED = /\b(cancell?ed|postponed)\b/i;
 export const ADD_ON = /\b(parking|shuttle|camping|campsite|campground|locker|merch|payment plan|layaway|upgrade|add[- ]?on|glamping|rv pass|car pass|bus pass|car registration|registration|kick-?off|after ?party|pre-?party|fest nights?|meet (and|&) greet|package)\b/i;
 /** A name that says festival, and not a tour, tribute or concert unless it also says fest. */
-export const looksLikeFestival = name => FESTIVAL_WORD.test(name) && !(NOT_A_FESTIVAL.test(name) && !/fest/i.test(name));
+export const looksLikeFestival = name => FESTIVAL_WORD.test(name) && !plainlyNotFestival(name);
+// What no festival word redeems: a travelling show, a benefit concert, an orchestra, an awards night, or a
+// promoter presenting an act ("Hawaii's Finest Presents High Watah") with no festival named.
+const NEVER_A_FESTIVAL = /\b(tour|benefit concert|concerto|symphony|philharmonic|orchestra|awards?)\b/i;
+export const plainlyNotFestival = name => NEVER_A_FESTIVAL.test(name) || (!/fest/i.test(name) && (NOT_A_FESTIVAL.test(name) || /\bpresents?\b/i.test(name)));

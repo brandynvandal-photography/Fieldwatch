@@ -3,9 +3,9 @@
 // without stepping on another source's record.
 import { db, q } from '../db.js';
 import { normalizeFestival, sameFestival, sameNamedNearby, slug } from '../festivals.js';
-import { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName } from '../names.js';
+import { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival } from '../names.js';
 import { iso } from '../util.js';
-export { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName };
+export { ADD_ON, CANCELLED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival };
 
 /** What went wrong, with the cause Node's fetch hides behind "fetch failed" (ENOTFOUND, ECONNREFUSED, a TLS error). */
 export const errorText = e => { const c = e?.cause; return `${e?.message || e}${c ? ` (${c.code || c.message || c})` : ''}`; };
