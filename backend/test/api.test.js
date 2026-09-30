@@ -536,3 +536,14 @@ test('the ground: the lookups run on demand, staff set what they know better, an
   const cleared = await api('DELETE', `/festivals/${FEST}/ground`, { headers: admin });
   assert.equal(cleared.json.surface, 'grass'); assert.equal(cleared.json.surfaceSource, 'OpenStreetMap: leisure=park'); assert.deepEqual(cleared.json.structures, ['canopies']);
 });
+
+test('one tap from the field: a ground report is stored, shows on the ground and in the pack, and is rate limited', async () => {
+  assert.equal((await api('POST', `/festivals/${FEST}/ground/report`, { body: { state: 'swampy' } })).status, 400);
+  const r = await api('POST', `/festivals/${FEST}/ground/report`, { body: { state: 'mud' } });
+  assert.equal(r.status, 200); assert.equal(r.json.state, 'mud'); assert.equal(r.json.effective, 0, 'no rain analysis in tests, so nothing counted'); assert.equal(r.json.learned, null, 'and nothing learned from mud with no rain behind it');
+  assert.equal(r.json.reports.last.state, 'mud'); assert.equal(r.json.reports.recent, 1);
+  assert.equal((await api('GET', `/festivals/${FEST}/ground`)).json.reports.last.state, 'mud');
+  assert.equal((await api('GET', `/festivals/${FEST}/pack`)).json.ground.reports.recent, 1);
+  for (let n = 0; n < 4; n++) assert.equal((await api('POST', `/festivals/${FEST}/ground/report`, { body: { state: 'fine' } })).status, 200);
+  assert.equal((await api('POST', `/festivals/${FEST}/ground/report`, { body: { state: 'fine' } })).status, 429);
+});

@@ -113,9 +113,11 @@ function mudTier(ground = {}, aheadIn = 0, rateInHr = 0) {
   const past = Math.round(((p.in24 || 0) * 0.6 + Math.max(0, (p.in48 || 0) - (p.in24 || 0)) * 0.3) * 100) / 100, effective = Math.round((aheadIn + past) * 100) / 100;
   if (surface === 'pavement') return { tier: rateInHr >= 0.3 || aheadIn >= 1 ? 'runoff' : aheadIn >= 0.1 ? 'slick' : 'wet', effective, threshold: null, past };
   if (surface === 'sand') return { tier: low && aheadIn >= 1 ? 'water' : 'wet', effective, threshold: null, past };
-  const threshold = Math.round((MUD_IN[soil] || MUD_IN.B) * (SURFACE_X[surface] || 1) * 100) / 100;
+  // What this ground actually did in the rain (reports from the field, ground.js) beats the soil table.
+  const learned = ground.learned && ground.learned.threshold > 0 ? ground.learned.threshold : null;
+  const threshold = learned || Math.round((MUD_IN[soil] || MUD_IN.B) * (SURFACE_X[surface] || 1) * 100) / 100;
   const tier = low && (aheadIn >= 1 || rateInHr >= 0.5) ? 'water' : effective >= 2 * threshold ? 'deep' : effective >= threshold ? 'soft' : 'wet';
-  return { tier, effective, threshold, past };
+  return { tier, effective, threshold, past, learned: Boolean(learned) };
 }
 /** The ground in a few words: "grass over clay, low ground". */
 function groundWords(ground = {}) {

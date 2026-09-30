@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 process.env.DB_PATH = ':memory:';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
-const { effectiveGround, ensureGround, groundFor, lookupGround, pastRain, soilFromUSDA, surfaceFromOSM, surfaceFromTags, validOverride } = await import('../src/ground.js');
+const { effectiveGround, ensureGround, groundFor, learnedThreshold, lookupGround, pastRain, reportGround, reportSummary, soilFromUSDA, surfaceFromOSM, surfaceFromTags, validOverride } = await import('../src/ground.js');
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
 const fest = { id: 'ground-test', name: 'Ground Test', location: 'Live Oak, FL', latitude: 30.404, longitude: -82.9395, startDate: '2026-09-29T00:00:00Z', endDate: '2026-10-02T00:00:00Z' };
@@ -69,7 +69,7 @@ test('a lookup lands on the record, the override sits on top, and the effective 
   assert.equal(saved.length, 1); assert.equal(saved[0].ground.surface, 'pavement');
   const eff = effectiveGround(saved[0]);
   assert.deepEqual({ surface: eff.surface, soil: eff.soil, low: eff.low, structures: eff.structures, surfaceSource: eff.surfaceSource }, { surface: 'pavement', soil: 'D', low: false, structures: ['canopies'], surfaceSource: 'OpenStreetMap: surface=asphalt, amenity=parking' });
-  assert.deepEqual(effectiveGround({}), { surface: 'grass', soil: 'B', low: false, structures: ['canopies'], surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, lookedUpAt: null, lookupError: null, override: null }, 'nothing known: trampled grass on average soil');
+  assert.deepEqual(effectiveGround({}), { surface: 'grass', soil: 'B', low: false, structures: ['canopies'], surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, lookedUpAt: null, lookupError: null, override: null, learned: null }, 'nothing known: trampled grass on average soil');
   // Staff know the lot is grass this year, and there is a stage.
   const { override, error } = validOverride({ surface: 'grass', structures: ['canopies', 'stage'], low: true });
   assert.equal(error, undefined);
@@ -98,4 +98,21 @@ test('a festival that is on gets its lookup once; one festival per pass, none tr
   assert.ok(saved.has('eg-b'), 'the next pass takes the next festival'); assert.equal(second.soil, 'B');
   assert.equal(await ensureGround([saved.get('eg-a'), saved.get('eg-b')], { fetchImpl, save }), null, 'both looked up: nothing to do');
   assert.equal(await ensureGround([a], { fetchImpl, save }), null, 'a record still without a lookup (a failed save) is not retried within six hours');
+});
+
+test('the venue learns how much rain it takes from what people report, and a report carries the rain counted at the time', async () => {
+  assert.equal(learnedThreshold([]), null);
+  assert.equal(learnedThreshold([{ state: 'mud', effective: 0.02 }]), null, 'mud with no rain behind it teaches nothing');
+  assert.equal(learnedThreshold([{ state: 'fine', effective: 0.6 }]), null, 'fine ground alone sets no line');
+  assert.equal(learnedThreshold([{ state: 'soft', effective: 0.45 }, { state: 'mud', effective: 0.9 }]).threshold, 0.45, 'the least rain at which it went soft');
+  assert.equal(learnedThreshold([{ state: 'soft', effective: 0.45 }, { state: 'fine', effective: 0.6 }, { state: 'mud', effective: 0.9 }]).threshold, 0.75, 'fine at 0.6 and mud at 0.9: the line sits between');
+  assert.equal(learnedThreshold([{ state: 'soft', effective: 0.45 }, { state: 'fine', effective: 0.6 }]).threshold, 0.7, 'fine above every wet report: just past the fine');
+  const rows = []; const q = { insertGroundReport: (fid, state, effective, tier) => rows.unshift({ festival: fid, state, effective, tier, at: new Date().toISOString() }), groundReports: () => rows };
+  const now = Date.UTC(2026, 8, 30, 15), fetchImpl = async () => json({ data: [{ date: '2026-09-29', daily_precip_in: 1.0 }, { date: '2026-09-30', daily_precip_in: 0.5 }] });
+  const f = { ...fest, id: 'learn-test' }; const saved = [];
+  assert.match((await reportGround(f, 'boggy', { now, fetchImpl, q })).error, /state must be one of/);
+  const r = await reportGround(f, 'mud', { now, fetchImpl, q, save: x => saved.push(x) });
+  assert.equal(r.ok, true); assert.equal(r.effective, 0.9, 'today and yesterday at their weights: 1.5 at 0.6'); assert.equal(rows[0].tier, 'soft', 'what the table said at the time');
+  assert.equal(r.learned.threshold, 0.9); assert.equal(saved[0].ground.learned.threshold, 0.9, 'written onto the record');
+  assert.deepEqual(reportSummary(q, f.id, now), { last: { state: 'mud', at: rows[0].at }, recent: 1 });
 });

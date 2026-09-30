@@ -111,6 +111,8 @@ test('mud: what the rain does to this ground, by soil and surface, with what alr
   assert.equal(t({ low: true }, 1.1), 'water', 'low ground floods before it turns to mud'); assert.equal(t({ low: true }, 0.4), 'wet');
   const wetWeek = mudTier({ soil: 'B', past: { in24: 1.0, in48: 1.5 } }, 0.3);
   assert.equal(wetWeek.past, 0.75, 'yesterday at six tenths, the day before at three tenths'); assert.equal(wetWeek.effective, 1.05); assert.equal(wetWeek.tier, 'soft'); assert.equal(wetWeek.threshold, 0.75);
+  const learned = mudTier({ soil: 'A', learned: { threshold: 0.4, samples: 3 } }, 0.5);
+  assert.equal(learned.tier, 'soft'); assert.equal(learned.threshold, 0.4); assert.equal(learned.learned, true, 'what the ground did in the rain beats the soil table');
   assert.equal(groundWords({ surface: 'grass', soil: 'D', low: true }), 'grass over clay, low ground'); assert.equal(groundWords({ surface: 'pavement', soil: 'D' }), 'blacktop'); assert.equal(groundWords({}), 'grass');
   const inc = incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {} }, ground: { soil: 'D', past: { in24: 1.1, in48: 1.1 } }, now: at(0, 30) });
   assert.equal(inc.hazard, 'rain'); assert.equal(inc.mud.tier, 'deep'); assert.equal(headline(inc, TZ), 'Deep mud expected around 8:00 PM');

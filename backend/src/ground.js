@@ -4,6 +4,7 @@
 // better. The lookups are written onto the festival record once; the rain is read every three hours while it is on.
 // The model in incoming.js turns it all into mud tiers and wind lines.
 import { iso } from './util.js';
+import { mudTier } from './incoming.js';
 
 const HOUR = 3_600_000, DAY = 24 * HOUR, TTL = 3 * HOUR;
 const UA = process.env.NWS_USER_AGENT || 'Fieldwatch/0.1 (you@example.com)';
@@ -89,7 +90,7 @@ export function effectiveGround(f) {
   const g = f?.ground || {}, o = g.override || {};
   return { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: Array.isArray(o.structures) ? o.structures : ['canopies'],
     surfaceSource: o.surface ? 'staff' : g.surface ? g.surfaceSource || 'lookup' : 'assumed', soilSource: o.soil ? 'staff' : g.soil ? g.soilSource || 'lookup' : 'assumed',
-    soilName: g.soilName || null, drainage: g.drainage || null, lookedUpAt: g.lookedUpAt || null, lookupError: g.lookupError || null, override: g.override || null };
+    soilName: g.soilName || null, drainage: g.drainage || null, lookedUpAt: g.lookedUpAt || null, lookupError: g.lookupError || null, override: g.override || null, learned: g.learned || null };
 }
 /** A staff override, checked: only the fields and values the model knows. */
 export function validOverride(body = {}) {
@@ -100,6 +101,39 @@ export function validOverride(body = {}) {
   if (body.structures != null) { if (!Array.isArray(body.structures) || body.structures.some(s => !STRUCTURES.includes(s))) return { error: `structures must be some of ${STRUCTURES.join(', ')}` }; o.structures = body.structures; }
   if (body.note != null) o.note = String(body.note).slice(0, 200);
   return { override: { ...o, at: iso() } };
+}
+
+// ---- reports from the field: one tap says what the ground is doing, and the venue learns how much rain it takes ----
+export const GROUND_STATES = ['fine', 'soft', 'mud', 'water'];
+const WET_STATES = ['soft', 'mud', 'water'];
+/**
+ * The rain this ground takes before it goes soft, from what people reported: the least effective rain at which anyone
+ * reported soft, mud or water, nudged up past any report of fine ground at more. Null until a wet report with rain behind it.
+ */
+export function learnedThreshold(reports, now = Date.now()) {
+  const rows = reports.filter(r => r && r.effective > 0.05 && GROUND_STATES.includes(r.state));
+  const wet = rows.filter(r => WET_STATES.includes(r.state)).map(r => r.effective).sort((a, b) => a - b);
+  if (!wet.length) return null;
+  const fineMax = Math.max(0, ...rows.filter(r => r.state === 'fine').map(r => r.effective));
+  let threshold = wet[0];
+  if (fineMax >= threshold) { const above = wet.find(e => e > fineMax); threshold = above != null ? (fineMax + above) / 2 : fineMax + 0.1; }
+  return { threshold: Math.round(threshold * 100) / 100, samples: rows.length, at: iso(now) };
+}
+/** Stores a report with the rain the model counts right now, and refreshes the venue's learned threshold on the record. */
+export async function reportGround(f, state, { now = Date.now(), fetchImpl = globalThis.fetch, q, save } = {}) {
+  if (!GROUND_STATES.includes(state)) return { error: `state must be one of ${GROUND_STATES.join(', ')}` };
+  const g = await groundFor(f, { now, fetchImpl });
+  const m = mudTier(g, 0, 0);
+  q.insertGroundReport(f.id, state, m.effective, m.tier);
+  const learned = learnedThreshold(q.groundReports(f.id, now - 60 * DAY), now);
+  const ground = { ...(f.ground || {}), ...(learned ? { learned } : {}) };
+  if (learned && save) save({ ...f, ground });
+  return { ok: true, state, effective: m.effective, learned };
+}
+/** The last report and how many came in the last six hours, for the card. */
+export function reportSummary(q, festivalId, now = Date.now()) {
+  const rows = q.groundReports(festivalId, now - 6 * HOUR);
+  return rows.length ? { last: { state: rows[0].state, at: rows[0].at }, recent: rows.length } : null;
 }
 
 const attempted = new Map();

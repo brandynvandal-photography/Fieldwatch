@@ -16,7 +16,7 @@ import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
 import { lightningFor, lightningOn, lightningStatus } from './lightning.js';
-import { groundFor, groundStatus, lookupGround, validOverride } from './ground.js';
+import { GROUND_STATES, groundFor, groundStatus, lookupGround, reportGround, reportSummary, validOverride } from './ground.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -193,7 +193,18 @@ app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
 }));
 
 /** The ground under the festival: what the record says about it, and the rain of the last two days (ground.js). */
-app.get('/festivals/:id/ground', loadFestival, wrap(async (req, res) => res.set('Cache-Control', 'no-store').json(await groundFor(req.festival))));
+app.get('/festivals/:id/ground', loadFestival, wrap(async (req, res) => res.set('Cache-Control', 'no-store').json({ ...(await groundFor(req.festival)), reports: reportSummary(q, req.festival.id) })));
+/** One tap from the field: fine, soft, mud or water. Stored with the rain the model counts right now, so the venue learns what it takes. */
+const groundReportTimes = new Map();
+app.post('/festivals/:id/ground/report', loadFestival, wrap(async (req, res) => {
+  if (!GROUND_STATES.includes(String(req.body?.state || ''))) return res.status(400).json({ error: `state must be one of ${GROUND_STATES.join(', ')}` });
+  const ip = req.ip, now = Date.now(), recent = (groundReportTimes.get(ip) || []).filter(t => now - t < 600_000);
+  if (recent.length >= 5) return res.status(429).json({ error: 'too many reports, try again later' });
+  groundReportTimes.set(ip, [...recent, now]);
+  const r = await reportGround(req.festival, String(req.body?.state || ''), { now, q, save: f => q.upsertFestival(f) });
+  if (r.error) return res.status(400).json({ error: r.error });
+  res.json({ ...r, reports: reportSummary(q, req.festival.id, now) });
+}));
 
 /** Staff set what the lookups cannot see: the surface, how it drains, low ground, and what is standing (canopies, inflatables, a stage). */
 app.put('/festivals/:id/ground', requireAdmin, loadFestival, wrap(async (req, res) => {

@@ -292,7 +292,8 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
   const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {} };
-  const groundOf = id => ({ surface: 'grass', soil: 'B', low: false, structures: ['canopies'], surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, past: null, override: null, ...(store.ground[id] || {}) });
+  store.groundReports = {};
+  const groundOf = id => ({ surface: 'grass', soil: 'B', low: false, structures: ['canopies'], surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, past: null, override: null, learned: null, reports: store.groundReports[id] ? { last: store.groundReports[id][0], recent: store.groundReports[id].length } : null, ...(store.ground[id] || {}) });
   // What the home page shows: the fixture's warning at Hulaween, an advisory at the next festival that is on.
   const p = alertFeature().properties, toAlert = over => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null, severity: String(p.severity || 'Unknown').toLowerCase(), area: p.areaDesc ?? '', source: p.senderName ?? 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0, ...over });
   const other = store.list.find(f => isLive(f) && f.id !== 'hulaween-2026');
@@ -320,6 +321,8 @@ function fakeBackend(list) {
       if (m === 'GET' && path === '/alerts') return send(200, { at: new Date().toISOString(), on: store.list.filter(f => isLive(f) && f.status !== 'hidden').length, items: (store.feed || []).map(x => ({ festival: store.list.find(f => f.id === x.festivalId), alerts: x.alerts, lightning: store.lightning[x.festivalId] || null })).filter(i => i.festival) });
       const gr = path.match(/^\/festivals\/([^/]+)\/ground$/);
       if (m === 'GET' && gr) return send(200, groundOf(gr[1]));
+      const grr = path.match(/^\/festivals\/([^/]+)\/ground\/report$/);
+      if (m === 'POST' && grr) { const b = JSON.parse(raw); if (!['fine', 'soft', 'mud', 'water'].includes(b.state)) return send(400, { error: 'state' }); store.groundReports[grr[1]] = [{ state: b.state, at: new Date().toISOString() }, ...(store.groundReports[grr[1]] || [])]; return send(200, { ok: true, state: b.state, effective: 0.9, learned: b.state === 'fine' ? null : { threshold: 0.9, samples: store.groundReports[grr[1]].length, at: new Date().toISOString() }, reports: groundOf(grr[1]).reports }); }
       const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
       if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
@@ -724,6 +727,7 @@ test('the home page is every current alert at every festival that is on: the wor
 
 test('storms on the way: a countdown on the festival page with the first things to do, and the step-by-step prep screen behind it', async () => {
   const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
   // The fixture forecast, moved so that its storm window (thunder 40% from hour 3) starts in two to three hours.
   const H = 3600000, offset = Math.floor(Date.now() / H) * H - Date.UTC(2026, 9, 23, 18);
   const shiftT = t => new Date(Date.parse(t) + offset).toISOString();
@@ -732,7 +736,12 @@ test('storms on the way: a countdown on the festival page with the first things 
   const gridNow = { properties: { ...grid.properties, heatIndex: shiftSeries(grid.properties.heatIndex), windGust: shiftSeries(grid.properties.windGust), probabilityOfThunder: shiftSeries(grid.properties.probabilityOfThunder) } };
   await page.route(/gridpoints\/.*\/forecast\/hourly/, r => r.fulfill(json(hourlyNow)));
   await page.route(/gridpoints\/[^/]+\/[\d,]+$/, r => r.fulfill(json(gridNow)));
-  await pickHulaween(page);
+  try {
+  // Like pickHulaween, but on the fake backend (enter() would reload without it).
+  await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+  await page.click('button:has-text("Use my location")');
+  await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+  await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
   await page.waitForSelector('.headsup');
   assert.equal(await page.textContent('.headsup h3'), 'Storms');
   assert.match(await page.textContent('.headsup .eyebrow'), /On the way/);
@@ -757,11 +766,18 @@ test('storms on the way: a countdown on the festival page with the first things 
   assert.deepEqual(await page.$$eval('.tl .k', els => els.map(e => e.textContent)), ['Earlier', 'Three hours out', 'One hour out', 'Twenty minutes out', 'While it is here', 'After']);
   assert.equal(await page.textContent('.tl.now .k'), 'Three hours out', 'the timeline knows where you are on it');
   assert.match(await page.textContent('.tl:last-child'), /thirty minutes after the last thunder/);
+  // One tap says what the ground is doing; the venue learns from it, and the card repeats it.
+  assert.match(await page.textContent('.note:has-text("One tap tells everyone here")'), /teaches the app how much rain this ground takes/);
+  await page.click('button.chip:has-text("Mud")'); await page.waitForSelector('.toast.show:has-text("Reported: mud")');
+  assert.ok(store.calls.includes('POST /festivals/hulaween-2026/ground/report'));
+  assert.match(await page.textContent('.note:has-text("Last reported")'), /Last reported mud just now\. This ground goes soft at about 0\.90 in, from 1 report\./);
+  assert.ok(await page.$('button.chip.on:has-text("Mud")'));
   await shot(page, '22-prep');
   await page.click('button[aria-label="Back"]');
   await page.waitForSelector('.headsup');
+  assert.match(await page.textContent('.headsup p'), /· reported mud just now$/);
   assert.deepEqual(seen.errors, []);
-  await context.close();
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
 
 test('lightning codes: a red on the festival page with the all-clear countdown, the screen behind it, and the code on the home page', async () => {

@@ -60,6 +60,15 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS ground_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    festival_id TEXT NOT NULL,
+    state TEXT NOT NULL,
+    effective REAL,
+    tier TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS ground_reports_festival ON ground_reports(festival_id, created_at);
 `);
 // Added later: a festival someone suggested waits as 'pending' until an admin approves it.
 if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
@@ -112,6 +121,8 @@ const s = {
 
   setting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
   setSetting: db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`),
+  insertGroundReport: db.prepare(`INSERT INTO ground_reports (festival_id, state, effective, tier, created_at) VALUES (?, ?, ?, ?, ?)`),
+  groundReports: db.prepare(`SELECT state, effective, tier, created_at FROM ground_reports WHERE festival_id = ? AND created_at >= ? ORDER BY created_at DESC`),
 };
 
 export const q = {
@@ -152,6 +163,8 @@ export const q = {
 
   setting: key => s.setting.get(key)?.value ?? null,
   setSetting: (key, value) => s.setSetting.run(key, value),
+  insertGroundReport: (festivalId, state, effective, tier) => s.insertGroundReport.run(festivalId, state, effective, tier, iso()),
+  groundReports: (festivalId, since) => s.groundReports.all(festivalId, iso(since)).map(r => ({ state: r.state, effective: r.effective, tier: r.tier, at: r.created_at })),
 };
 
 function rowToIncident(r) {

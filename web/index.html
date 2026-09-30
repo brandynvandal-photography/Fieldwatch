@@ -844,6 +844,28 @@ function outlook(f){
 const SURFACE_LABEL = { grass: 'Grass', dirt: 'Dirt', sand: 'Sand', gravel: 'Gravel', pavement: 'Blacktop', mixed: 'Mixed' };
 const SOIL_LABEL = { A: 'Drains fast', B: 'Average', C: 'Drains slowly', D: 'Clay' };
 const STRUCTURE_LABEL = { canopies: 'Pop-up canopies', inflatables: 'Inflatables', stage: 'Stage or rigging' };
+const GROUND_STATE_LABEL = { fine: 'Fine', soft: 'Soft', mud: 'Mud', water: 'Water' };
+/** One tap from the field: what the ground is doing right now. The venue learns how much rain it takes from these. */
+async function reportGround(state){
+  const f = fest(), b = backend(); if (!f || f.id === 'here') return;
+  if (!b) { toast('Needs the Fieldwatch backend'); return; }
+  if (S.groundReporting) return; S.groundReporting = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${f.id}/ground/report`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ state }) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const res = await r.json();
+    S.cache[f.id] = { ...data(f), ground: { ...(data(f).ground || {}), reports: res.reports || null, ...(res.learned ? { learned: res.learned } : {}) } }; save();
+    toast(`Thanks. Reported: ${GROUND_STATE_LABEL[state].toLowerCase()}`);
+  }catch(e){ toast(staffFail(e)); }
+  S.groundReporting = false; render();
+}
+function groundReportRow(f){
+  if (f.id === 'here') return '';
+  const g = data(f).ground || {}, last = g.reports && g.reports.last, fresh = last && Date.now() - Date.parse(last.at) < 6 * 3600000;
+  return `<p class="h">How is the ground?</p>
+    <div class="chips">${Object.entries(GROUND_STATE_LABEL).map(([v, l]) => `<button class="chip ${fresh && last.state === v ? 'on' : ''}" onclick="reportGround('${v}')" ${S.groundReporting ? 'disabled' : ''}>${l}</button>`).join('')}</div>
+    <p class="note">${fresh ? `Last reported ${esc(GROUND_STATE_LABEL[last.state].toLowerCase())} ${esc(ago(last.at))}${g.reports.recent > 1 ? `, ${g.reports.recent} reports in six hours` : ''}.` : 'One tap tells everyone here, and teaches the app how much rain this ground takes.'}${g.learned ? ` This ground goes soft at about ${esc(g.learned.threshold.toFixed(2))} in, from ${g.learned.samples} report${g.learned.samples === 1 ? '' : 's'}.` : ''}</p>`;
+}
 /** One line about the ground for the prep screen: "Grass, drains fast · 1.2 in of rain in the last two days". */
 function groundLine(g){
   if (!g) return '';
@@ -1026,9 +1048,11 @@ function mudTier(ground = {}, aheadIn = 0, rateInHr = 0) {
   const past = Math.round(((p.in24 || 0) * 0.6 + Math.max(0, (p.in48 || 0) - (p.in24 || 0)) * 0.3) * 100) / 100, effective = Math.round((aheadIn + past) * 100) / 100;
   if (surface === 'pavement') return { tier: rateInHr >= 0.3 || aheadIn >= 1 ? 'runoff' : aheadIn >= 0.1 ? 'slick' : 'wet', effective, threshold: null, past };
   if (surface === 'sand') return { tier: low && aheadIn >= 1 ? 'water' : 'wet', effective, threshold: null, past };
-  const threshold = Math.round((MUD_IN[soil] || MUD_IN.B) * (SURFACE_X[surface] || 1) * 100) / 100;
+  // What this ground actually did in the rain (reports from the field, ground.js) beats the soil table.
+  const learned = ground.learned && ground.learned.threshold > 0 ? ground.learned.threshold : null;
+  const threshold = learned || Math.round((MUD_IN[soil] || MUD_IN.B) * (SURFACE_X[surface] || 1) * 100) / 100;
   const tier = low && (aheadIn >= 1 || rateInHr >= 0.5) ? 'water' : effective >= 2 * threshold ? 'deep' : effective >= threshold ? 'soft' : 'wet';
-  return { tier, effective, threshold, past };
+  return { tier, effective, threshold, past, learned: Boolean(learned) };
 }
 /** The ground in a few words: "grass over clay, low ground". */
 function groundWords(ground = {}) {
@@ -1117,7 +1141,8 @@ function incomingLine(inc){
   if (inc.mud && inc.mud.past >= 0.1) bits.push(`${inc.mud.past.toFixed(1)} in already down`);
   if (p.heat >= THRESHOLDS.heatF) bits.push(`heat index ${Math.round(p.heat)}°`);
   const ground = inc.mud && inc.mud.tier !== 'wet' ? ` · ${groundWords(inc.ground || {})}` : '';
-  return `${span}${bits.length ? ' · ' + bits.join(', ') : ''}${ground}`;
+  const rep = inc.ground && inc.ground.reports && inc.ground.reports.last, said = rep && Date.now() - Date.parse(rep.at) < 6 * 3600000 ? ` · reported ${GROUND_STATE_LABEL[rep.state] ? GROUND_STATE_LABEL[rep.state].toLowerCase() : rep.state} ${ago(rep.at)}` : '';
+  return `${span}${bits.length ? ' · ' + bits.join(', ') : ''}${ground}${said}`;
 }
 /** The card under the sky: what, when, the countdown, and the first three things to do. */
 function headsUpCard(f){
@@ -1528,6 +1553,7 @@ screens.prep = () => {
     <p class="sub">${esc(incomingLine(inc))}</p>
     <div class="countdown glass"><span class="eyebrow">${now ? 'Started' : 'Arrives in'}</span><b class="num" data-countdown="${esc(inc.startsAt)}" data-bare="1">${esc(countdownText(inc.startsAt, true))}</b><span class="s">${esc(mudLine || timing(inc.hazard, m))}</span></div>
     <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${esc(P.shelter)}</p></div></div>
+    ${groundReportRow(f)}
     <p class="h">Solidify camp, in order</p>
     <div class="group glass steps">${plan.map(d => `<div class="step"><span class="n"></span><span class="task">${esc(d.task)}</span><b class="by num">${d.late ? 'now' : 'by ' + esc(fmtTime(d.startBy))}</b></div>`).join('')}</div>
     <p class="h">Timeline</p>
