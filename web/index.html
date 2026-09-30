@@ -15,7 +15,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..700,100,1&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..700,100,1&display=optional">
 <title>Fieldwatch</title>
 <style>
 :root{
@@ -127,7 +127,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px;font-weight:600}
 
 /* Welcome */
-.welcome{min-height:calc(100vh - 140px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8px 0 30px}
+.welcome{min-height:calc(100vh - 140px);min-height:calc(100svh - 140px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8px 0 30px}
 .mark{position:relative;isolation:isolate;width:150px;height:150px;margin-bottom:28px}
 .mark .glow{position:absolute;inset:-16px;border-radius:50%;background:conic-gradient(from 0deg,var(--pink),var(--tang),var(--lime),var(--cyan),var(--violet),var(--pink));filter:blur(22px);z-index:-1;opacity:.9}
 @media (prefers-reduced-motion:no-preference){.mark .glow{animation:spin 16s linear infinite}}
@@ -2143,10 +2143,20 @@ async function share(id){
   }catch(e){ if (!e || e.name !== 'AbortError') toast("Couldn't share on this device"); }
 }
 
+// The entrance animation belongs to a move between screens, once. Everything else that calls render (data landing, a busy flag,
+// a keystroke in the search box, a live change) swaps the same screen's content in place: no rise, no fade, and an opened fold
+// stays open. `entering` keeps the animation on a move's follow-up renders in the same turn, until the browser has started it.
+let shown = '', entering = false, enterTimer = null;
+document.addEventListener('animationstart', e => { if (e.animationName === 'rise') entering = false; }, true);
 function render(rev){
   const app = document.getElementById('app');
   const fn = screens[S.screen] || screens.picker;
-  app.innerHTML = `<div class="screen in ${rev ? 'rev' : ''}">${fn(S.param)}</div>`;
+  const key = `${S.screen}:${S.param || ''}`, nav = key !== shown || entering;
+  shown = key;
+  if (nav && !entering) { entering = true; clearTimeout(enterTimer); enterTimer = setTimeout(() => { entering = false; }, 400); }
+  const open = nav ? [] : [...app.querySelectorAll('details')].map(d => d.open);
+  app.innerHTML = `<div class="screen${nav ? ' in' : ''}${rev ? ' rev' : ''}">${fn(S.param)}</div>`;
+  if (!nav) app.querySelectorAll('details').forEach((d, i) => { if (open[i]) d.open = true; });
   if (S.screen === 'radar') { fitStage(); showFrame(); updatePlay(); updateRadarNote(); }
   if (S.screen === 'weather') { chartHover(); crewHover(); }
 }

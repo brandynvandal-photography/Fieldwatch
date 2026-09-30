@@ -908,3 +908,36 @@ test('staff settings stay out of sight: the backend address and the admin key sh
   } finally { await other.context.close(); }
   assert.deepEqual(seen.errors, []);
 });
+
+test('the screen rises once, on a move: data landing later swaps in place with no animation, and an opened fold stays open', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  await page.addInitScript(() => { window.__rises = 0; document.addEventListener('animationstart', e => { if (e.animationName === 'rise') window.__rises++; }, true); });
+  const rises = () => page.evaluate(() => window.__rises), reset = () => page.evaluate(() => { window.__rises = 0; });
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.waitForSelector('span.eyebrow:has-text("Right now")'); await page.waitForTimeout(500);
+    assert.equal(await rises(), 2, 'the walkthrough rose, then the home page: once each, whatever loaded after');
+    // A live change reloads the feed, and a plain re-render happens for a busy flag: the content swaps in place.
+    await reset();
+    store.emit({ festivalId: 'hulaween-2026', kind: 'alerts', at: new Date().toISOString() }); await page.waitForTimeout(500);
+    await page.evaluate(() => render()); await page.waitForTimeout(500);
+    assert.equal(await rises(), 0, 'no entrance animation for data');
+    // Each move is one rise: to the picker, then to the festival page, with none for the forecast that lands after it.
+    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); await page.waitForTimeout(400);
+    assert.equal(await rises(), 1, 'the picker');
+    await page.fill('#q', 'hula'); await page.waitForTimeout(300);
+    assert.equal(await rises(), 1, 'typing in the search box re-renders the list in place');
+    await reset();
+    await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); await page.waitForTimeout(600);
+    assert.equal(await rises(), 1, 'the festival page');
+    await reset();
+    await page.click('.sky.warn'); await page.waitForSelector('details.more');
+    await page.click('details.more summary'); assert.ok(await page.$eval('details.more', d => d.open));
+    await page.evaluate(() => render()); await page.waitForTimeout(300);
+    assert.ok(await page.$eval('details.more', d => d.open), 'the fold stays open through a re-render');
+    assert.equal(await rises(), 1, 'the alert screen rose once, on arrival');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
