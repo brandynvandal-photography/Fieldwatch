@@ -5,6 +5,9 @@ import { db, q } from '../db.js';
 import { normalizeFestival, sameFestival, slug } from '../festivals.js';
 import { iso } from '../util.js';
 
+/** What went wrong, with the cause Node's fetch hides behind "fetch failed" (ENOTFOUND, ECONNREFUSED, a TLS error). */
+export const errorText = e => { const c = e?.cause; return `${e?.message || e}${c ? ` (${c.code || c.message || c})` : ''}`; };
+
 const DAY = 86_400_000;
 export const ADD_ON = /\b(parking|shuttle|camping|campsite|campground|locker|merch|payment plan|layaway|upgrade|add[- ]?on|glamping|rv pass|car pass|bus pass)\b/i;
 export const VENUE_NAMED_FESTIVAL = /\bfestival (pier|hall|park|theat\w*|grounds|stage|field|plaza|centre|center)\b/i;

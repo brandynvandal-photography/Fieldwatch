@@ -251,7 +251,7 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   serve.sparql = () => ({ status: 503 });
   const lines = [];
   const bad = await importWikidata({ ...opts, log: { error: m => lines.push(m) } });
-  assert.deepEqual(bad, { calls: 1, errors: 1, candidates: 0, sitesChecked: 0, festivals: 0, added: 0, updated: 0, duplicates: 0, pruned: 0 });
+  assert.deepEqual(bad, { calls: 1, errors: 1, lastError: 'SPARQL 503', candidates: 0, sitesChecked: 0, festivals: 0, added: 0, updated: 0, duplicates: 0, pruned: 0 });
   assert.deepEqual(lines, ['wikidata: SPARQL 503']);
   assert.ok(q.festival('wd-q9003-moonrise-fest-2026'), 'kept through a bad run'); assert.equal(Object.keys(cache()).length, 4);
   const dead = await importWikidata({ ...opts, fetchImpl: async () => { throw new Error('fetch failed'); } });

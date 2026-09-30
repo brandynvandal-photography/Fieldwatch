@@ -107,7 +107,10 @@ app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
   adminKey: Boolean(process.env.ADMIN_KEY),
   nwsUserAgent: !process.env.NWS_USER_AGENT || /example\.com/.test(process.env.NWS_USER_AGENT) ? 'placeholder' : 'set',
   sources: { ticketmaster: Boolean(process.env.TICKETMASTER_KEY), seatgeek: Boolean(process.env.SEATGEEK_CLIENT_ID), edmtrain: Boolean(process.env.EDMTRAIN_KEY), wikidata: wikidataSkipped() || 'on', feeds: Boolean(process.env.FESTIVAL_FEEDS) },
-  imports: { running: imports.running, lastStartedAt: imports.last?.startedAt || null, lastFinishedAt: imports.last?.finishedAt || null },
+  imports: { running: imports.running, lastStartedAt: imports.last?.startedAt || null, lastFinishedAt: imports.last?.finishedAt || null,
+    // Per source, what the last run managed and the last error it hit, so a failing key or a blocked host shows here.
+    sources: Object.fromEntries(Object.entries(imports.last || {}).filter(([, v]) => v && typeof v === 'object')
+      .map(([k, v]) => [k, v.skipped ? { skipped: v.skipped } : { calls: v.calls ?? 0, errors: v.errors ?? 0, festivals: v.festivals ?? 0, added: v.added ?? 0, ...(v.lastError && { lastError: v.lastError }), ...(v.error && { error: v.error }) }])) },
 }));
 
 // ---- Festivals: the list itself ------------------------------------------

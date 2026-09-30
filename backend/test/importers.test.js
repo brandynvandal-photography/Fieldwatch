@@ -128,7 +128,7 @@ test('the import walks a year in monthly windows with three nets, skips what is 
   // A run with fetch errors never prunes on absence; it only knows what it managed to fetch.
   serve = url => (url.searchParams.get('keyword') === 'festival' ? { status: 500 } : tmPage([]));
   const r3 = await importTicketmaster({ key: 'k-test', fetchImpl, now: NOW, pauseMs: 0, log: { error: () => {} } });
-  assert.equal(r3.errors, 12); assert.equal(r3.pruned, 0);
+  assert.equal(r3.errors, 12); assert.equal(r3.pruned, 0); assert.match(r3.lastError, /500/, 'the report says what went wrong');
   assert.ok(q.festival('tm-moonrise-fest-2026'), 'kept through a bad run');
 
   // Without a key the source is skipped, and the error line never carries the key.
@@ -244,7 +244,9 @@ test('SeatGeek: music_festival listings fold into festivals, other types and oth
 
   const lines = [];
   const bad = await importSeatGeek({ clientId: 'sg-secret', fetchImpl: async () => new Response('', { status: 403 }), now: NOW, pauseMs: 0, log: { error: m => lines.push(m) } });
-  assert.equal(bad.errors, 1); assert.equal(bad.pruned, 0, 'nothing pruned on a bad run');
+  assert.equal(bad.errors, 1); assert.equal(bad.pruned, 0, 'nothing pruned on a bad run'); assert.match(bad.lastError, /^SeatGeek 403/);
+  const down = await importSeatGeek({ clientId: 'sg-secret', fetchImpl: async () => { const e = new TypeError('fetch failed'); e.cause = Object.assign(new Error('getaddrinfo ENOTFOUND api.seatgeek.com'), { code: 'ENOTFOUND' }); throw e; }, now: NOW, pauseMs: 0, log: { error: () => {} } });
+  assert.equal(down.lastError, 'fetch failed (ENOTFOUND)', 'the cause Node hides behind "fetch failed" is in the report');
   assert.ok(lines.length && lines.every(l => !l.includes('sg-secret')));
   assert.deepEqual(await importSeatGeek({ clientId: '', fetchImpl }), { skipped: 'SEATGEEK_CLIENT_ID not set' });
 });
@@ -283,7 +285,7 @@ test('Edmtrain: one request, festivals only, US only, the event link kept as giv
   assert.ok(q.festival('edm-bayou-bass-2026'));
 
   const refused = await importEdmtrain({ key: 'edm-secret', fetchImpl: async () => new Response(JSON.stringify(edmBody([], { success: false, message: 'Invalid client' })), { status: 200 }), now: NOW, log: { error: () => {} } });
-  assert.equal(refused.errors, 1); assert.equal(refused.pruned, 0);
+  assert.equal(refused.errors, 1); assert.equal(refused.pruned, 0); assert.match(refused.lastError, /Invalid client/);
   assert.ok(q.festival('edm-bayou-bass-2026'), 'kept through a refused run');
   assert.deepEqual(await importEdmtrain({ key: '', fetchImpl }), { skipped: 'EDMTRAIN_KEY not set' });
   // Aftershock is curated on the same grounds a month earlier: different dates, so Beyond Wonderland is its own festival.

@@ -1,7 +1,7 @@
 // SeatGeek Platform API: a free client id (seatgeek.com/account/develop) and a music_festival
 // taxonomy, which reaches a lot of ticketing Ticketmaster does not carry, including smaller
 // independents. Listings fold into festivals exactly as Ticketmaster's do (common.js).
-import { ADD_ON, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey } from './common.js';
+import { ADD_ON, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, errorText } from './common.js';
 import { iso } from '../util.js';
 
 const API = 'https://api.seatgeek.com/2/events';
@@ -40,7 +40,7 @@ export async function importSeatGeek({ clientId = process.env.SEATGEEK_CLIENT_ID
   pauseMs = Number(process.env.SEATGEEK_PAUSE_MS ?? 250), log = console } = {}) {
   if (!clientId) return { skipped: 'SEATGEEK_CLIENT_ID not set' };
   const events = new Map();
-  let calls = 0, errors = 0;
+  let calls = 0, errors = 0, lastError = null;
   try {
     for (let page = 1; page <= MAX_PAGES; page++) {
       const u = new URL(API);
@@ -55,7 +55,7 @@ export async function importSeatGeek({ clientId = process.env.SEATGEEK_CLIENT_ID
       if (!(body.events || []).length || page * PER_PAGE >= total) break;
       if (pauseMs) await new Promise(r => setTimeout(r, pauseMs));
     }
-  } catch (e) { errors++; log.error(`seatgeek: ${e.message}`); }
+  } catch (e) { errors++; lastError = errorText(e); log.error(`seatgeek: ${lastError}`); }
   const found = festivalsFrom([...events.values()], iso(new Date(now)).slice(0, 10));
-  return { calls, errors, events: events.size, ...applyImport({ origin: 'seatgeek', found, now, errors }) };
+  return { calls, errors, ...(lastError && { lastError }), events: events.size, ...applyImport({ origin: 'seatgeek', found, now, errors }) };
 }

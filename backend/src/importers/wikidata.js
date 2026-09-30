@@ -10,7 +10,7 @@
 // sites' (common.js): a curated festival on the same grounds and dates is never overwritten.
 import { q } from '../db.js';
 import { distanceKm } from '../festivals.js';
-import { applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, normalizeName } from './common.js';
+import { applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, normalizeName, errorText } from './common.js';
 import { iso } from '../util.js';
 
 export const SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
@@ -317,7 +317,7 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
   cacheDays = Number(process.env.WIKIDATA_CACHE_DAYS ?? 6), timeoutMs = SITE_TIMEOUT_MS, log = console } = {}) {
   const skipped = skipReason({ enabled, userAgent });
   if (skipped) return { skipped };
-  let calls = 0, errors = 0, sitesChecked = 0, candidates = [], queried = false;
+  let calls = 0, errors = 0, sitesChecked = 0, candidates = [], queried = false, lastError = null;
   try {
     const u = new URL(SPARQL_ENDPOINT);
     u.searchParams.set('query', SPARQL); u.searchParams.set('format', 'json');
@@ -326,7 +326,7 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
     if (!res.ok) throw new Error(`SPARQL ${res.status}`);
     candidates = parseCandidates(await res.json());
     queried = true;
-  } catch (e) { errors++; log.error(`wikidata: ${e.message}`); }
+  } catch (e) { errors++; lastError = errorText(e); log.error(`wikidata: ${lastError}`); }
 
   // Per-site memory: { [website]: { checkedAt, ok, events?, robots?, error? } }. A hit keeps its events so the
   // festival is still produced (and not pruned) on the days the site is not fetched.
@@ -346,7 +346,7 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
         entry = { checkedAt: at, ok: r.events.length > 0, ...(r.events.length ? { events: r.events } : {}), ...(r.robots ? { robots: true } : {}) };
       } catch (e) {
         // A site that is down today keeps what it said last time; it is asked again when that expires.
-        errors++; log.error(`wikidata ${c.website}: ${e.message}`);
+        errors++; lastError = `${c.website}: ${errorText(e)}`; log.error(`wikidata ${lastError}`);
         entry = { ...(entry || { ok: false }), checkedAt: at, error: String(e.message).slice(0, 120) };
       }
       cache[c.website] = entry;
@@ -359,5 +359,5 @@ export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, us
   const found = festivalsFrom(listings, at.slice(0, 10));
   // Only a failed query blocks prune-on-absence: a site that is down kept its last answer, and is no reason to
   // keep a listing that vanished from a site that answered. The report still counts every error.
-  return { calls, errors, candidates: candidates.length, sitesChecked, ...applyImport({ origin: 'wikidata', found, now, errors: queried ? 0 : 1 }) };
+  return { calls, errors, ...(lastError && { lastError }), candidates: candidates.length, sitesChecked, ...applyImport({ origin: 'wikidata', found, now, errors: queried ? 0 : 1 }) };
 }

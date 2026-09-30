@@ -3,7 +3,7 @@
 // self-serve ticketing, where small independents turn up). A free key from developer.ticketmaster.com
 // allows 5,000 calls a day; one run here uses around 150. Per-day listings fold into one festival
 // (common.js), add-ons are dropped, and anything already listed from another source is left alone.
-import { ADD_ON, FESTY, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, normalizeName } from './common.js';
+import { ADD_ON, FESTY, VENUE_NAMED_FESTIVAL, applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, normalizeName, errorText } from './common.js';
 import { iso } from '../util.js';
 
 export { normalizeName };
@@ -64,7 +64,7 @@ export async function importTicketmaster({ key = process.env.TICKETMASTER_KEY, f
   pauseMs = Number(process.env.TICKETMASTER_PAUSE_MS ?? 250), log = console } = {}) {
   if (!key) return { skipped: 'TICKETMASTER_KEY not set' };
   const events = new Map(), trusted = new Set();
-  let calls = 0, errors = 0;
+  let calls = 0, errors = 0, lastError = null;
   for (let w = 0; w < WINDOWS; w++) {
     const range = { countryCode: 'US', startDateTime: iso(new Date(now + w * WINDOW_DAYS * DAY)), endDateTime: iso(new Date(now + (w + 1) * WINDOW_DAYS * DAY)), sort: 'date,asc' };
     // Three nets: music events with "festival" in their text, anything Ticketmaster itself styles a
@@ -80,9 +80,9 @@ export async function importTicketmaster({ key = process.env.TICKETMASTER_KEY, f
           calls++;
           for (const ev of batch) if (ev?.id) { events.set(ev.id, ev); if (params.source === 'frontgate') trusted.add(ev.id); }
         }
-      } catch (e) { errors++; log.error(`ticketmaster: ${e.message}`); }
+      } catch (e) { errors++; lastError = errorText(e); log.error(`ticketmaster: ${lastError}`); }
     }
   }
   const found = festivalsFrom([...events.values()], iso(new Date(now)).slice(0, 10), trusted);
-  return { calls, errors, events: events.size, frontgate: trusted.size, hosts: hosts(found), ...applyImport({ origin: 'ticketmaster', found, now, errors }) };
+  return { calls, errors, ...(lastError && { lastError }), events: events.size, frontgate: trusted.size, hosts: hosts(found), ...applyImport({ origin: 'ticketmaster', found, now, errors }) };
 }

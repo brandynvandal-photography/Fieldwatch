@@ -297,7 +297,7 @@ function fakeBackend(list) {
       if (m === 'POST' && pub) { store.pendingReports = store.pendingReports.filter(i => i.id !== pub[2]); return send(200, { id: pub[2], push: {} }); }
       const delInc = path.match(/^\/festivals\/([^/]+)\/incidents\/([^/]+)$/);
       if (m === 'DELETE' && delInc) { store.pendingReports = store.pendingReports.filter(i => i.id !== delInc[2]); return send(200, { ok: true }); }
-      const report = () => ({ startedAt: '2026-10-23T09:00:00Z', finishedAt: '2026-10-23T09:01:00Z', ticketmaster: { skipped: 'TICKETMASTER_KEY not set' }, seatgeek: { skipped: 'SEATGEEK_CLIENT_ID not set' }, edmtrain: { calls: 1, errors: 0, events: 40, festivals: 12, added: 3, updated: 9, duplicates: 2, pruned: 0 }, feeds: { skipped: 'FESTIVAL_FEEDS not set' } });
+      const report = () => ({ startedAt: '2026-10-23T09:00:00Z', finishedAt: '2026-10-23T09:01:00Z', ticketmaster: { skipped: 'TICKETMASTER_KEY not set' }, seatgeek: { calls: 0, errors: 1, lastError: 'fetch failed (ENOTFOUND)', events: 0, festivals: 0, added: 0, updated: 0, duplicates: 0, pruned: 0 }, edmtrain: { calls: 1, errors: 0, events: 40, festivals: 12, added: 3, updated: 9, duplicates: 2, pruned: 0 }, feeds: { skipped: 'FESTIVAL_FEEDS not set' } });
       if (m === 'GET' && path === '/admin/import') return send(200, { ...report(), running: false, finishedAt: store.imports ? '2026-10-23T09:05:00Z' : '2026-10-23T09:01:00Z' });
       if (m === 'POST' && path === '/admin/import') { store.imports++; return send(202, { started: true, running: true, last: report() }); }
       if (m === 'GET' && path === '/festivals/pending') return send(200, store.pending);
@@ -361,6 +361,7 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     await page.click('button:has-text("Festival sources")');
     await page.waitForSelector('.row:has-text("Edmtrain") .pill.on');
     assert.match(await page.textContent('.row:has-text("Ticketmaster")'), /No key/);
+    assert.match(await page.textContent('.row:has-text("SeatGeek")'), /1 errors · fetch failed \(ENOTFOUND\)/, 'the last error is on the screen');
     assert.match(await page.textContent('.row:has-text("Edmtrain")'), /3 added, 9 updated, 2 already listed/);
     await shot(page, '18-sources');
     await page.click('button:has-text("Run now")');

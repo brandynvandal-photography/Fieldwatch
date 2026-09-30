@@ -69,10 +69,10 @@ export async function pollPoint(p) {
 
 export async function pollOnce() {
   for (const f of festivalsInWindow()) {
-    try { await pollFestival(f); } catch (e) { console.error(`[${f.id}] poll failed:`, e.message); }
+    try { await pollFestival(f); } catch (e) { console.error(`[${f.id}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   }
   for (const p of q.webSubscriptionPoints()) {
-    try { await pollPoint(p); } catch (e) { console.error(`[pt:${p.latitude},${p.longitude}] poll failed:`, e.message); }
+    try { await pollPoint(p); } catch (e) { console.error(`[pt:${p.latitude},${p.longitude}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   }
   q.purgeAlerts(daysFromNow(-7));
 }
