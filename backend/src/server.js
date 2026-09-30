@@ -13,5 +13,5 @@ app.listen(port, () => {
   console.log(`Fieldwatch backend on :${port}`);
   startPolling();
   startRadarLoop();
-  if (startImporters()) console.log('Festival imports on (Ticketmaster and/or feeds)');
+  if (startImporters()) console.log('Festival imports on (Wikidata, plus any source with a key)');
 });
