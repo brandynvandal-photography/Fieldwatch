@@ -6,7 +6,7 @@ import { readFile, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { q } from './db.js';
 import { buildPack } from './pack.js';
-import { pollFestival, polledRecently } from './poller.js';
+import { festivalsInWindow, pollFestival, polledRecently } from './poller.js';
 import { pushAlert } from './push.js';
 import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
 import QRCode from 'qrcode';
@@ -119,6 +119,14 @@ app.get('/festivals', (req, res) => {
   // ?all=1 is the whole published list; with the admin key, ?hidden=1 adds what staff hid, so it can be unhidden.
   if (req.query.all && req.query.hidden && isAdmin(req)) return res.json(q.allFestivals().filter(f => ['published', 'hidden'].includes(f.status || 'published')));
   const all = q.publishedFestivals(); res.json(req.query.all ? all : all.filter(f => isLive(f)));
+});
+// The home page: every current alert at every festival that is on, grouped by festival, the worst first.
+const RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
+app.get('/alerts', (req, res) => {
+  const on = festivalsInWindow(), rank = a => RANK[String(a.severity || '').toLowerCase()] || 0;
+  const items = on.map(f => ({ festival: f, alerts: q.activeAlerts(f.id).sort((a, b) => rank(b) - rank(a)) })).filter(i => i.alerts.length);
+  items.sort((a, b) => rank(b.alerts[0]) - rank(a.alerts[0]) || Date.parse(a.festival.startDate) - Date.parse(b.festival.startDate));
+  res.set('Cache-Control', 'no-store').json({ at: iso(), on: on.length, items });
 });
 // A listing the importers got wrong (a concert, a tour, a car show) goes out of sight; an import keeps it hidden.
 const setStatus = status => (req, res) => {

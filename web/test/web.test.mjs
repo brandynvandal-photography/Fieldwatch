@@ -75,7 +75,8 @@ async function newPage(opts = {}) {
   await page.route(/tile\.openstreetmap\.org/, r => { seen.tiles++; r.fulfill({ status: 200, contentType: 'image/png', body: PNG }); });
   return { page, context, seen, live };
 }
-const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Find your festival")'); if (await start.count()) await start.click(); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
+// The home page is the alerts feed; the picker is one tap away on it.
+const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 
 test('the walkthrough opens once; then only what is on: bubbles first, the rest a list, search, and a way to add one', async () => {
@@ -85,7 +86,10 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   assert.equal(await page.textContent('h1.title'), 'Fieldwatch');
   assert.equal(await page.$$eval('.trio .orb', els => els.length), 3);
   await shot(page, '0-welcome');
-  await page.click('button:has-text("Find your festival")');
+  await page.click('button:has-text("Use my location")');
+  await page.waitForSelector('span.eyebrow:has-text("Right now")');
+  assert.match(await page.textContent('h1.title'), /warning|advisor|All clear|Checking|No signal/, 'the home page is what is happening, not a list');
+  await page.click('button.row:has-text("All festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   const on = FESTS.filter(f => isLive(f)), off = FESTS.filter(f => !isLive(f));
   assert.ok(on.length >= 2 && off.length >= 2, 'the fixture has festivals on and festivals not on');
@@ -105,8 +109,8 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   assert.ok(await page.$('button.row:has-text("Right where you are")'), 'your own spot is always an option');
   await page.fill('#q', '');
   await page.goto(`${base}/index.html`);
-  await page.waitForSelector('h1.title');
-  assert.equal(await page.textContent('h1.title'), 'Which festival?', 'the welcome step is shown once');
+  await page.waitForSelector('span.eyebrow:has-text("Right now")');
+  assert.notEqual(await page.textContent('h1.title'), 'Fieldwatch', 'the welcome step is shown once');
   assert.deepEqual(seen.errors, []);
   await context.close();
 });
@@ -237,6 +241,9 @@ test('losing the weather service keeps the last good data and says so', async ()
   await shot(page, '6-offline');
 
   await page.reload();
+  await page.waitForSelector('span.eyebrow:has-text("Right now")');
+  assert.match(await page.textContent('.group .row:has-text("Suwannee Hulaween") .s'), /Severe Thunderstorm Warning/, 'the home page shows your festival from its cache');
+  await page.click('.group .row:has-text("Suwannee Hulaween")');
   await page.waitForSelector('.sky.warn');
   assert.match(await page.textContent('.sky h2'), /Severe Thunderstorm Warning/, 'the cache survives a reload');
   assert.deepEqual(seen.errors, []);
@@ -267,7 +274,11 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [] };
+  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null };
+  // What the home page shows: the fixture's warning at Hulaween, an advisory at the next festival that is on.
+  const p = alertFeature().properties, toAlert = over => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null, severity: String(p.severity || 'Unknown').toLowerCase(), area: p.areaDesc ?? '', source: p.senderName ?? 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0, ...over });
+  const other = store.list.find(f => isLive(f) && f.id !== 'hulaween-2026');
+  store.feed = [{ festivalId: 'hulaween-2026', alerts: [toAlert({})] }, ...(other ? [{ festivalId: other.id, alerts: [toAlert({ id: 'urn:oid:feed-adv', event: 'Heat Advisory', severity: 'minor', headline: 'Heat Advisory until 8 PM' })] }] : [])];
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-allow-headers': 'Content-Type, x-admin-key' };
   const server = http.createServer((req, res) => {
     let raw = ''; req.on('data', c => { raw += c; }); req.on('end', () => {
@@ -288,6 +299,7 @@ function fakeBackend(list) {
       if (m === 'GET' && /^\/festivals\/[^/]+\/qr\.svg$/.test(path)) { res.writeHead(200, { ...cors, 'content-type': 'image/svg+xml' }); return res.end('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 21 21"><rect width="21" height="21" fill="#fff"/><path d="M1 1h7v7H1z" fill="#000"/></svg>'); }
       const rep = path.match(/^\/festivals\/([^/]+)\/reports$/);
       if (m === 'POST' && rep) { const b = JSON.parse(raw); if (!b.summary || b.summary.length < 8) return send(400, { error: 'summary required' }); store.reports.push({ festival: rep[1], ...b }); return send(202, { id: `rep-${store.reports.length}`, queued: true }); }
+      if (m === 'GET' && path === '/alerts') return send(200, { at: new Date().toISOString(), on: store.list.filter(f => isLive(f) && f.status !== 'hidden').length, items: (store.feed || []).map(x => ({ festival: store.list.find(f => f.id === x.festivalId), alerts: x.alerts })).filter(i => i.festival) });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
       if (m === 'GET' && path === '/health') return send(200, { ok: true, at: '2026-10-23T09:00:00Z', build: '4356d78', uptimeSeconds: 61, database: { path: '/data/fieldwatch.db', onVolume: true }, festivals: 14, push: { web: true }, adminKey: true, nwsUserAgent: 'placeholder', sources: { ticketmaster: false, seatgeek: false, edmtrain: true, wikidata: 'NWS_USER_AGENT not set', feeds: false }, imports: { running: false, lastStartedAt: '2026-10-23T09:00:00Z', lastFinishedAt: '2026-10-23T09:01:00Z' } });
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
@@ -324,7 +336,8 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
   const { server, store, base: api } = await fakeBackend([...FESTS, extra]);
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
-    await page.click('button:has-text("Find your festival")');
+    await page.click('button:has-text("Use my location")');
+    await page.click('button.row:has-text("All festivals")');
     await page.waitForSelector('h1.title:has-text("Which festival?")');
     await page.waitForSelector('button.row:has-text("Blackwater Gathering")');
     assert.ok(store.calls.includes('GET /festivals'), 'the list came from the backend');
@@ -460,7 +473,7 @@ test('with location on, the app opens the festival you are standing at, sorts th
   await context.grantPermissions(['geolocation']);
   await context.setGeolocation({ latitude: 30.4045, longitude: -82.9390 });   // the Hulaween grounds
   await page.goto(`${base}/index.html`);
-  await page.click('button:has-text("Find your festival")');
+  await page.click('button:has-text("Use my location")');
   await page.waitForSelector('.sky', { timeout: 10000 });
   assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'no tap needed: you are there');
   await page.click('button.orb:has-text("Radar")');
@@ -471,6 +484,9 @@ test('with location on, the app opens the festival you are standing at, sorts th
   await page.click('button[aria-label="Back"]');
   await page.waitForSelector('.sky');
   await page.click('button:has-text("Change")');
+  await page.waitForSelector('span.eyebrow:has-text("Right now")');
+  assert.match(await page.textContent('.group .row .t'), /Suwannee Hulaween/, 'the home page keeps your festival at the top');
+  await page.click('button.row:has-text("All festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   assert.equal((await page.$$eval('p.h', els => els.map(e => e.textContent)))[0], 'Right here');
   assert.equal(await page.textContent('.bubble .t'), 'Suwannee Hulaween');
@@ -482,6 +498,9 @@ test('with location on, the app opens the festival you are standing at, sorts th
   // From far away, nothing opens by itself, and the nearest comes first.
   await context.setGeolocation({ latitude: 39.74, longitude: -104.99 });   // Denver
   await page.goto(`${base}/index.html`);
+  await page.waitForSelector('span.eyebrow:has-text("Right now")');
+  assert.equal(await page.$('.sky'), null, 'from far away nothing opens by itself');
+  await page.click('button.row:has-text("All festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   await page.waitForFunction(() => /\d mi/.test(document.querySelector('.bubble .ph')?.textContent || ''));
   const dist = await page.$$eval('.bubble .ph', els => els.map(e => Number(e.textContent.match(/([\d,.]+) mi/)?.[1].replace(',', ''))));
@@ -558,7 +577,7 @@ test('right where you are: alerts, forecast, radar and warnings for the phone\'s
   });
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
-    await page.click('button:has-text("Find your festival")');
+    await page.click('button:has-text("Use my location")');
     await page.waitForSelector('button.row:has-text("Right where you are")');
     await page.click('button.row:has-text("Right where you are")');
     await page.waitForSelector('.sky.warn');
@@ -603,7 +622,7 @@ test('warnings stay on across a backend redeploy: on open the phone registers ag
   });
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
-    await page.waitForSelector('.sky.warn');
+    await page.waitForSelector('span.eyebrow:has-text("Right now")');
     await page.waitForFunction(() => window.__key);
     assert.equal(await page.evaluate(() => window.__unsubscribed), 'https://push.example.test/old', 'the subscription made against the old key is dropped');
     assert.deepEqual(await page.evaluate(() => window.__key), Array.from(Buffer.from('BPUBLICKEY', 'base64url')), 'and a new one made against the key the backend has now');
@@ -612,10 +631,44 @@ test('warnings stay on across a backend redeploy: on open the phone registers ag
     assert.equal(store.subs[0].quiet, true, 'registered again without a welcome notification');
     assert.equal(store.subs[0].festivalId, 'hulaween-2026');
     assert.equal(store.subs[0].subscription.endpoint, 'https://push.example.test/new');
-    assert.equal(await page.textContent('.pill'), 'On');
-    await page.reload();
+    await page.click('.group .row:has-text("Suwannee Hulaween")');
     await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('button.row:has-text("Warnings on this phone") .pill'), 'On');
+    await page.reload();
+    await page.waitForSelector('span.eyebrow:has-text("Right now")');
     assert.equal(store.calls.filter(c => c === 'POST /push/subscribe').length, 1, 'checked once an hour, not on every open');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+
+test('the home page is every current alert at every festival that is on: the worst first, a tap opens it on its festival, and a quiet day says so', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.waitForSelector('h1.title:has-text("1 warning")');
+    assert.match(await page.textContent('.sub'), /2 of \d+ festivals on now with alerts/);
+    const cards = await page.$$eval('.feedfest .fh .t', els => els.map(e => e.textContent));
+    assert.equal(cards[0], 'Suwannee Hulaween', 'the warning comes before the advisory');
+    assert.equal(cards.length, 2);
+    assert.deepEqual(await page.$$eval('.feedfest .alert .t', els => els.map(e => e.textContent)), ['Severe Thunderstorm Warning', 'Heat Advisory']);
+    assert.ok(await page.$('button.row:has-text("All festivals")'), 'the list is one tap away, not the page');
+    await shot(page, '20-feed');
+    await page.click('.feedfest .alert:has-text("Severe Thunderstorm Warning")');
+    await page.waitForSelector('.alerthead h2:has-text("Severe Thunderstorm Warning")');
+    await page.click('button[aria-label="Back"]');
+    await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'behind the alert is its festival');
+    await page.click('button:has-text("Change")');
+    await page.waitForSelector('h1.title:has-text("1 warning")');
+    assert.match(await page.textContent('.group .row .t'), /Suwannee Hulaween/, 'and the festival you opened stays at the top of the home page');
+
+    store.feed = [];
+    await page.click('button[aria-label="Refresh"]');
+    await page.waitForSelector('h1.title:has-text("All clear")');
+    assert.match(await page.textContent('.empty'), /Nothing to worry about/);
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

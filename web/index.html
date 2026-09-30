@@ -262,6 +262,8 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .btn[disabled]{opacity:.45;pointer-events:none}
 .btn.small{min-height:44px;width:auto;padding:8px 22px;font-size:15px}
 .pend.dim{opacity:.55}
+.feedfest .fh{padding:12px 16px 2px} .feedfest .fh .t{font-weight:700;font-size:15px;letter-spacing:.01em} .feedfest .fh .s{color:var(--muted);font-size:13px;margin-top:2px}
+.pill.warn{background:var(--warn);color:#fff}
 .pend{padding:16px;text-align:center}
 .pend+.pend{border-top:1px solid var(--glass-border)}
 .pend .t{font-weight:600;font-size:18px;line-height:1.25}
@@ -339,10 +341,10 @@ let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push || null, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied, hereFest: S.hereFest })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -605,16 +607,17 @@ function go(name, param, opts){
   if (name === 'moderate') loadQueue();
   if (name === 'sources') loadSources();
   if (name === 'catalog') loadCatalog();
+  if (name === 'feed') loadFeed();
 }
 function back(){
   stopRadar();
   const p = S.stack.pop();
-  if (!p) { S.screen = S.fest ? 'home' : 'picker'; S.param = null; }
+  if (!p) { S.screen = 'feed'; S.param = null; }
   else { S.screen = p.name; S.param = p.param; }
   render(true); window.scrollTo(0, 0);
 }
 function pick(id){ later(() => { S.fest = id; save(); go('home', null, { reset: true }); refresh(fest()); resubscribePush(); }); }
-function changeFestival(){ S.fest = null; S.autoPicked = true; save(); go('picker', null, { reset: true }); locate(); }
+function changeFestival(){ S.autoPicked = true; go('feed', null, { reset: true }); locate(); }
 
 // ---- icons: one stroke family, 1.9px, rounded ------------------------------------------------------------
 const svg = (body, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" ${extra}>${body}</svg>`;
@@ -882,10 +885,68 @@ screens.welcome = () => topbar('', '', '') + `
       <div class="orb" style="--hue:262"><i class="glow"></i><span class="glass">${I.radar}</span><span class="l">Radar</span></div>
       <div class="orb" style="--hue:190"><i class="glow"></i><span class="glass">${I.chart}</span><span class="l">Forecast</span></div>
     </div>
-    <button class="btn" onclick="start()">Find your festival</button>
-    <p class="note">No account. Nothing tracked.</p>
+    <button class="btn" onclick="start(true)">Use my location</button>
+    <button class="btn quiet" onclick="start(false)" style="margin-top:10px">Not now</button>
+    <p class="note">With your location, Fieldwatch opens on the festival you're at. Without it, you get every alert at every festival that's on. No account. Nothing tracked.</p>
   </div>`;
-function start(){ later(() => { S.welcomed = true; save(); go('picker', null, { reset: true }); locate(); }); }
+function start(useLocation){ later(() => { S.welcomed = true; if (!useLocation) S.geoDenied = true; save(); go('feed', null, { reset: true }); if (useLocation) locate(); }); }
+
+// ---- the home page: every current alert at every festival that is on -----------------------------------------
+const SEV_RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
+const sevRank = a => SEV_RANK[a.severity] || 0;
+/** The backend keeps every festival that is on polled; without one, the weather service is asked for the nearest dozen. */
+async function loadFeed(){
+  if (S.feedBusy) return;
+  S.feedBusy = true; render();
+  try{
+    const b = backend();
+    let feed;
+    if (b) { const r = await getJSON(`${b}/alerts`); feed = { at: r.at || new Date().toISOString(), on: r.on, items: r.items || [] }; }
+    else {
+      const on = live().sort((a, b) => (S.here ? away(a) - away(b) : 0) || Date.parse(a.startDate) - Date.parse(b.startDate)).slice(0, 12);
+      const got = await Promise.allSettled(on.map(f => loadAlerts(f).then(alerts => ({ festival: f, alerts }))));
+      if (on.length && got.every(r => r.status === 'rejected')) throw new Error('no signal');   // the last feed stays up, marked as old
+      feed = { at: new Date().toISOString(), on: live().length, items: got.filter(r => r.status === 'fulfilled').map(r => r.value), partial: on.length < live().length };
+    }
+    feed.items = feed.items.map(i => ({ ...i, alerts: (i.alerts || []).filter(isActive).sort((x, y) => sevRank(y) - sevRank(x)) })).filter(i => i.festival && i.alerts.length);
+    S.feed = feed; S.feedErr = null;
+  }catch(e){ S.feedErr = e; }
+  S.feedBusy = false; save(); render();
+}
+/** An alert on the home page opens on that festival, with the festival's own page behind it. */
+function openFeedAlert(fid, aid){
+  const item = (S.feed && S.feed.items || []).find(i => i.festival.id === fid); if (!item) return;
+  if (!FESTS.find(f => f.id === fid)) FESTS.push(item.festival);
+  S.fest = fid; S.cache[fid] = { ...(S.cache[fid] || {}), alerts: item.alerts, at: S.feed.at }; save();
+  stopRadar();
+  S.stack = [{ name: 'feed', param: null }, { name: 'home', param: null }]; S.screen = 'alert'; S.param = aid;
+  render(false); window.scrollTo(0, 0);
+  refresh(fest()); resubscribePush();
+}
+const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin' : ''}" onclick="loadFeed()" aria-label="Refresh" ${S.feedBusy ? 'disabled' : ''}>${I.refresh}</button>`;
+screens.feed = () => {
+  const fd = S.feed, f = fest();
+  const items = (fd && fd.items || []).slice().sort((a, b) => (sevRank(b.alerts[0]) - sevRank(a.alerts[0])) || (S.here ? away(a.festival) - away(b.festival) : 0));
+  const warns = items.filter(i => isWarning(i.alerts[0])).length, on = fd && fd.on != null ? fd.on : live().length;
+  const head = !fd ? (S.feedBusy ? 'Checking' : 'No signal') : warns ? `${warns} warning${warns > 1 ? 's' : ''}` : items.length ? `${items.length} advisor${items.length > 1 ? 'ies' : 'y'}` : 'All clear';
+  const sub = fd ? `${items.length ? `${items.length} of ${on}` : on} festival${on === 1 ? '' : 's'} on now${items.length ? ' with alerts' : ', no alerts'}${fd.partial ? ', nearest dozen checked' : ''}`
+    : S.feedErr ? staffFail(S.feedErr) : 'Every warning and advisory at every festival that is on';
+  const lv = f && data(f).alerts ? level(f) : null;
+  const mine = f ? `<div class="group glass"><button class="row" onclick="later(function(){ go('home', null, { reset: true }); refresh(fest()) })"><span class="lead">${I.pin}</span><div class="main"><div class="t">${esc(f.id === 'here' ? 'Right where you are' : f.name)}</div><div class="s">${esc(lv === 'warn' ? activeAlerts(f).find(isWarning).event : lv === 'watch' ? `${activeAlerts(f).length} advisor${activeAlerts(f).length > 1 ? 'ies' : 'y'}` : lv === 'ok' ? 'All clear' : (f.id === 'here' ? 'Your spot' : f.location))}</div></div><span class="pill ${lv === 'warn' ? 'warn' : lv === 'ok' ? 'on' : ''}">${lv === 'warn' ? 'Warning' : lv === 'watch' ? 'Advisory' : lv === 'ok' ? 'Clear' : 'Yours'}</span></button></div>` : '';
+  const card = i => `<div class="group glass feedfest"><div class="fh"><div class="t">${esc(i.festival.name)}</div><div class="s">${esc(i.festival.location)}${S.here && away(i.festival) != null ? ' · ' + esc(fmtDist(away(i.festival))) : ''}</div></div>${i.alerts.map(a => `<button class="alert" onclick="openFeedAlert('${esc(i.festival.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${a.expiresAt ? 'Until ' + esc(fmtWhen(a.expiresAt)) : esc(a.area || '')}</div></div>${I.chev}</button>`).join('')}</div>`;
+  return topbar('', '', feedRefreshBtn() + gearBtn()) + `
+    <span class="eyebrow">Right now</span>
+    <h1 class="title">${esc(head)}</h1>
+    <p class="sub">${esc(sub)}</p>
+    ${mine}
+    ${items.map(card).join('')}
+    ${fd && !items.length ? `<div class="empty"><b>Nothing to worry about</b>No warnings or advisories at any festival that is on.</div>` : ''}
+    <div class="group glass">
+      ${f && f.id === 'here' ? '' : `<button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button>`}
+      <button class="row" onclick="later(function(){ go('picker') })"><span class="lead">${I.search}</span><div class="main"><div class="t">All festivals</div><div class="s">${on} on now, a week before gates to the day after</div></div>${I.chev}</button>
+    </div>
+    ${fd ? `<p class="note">Checked ${esc(ago(fd.at))}. Alerts come from the National Weather Service and festival staff.</p>` : ''}`;
+};
 
 screens.picker = () => {
   const q = S.query.trim().toLowerCase(), now = Date.now();
@@ -1314,7 +1375,7 @@ async function syncFestivals(){
     if (S.link && applyLink()) { render(); if (fest()) refresh(fest()); return; }
     const wasHome = S.screen === 'home';
     dropStaleChoice();
-    if (S.screen === 'picker' && (wasHome || document.activeElement !== document.getElementById('q'))) render();
+    if ((S.screen === 'picker' || S.screen === 'feed') && (wasHome || document.activeElement !== document.getElementById('q'))) render();
   }catch(e){}
 }
 
@@ -1354,15 +1415,15 @@ function locate(){
     S.locating = false; S.here = { latitude: p.coords.latitude, longitude: p.coords.longitude, at: Date.now() };
     if (S.wantHere) { goHere(); return; }
     if (S.fest === 'here' && S.hereFest && distKm(S.here, S.hereFest) > 2) { S.hereFest = { ...S.hereFest, latitude: S.here.latitude, longitude: S.here.longitude, at: S.here.at, location: '', county: '' }; save(); refresh(fest()); resubscribePush(true); placeHere(); }
-    if (S.screen === 'picker' && !S.fest && !S.autoPicked) {
+    if ((S.screen === 'picker' || S.screen === 'feed') && !S.autoPicked) {
       const near = live().map(f => ({ f, km: away(f) })).sort((a, b) => a.km - b.km)[0];
-      if (near && near.km <= NEAR_KM) {
+      if (near && near.km <= NEAR_KM && (!S.fest || S.fest === near.f.id || S.screen === 'picker' && !S.fest)) {
         S.autoPicked = true; S.fest = near.f.id; save();
         go('home', null, { reset: true }); refresh(fest()); resubscribePush(); toast(`You're at ${near.f.name}`, 3500);
         return;
       }
     }
-    if (S.screen === 'picker' && document.activeElement !== document.getElementById('q')) render();
+    if ((S.screen === 'picker' || S.screen === 'feed') && document.activeElement !== document.getElementById('q')) render();
     if ((S.screen === 'report' || S.screen === 'settings') && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) render();
     if (S.screen === 'radar') { const st = document.getElementById('stage'); if (st && !document.querySelector('.rmap .me')) st.insertAdjacentHTML('beforeend', meDot(coverage(fest()))); }
   }, err => { S.locating = false; if (S.wantHere) { S.wantHere = false; toast(err && err.code === 1 ? 'Location is blocked for this site.' : "Couldn't find your location.", 4000); } if (err && err.code === 1) { S.geoDenied = true; save(); if (S.screen === 'settings') render(); } }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
@@ -1487,14 +1548,19 @@ async function boot(){
   }
   const linked = applyLink();
   if (S.fest && !(fest() && isLive(fest()))) S.fest = null;
-  if (!linked || !S.fest) S.screen = !S.welcomed ? 'welcome' : S.fest ? 'home' : 'picker';
+  if (!linked) S.screen = !S.welcomed ? 'welcome' : 'feed';
   render();
-  if (S.screen === 'picker' || S.wantHere) locate();
+  if (S.screen === 'feed' || S.wantHere) locate();
+  if (S.screen === 'feed') loadFeed();
   if (fest()) refresh(fest());
   syncFestivals();
   ensurePush();
-  setInterval(() => { if (fest() && document.visibilityState === 'visible' && !S.busy) refresh(fest()); }, 5 * 60000);
-  document.addEventListener('visibilitychange', () => { const d = fest() && data(fest()); if (document.visibilityState === 'visible' && d && d.at && Date.now() - Date.parse(d.at) > 5 * 60000 && !S.busy) refresh(fest()); });
+  setInterval(() => { if (document.visibilityState !== 'visible') return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    const d = fest() && data(fest()); if (d && d.at && Date.now() - Date.parse(d.at) > 5 * 60000 && !S.busy) refresh(fest());
+    if (S.screen === 'feed' && (!S.feed || Date.now() - Date.parse(S.feed.at) > 5 * 60000)) loadFeed();
+  });
   // The app shell works offline once installed; previews and plain http have no service workers.
   if ('serviceWorker' in navigator && !IN_PREVIEW && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

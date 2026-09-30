@@ -463,3 +463,26 @@ test('a phone with no festival follows a point: subscribing with a location, pol
   assert.equal((await api('GET', '/admin/import')).status, 401);
   assert.ok('never' in (await api('GET', '/admin/import', { headers: admin })).json || 'startedAt' in (await api('GET', '/admin/import', { headers: admin })).json);
 });
+
+
+test('the home page feed: every current alert at every festival that is on, the worst first, nothing from a festival weeks out', async () => {
+  const { normalizeFestival } = await import('../src/festivals.js');
+  const day = n => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const { festival } = normalizeFestival({ name: 'Feed Test Fest', location: 'Live Oak, FL', latitude: 30.31, longitude: -82.91, startDate: day(2), endDate: day(4) }, { origin: 'community', id: 'feed-test-2026' });
+  q.upsertFestival(festival);
+  nwsState.features = [
+    alertFeature({ id: 'urn:oid:feed-1', '@id': 'https://api.weather.gov/alerts/urn:oid:feed-1', event: 'Heat Advisory', severity: 'Minor' }),
+    alertFeature({ id: 'urn:oid:feed-2', '@id': 'https://api.weather.gov/alerts/urn:oid:feed-2', event: 'Severe Thunderstorm Warning', severity: 'Severe' }),
+  ];
+  await pollFestival(q.festival('feed-test-2026'));
+  const feed = (await api('GET', '/alerts')).json;
+  assert.ok(feed.on >= 1 && typeof feed.at === 'string');
+  const mine = feed.items.find(i => i.festival.id === 'feed-test-2026');
+  assert.deepEqual(mine.alerts.map(a => a.event), ['Severe Thunderstorm Warning', 'Heat Advisory'], 'the worst first');
+  assert.equal(mine.festival.name, 'Feed Test Fest');
+  assert.ok(!feed.items.some(i => i.festival.id === FEST), 'a festival weeks out is not on, so its alerts are not on the home page');
+  nwsState.features = [];
+  await pollFestival(q.festival('feed-test-2026'));
+  assert.ok(!(await api('GET', '/alerts')).json.items.some(i => i.festival.id === 'feed-test-2026'), 'cleared alerts leave the feed');
+  q.deleteFestival('feed-test-2026');
+});
