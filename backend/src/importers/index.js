@@ -11,12 +11,13 @@ import { importFeeds } from './feeds.js';
 
 // Wikidata needs no key and is on unless switched off (or NWS_USER_AGENT is still the placeholder), so imports run on a bare deployment.
 export const importsConfigured = () => !wikidataSkipped() || Boolean(process.env.TICKETMASTER_KEY || process.env.SEATGEEK_CLIENT_ID || process.env.EDMTRAIN_KEY || process.env.FESTIVAL_FEEDS);
-export const imports = { last: null };
+export const imports = { last: null, running: false };
 let running = null;
 
 /** One run of every source. A second call while one runs joins it instead of starting another. */
 export function runImports(opts = {}) {
   if (running) return running;
+  imports.running = true;
   running = (async () => {
     const report = { startedAt: new Date().toISOString() };
     // Widest source first: a festival on several sites is kept once, from the first that listed it.
@@ -29,7 +30,7 @@ export function runImports(opts = {}) {
     imports.last = report;
     console.log(`imports: ${JSON.stringify(report)}`);
     return report;
-  })().finally(() => { running = null; });
+  })().finally(() => { running = null; imports.running = false; });
   return running;
 }
 

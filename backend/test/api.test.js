@@ -276,7 +276,10 @@ test('the list is what is on: a week before gates for early entry and crews, thr
   for (const id of ['old-days-2026', 'wrap-up-2026', 'crew-week-2026', 'next-month-2026', 'big-build-2026']) q.deleteFestival(id);
 
   assert.equal((await api('POST', '/admin/import')).status, 401);
-  const r = (await api('POST', '/admin/import', { headers: admin })).json;
+  const kick = await api('POST', '/admin/import', { headers: admin });
+  assert.equal(kick.status, 202); assert.equal(kick.json.started, true);
+  let r; for (let i = 0; i < 50 && !(r = (await api('GET', '/admin/import', { headers: admin })).json).finishedAt; i++) await new Promise(t => setTimeout(t, 20));
+  assert.equal(r.running, false);
   assert.equal(r.ticketmaster.skipped, 'TICKETMASTER_KEY not set');
   assert.equal(r.seatgeek.skipped, 'SEATGEEK_CLIENT_ID not set');
   assert.equal(r.edmtrain.skipped, 'EDMTRAIN_KEY not set');

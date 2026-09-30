@@ -297,8 +297,8 @@ function fakeBackend(list) {
       const delInc = path.match(/^\/festivals\/([^/]+)\/incidents\/([^/]+)$/);
       if (m === 'DELETE' && delInc) { store.pendingReports = store.pendingReports.filter(i => i.id !== delInc[2]); return send(200, { ok: true }); }
       const report = () => ({ startedAt: '2026-10-23T09:00:00Z', finishedAt: '2026-10-23T09:01:00Z', ticketmaster: { skipped: 'TICKETMASTER_KEY not set' }, seatgeek: { skipped: 'SEATGEEK_CLIENT_ID not set' }, edmtrain: { calls: 1, errors: 0, events: 40, festivals: 12, added: 3, updated: 9, duplicates: 2, pruned: 0 }, feeds: { skipped: 'FESTIVAL_FEEDS not set' } });
-      if (m === 'GET' && path === '/admin/import') return send(200, report());
-      if (m === 'POST' && path === '/admin/import') { store.imports++; return send(200, report()); }
+      if (m === 'GET' && path === '/admin/import') return send(200, { ...report(), running: false, finishedAt: store.imports ? '2026-10-23T09:05:00Z' : '2026-10-23T09:01:00Z' });
+      if (m === 'POST' && path === '/admin/import') { store.imports++; return send(202, { started: true, running: true, last: report() }); }
       if (m === 'GET' && path === '/festivals/pending') return send(200, store.pending);
       const ap = path.match(/^\/festivals\/([^/]+)\/approve$/);
       if (m === 'POST' && ap) { const i = store.pending.findIndex(f => f.id === ap[1]); if (i < 0) return send(404, {}); const [f] = store.pending.splice(i, 1); store.list.push({ ...f, status: 'published' }); return send(200, f); }

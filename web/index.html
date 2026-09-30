@@ -1173,11 +1173,21 @@ async function loadSources(){
   try{ S.sources = await getJSON(`${b}/admin/import`, adminHeaders()); }catch(e){ S.sources = null; }
   S.sourcesBusy = false; render();
 }
+/** Starts a run on the backend and watches it finish; a run can take minutes when it reads festival sites. */
 async function runSources(){
   const b = backend(); if (!b || !S.admin || S.sourcesBusy) return;
   S.sourcesBusy = true; render();
-  try{ const r = await fetch(`${b}/admin/import`, { method: 'POST', headers: adminHeaders() }); if (!r.ok) throw new Error(`HTTP ${r.status}`); S.sources = await r.json(); toast('Imported'); }
-  catch(e){ toast(e.message === 'HTTP 401' ? 'Wrong admin key' : "Couldn't run the import"); }
+  try{
+    const r = await fetch(`${b}/admin/import`, { method: 'POST', headers: adminHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const before = ((await r.json()).last || {}).finishedAt || null;
+    for (let i = 0; i < 360; i++) {
+      await new Promise(t => setTimeout(t, i < 6 ? 2000 : 5000));
+      const j = await getJSON(`${b}/admin/import`, adminHeaders());
+      if (!j.running && j.finishedAt && j.finishedAt !== before) { S.sources = j; toast('Imported'); break; }
+      if (S.screen !== 'sources') break;
+    }
+  }catch(e){ toast(e.message === 'HTTP 401' ? 'Wrong admin key' : "Couldn't run the import"); }
   S.sourcesBusy = false; render();
 }
 

@@ -26,7 +26,7 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | GET | `/festivals/pending` | Suggestions waiting (admin key) |
 | POST | `/festivals/:id/approve` | Publish a suggestion, with optional edits in the body (admin key) |
 | DELETE | `/festivals/:id` | Remove a festival (admin key) |
-| POST | `/admin/import` | Run the Ticketmaster and feed imports now; returns the report (admin key) |
+| POST | `/admin/import` | Start an import of every source now; answers 202 at once with `{started, running, last}`, and `GET` shows the report when it finishes (admin key) |
 | GET | `/festivals/:id` | One festival (a pending one only with the admin key) |
 | GET | `/festivals/:id/pack` | Offline pack: festival, active alerts, posts, hourly forecast |
 | GET | `/festivals/:id/alerts` | Active NWS alerts, polled on demand if stale |
@@ -38,7 +38,7 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | GET | `/festivals/:id/qr.svg` | A QR code that opens the web build on this festival (print it at the gate) |
 | GET | `/push/vapid` | The public VAPID key the web build subscribes with; 404 until keys are set |
 | POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings, or `{ subscription, point: { latitude, longitude } }` for wherever it is; either way one test notification comes straight back |
-| GET | `/admin/import` | The last festival import report (admin key) |
+| GET | `/admin/import` | The last festival import report, plus `running` while one is in progress (admin key) |
 | DELETE | `/push/subscribe` | `{ endpoint }` and it stops |
 | POST | `/devices` | `{ token, festivalId }` subscribe a phone |
 | DELETE | `/devices/:token` | Unsubscribe |

@@ -135,7 +135,12 @@ app.post('/festivals/:id/approve', requireAdmin, (req, res) => {
   res.json(festival);
 });
 app.delete('/festivals/:id', requireAdmin, (req, res) => { q.deleteFestival(req.params.id); res.json({ ok: true }); });
-app.post('/admin/import', requireAdmin, wrap(async (req, res) => res.json(await runImports())));
+// Starts a run and answers at once; a run can take minutes (the Wikidata pass reads festival sites), longer than a phone waits.
+app.post('/admin/import', requireAdmin, (req, res) => {
+  const already = imports.running;
+  runImports().catch(() => {});
+  res.status(202).json({ started: !already, running: true, last: imports.last });
+});
 
 app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
   if (!polledRecently(req.festival.id)) { try { await pollFestival(req.festival); } catch {} }
@@ -280,7 +285,7 @@ app.post('/push/subscribe', wrap(async (req, res) => {
   const target = festivalId ? q.festival(festivalId) : { id: 'here', name: 'Where you are', ...at };
   res.json({ ok: true, welcome: await pushWelcome(clean, target) });
 }));
-app.get('/admin/import', requireAdmin, (req, res) => res.json(imports.last || { never: true }));
+app.get('/admin/import', requireAdmin, (req, res) => res.json({ ...(imports.last || { never: true }), running: imports.running }));
 app.delete('/push/subscribe', (req, res) => {
   const endpoint = req.body?.endpoint || req.query.endpoint;
   if (!endpoint) return res.status(400).json({ error: 'endpoint required' });
