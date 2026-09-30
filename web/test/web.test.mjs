@@ -190,8 +190,11 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   assert.match(await page.textContent('.alerthead p'), /^Until 3:00 PM · .* left$/, 'and how long it has left, as a number');
   assert.ok(!(await page.$('details.more[open]')), 'the long text is folded');
   await page.click('details.more summary');
-  assert.match(await page.textContent('.todo p'), /interior room/, 'the weather service instruction is under Full alert');
-  assert.match(await page.textContent('.body'), /near Live Oak/);
+  assert.match(await page.textContent('details.more .sec:has-text("What to do")'), /interior room/, 'the weather service instruction is under Full alert');
+  assert.match(await page.textContent('details.more'), /near Live Oak/);
+  assert.deepEqual(await page.$$eval('.secs .sec .k', els => els.map(e => e.textContent)), ['What to do', 'From the weather service'], 'long text is stacked under small labels');
+  assert.deepEqual(await page.evaluate(() => bullets('- Prolonged rain on saturated soil. - For flood safety, visit weather.gov. Rain of 2-4 inches.')), ['Prolonged rain on saturated soil.', 'For flood safety, visit weather.gov. Rain of 2-4 inches.']);
+  assert.equal(await page.evaluate(() => areaText('Harrison; Shelby; Pottawattamie; Mills; Montgomery; Fremont')), 'Harrison, Shelby, Pottawattamie and 3 more');
   assert.match(await page.textContent('.group'), /NWS Jacksonville FL/);
   const parsed = await page.evaluate(() => parseNWS('* WHAT...Southwest winds 20 to 30 mph.\n\n* WHERE...Riverside County valleys.\n\n* WHEN...Until 8 PM.\n\nSecure tents before 2 PM.'));
   assert.deepEqual(parsed.sections.map(s => s.label), ['What', 'Where', 'When']);

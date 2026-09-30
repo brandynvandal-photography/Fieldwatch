@@ -83,6 +83,8 @@ a{color:var(--accent)}
   @keyframes rise{from{opacity:0;transform:translateY(12px) scale(.995)}to{opacity:1;transform:none}}
 }
 .topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;height:62px;margin:0 calc(-1 * var(--gutter));padding:0 12px;display:flex;align-items:center;justify-content:space-between}
+/* Scrolled text fades out under the clock and the buttons instead of colliding with them. */
+.topbar::before{content:"";position:absolute;left:0;right:0;top:calc(-1 * env(safe-area-inset-top,0px));bottom:-18px;background:linear-gradient(var(--bg) 0%,var(--bg) 42%,transparent);opacity:.94;z-index:-1;pointer-events:none}
 .topbar .side{min-width:92px;display:flex;align-items:center;gap:8px}
 .topbar .side.r{justify-content:flex-end}
 .tb{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:42px;min-width:42px;padding:0 14px;border-radius:999px;color:var(--ink);font-weight:600;font-size:15px}
@@ -209,9 +211,9 @@ button.row:active{background:rgba(255,255,255,.35)}
 .step+.step::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
 .step .n{flex:none;width:26px;height:26px;border-radius:50%;background:rgba(155,123,255,.18);color:var(--accent);font-weight:700;font-size:13px;display:grid;place-items:center}
 .step .n::after{content:counter(step)}
-.tl{display:flex;gap:12px;padding:12px 16px;position:relative;font-size:15px;line-height:1.4}
+.tl{display:block;padding:12px 18px 13px;position:relative;font-size:16px;line-height:1.5}
 .tl+.tl::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
-.tl .k{flex:none;width:96px;font-weight:700;font-size:13px;color:var(--muted);padding-top:2px}
+.tl .k{display:block;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 .tl.now{background:rgba(255,176,59,.16)}.tl.now .k{color:var(--watch-2)}
 
 /* Lightning: the code on the festival page, and the screen behind it. */
@@ -265,9 +267,14 @@ details.more summary{display:flex;align-items:center;justify-content:space-betwe
 details.more summary::-webkit-details-marker{display:none}
 details.more summary .chev{transition:transform .2s}
 details.more[open] summary .chev{transform:rotate(90deg)}
-details.more .inner{padding:0 16px 14px}
-details.more .inner .todo{margin:0 0 12px;padding:0;background:none;border:0;box-shadow:none}
-details.more .body{margin-bottom:12px}
+details.more .inner{padding:0 16px 6px}
+/* Long text breathes: a small label, then the text at reading size with room under it. */
+.secs{padding:4px 18px 6px}
+.sec{padding:12px 0 14px}
+.sec+.sec{border-top:1px solid var(--line)}
+.sec .k{display:block;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.sec p{font-size:16px;line-height:1.55;color:var(--ink);text-wrap:pretty}
+.sec p+p{margin-top:9px}
 .todo{display:flex;gap:12px;align-items:flex-start;border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
 .todo .ic{width:36px;height:36px;border-radius:50%;background:rgba(23,179,122,.18);color:var(--ok);display:grid;place-items:center;flex:none}
 .todo .ic svg{width:20px;height:20px}
@@ -816,6 +823,12 @@ function parseNWS(text){
   }
   return { sections, paragraphs };
 }
+/** The dashes the weather service uses as bullets inside a section, split into lines of their own. */
+const bullets = t => String(t || '').split(/(?:^|\s)-\s+(?=\S)/).map(x => x.trim()).filter(Boolean);
+/** A long area list, cut short: "Harrison, Shelby, Pottawattamie and 21 more". */
+function areaText(area){ const parts = String(area || '').split(/;\s*/).filter(Boolean); return parts.length > 4 ? `${parts.slice(0, 3).join(', ')} and ${parts.length - 3} more` : parts.join(', '); }
+/** One section of an alert: a small label over comfortable text, stacked, never a cramped column. */
+const section = (label, texts) => `<div class="sec"><span class="k">${esc(label)}</span>${texts.map(t => `<p>${esc(t)}</p>`).join('')}</div>`;
 /** One line about the next hours, from the forecast itself. */
 function outlook(f){
   const hr = (data(f).hourly || []).slice(0, 12); if (!hr.length) return '';
@@ -1323,10 +1336,10 @@ screens.alert = id => {
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
     ${a.channel === 'lightning' ? `<div class="group glass"><button class="row" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Lightning right now</div><div class="s">The code, the nearest flash, the all-clear</div></div>${I.chev}</button></div>` : ''}
     ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'AirDrop reaches phones nearby with no signal. Ask them to set AirDrop to Everyone for 10 minutes.' : 'Nearby share reaches phones with no signal. Or text it.'}</p>` : ''}
-    ${sections.length ? `<div class="group glass">${sections.map(s => `<div class="kv"><span class="k">${esc(s.label)}</span><span class="v">${esc(s.text)}</span></div>`).join('')}</div>` : ''}
-    ${!ours && (instruction || paragraphs.length) ? `<details class="more glass"><summary>Full alert${I.chev}</summary><div class="inner">${todo}${paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('')}</div></details>` : ours ? paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('') : ''}
+    ${sections.length ? `<div class="group glass secs">${sections.map(s => section(s.label, bullets(s.text))).join('')}</div>` : ''}
+    ${!ours && (instruction || paragraphs.length) ? `<details class="more glass"><summary>Full alert${I.chev}</summary><div class="inner secs">${instruction ? section('What to do', bullets(instruction)) : ''}${paragraphs.length ? section('From the weather service', paragraphs) : ''}</div></details>` : ours ? paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('') : ''}
     <div class="group glass">
-      <div class="kv"><span class="k">Area</span><span class="v">${esc(a.area)}</span></div>
+      <div class="kv"><span class="k">Area</span><span class="v">${esc(areaText(a.area))}</span></div>
       <div class="kv"><span class="k">Source</span><span class="v">${esc(a.source)}</span></div>
       <div class="kv"><span class="k">Issued</span><span class="v num">${esc(fmtFull(a.issuedAt))}</span></div>
       ${a.expiresAt ? `<div class="kv"><span class="k">Ends</span><span class="v num">${esc(fmtFull(a.expiresAt))}</span></div>` : ''}
