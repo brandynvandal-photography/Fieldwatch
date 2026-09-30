@@ -275,6 +275,10 @@ test('the list is what is on: a week before gates for early entry and crews, thr
   assert.equal(radarWanted({ id: 'crew-week-2026', featured: false }, Date.now() + 25 * 3_600_000), false);
   for (const id of ['old-days-2026', 'wrap-up-2026', 'crew-week-2026', 'next-month-2026', 'big-build-2026']) q.deleteFestival(id);
 
+  const h = (await api('GET', '/health')).json;
+  assert.equal(h.ok, true); assert.equal(typeof h.uptimeSeconds, 'number'); assert.equal(h.adminKey, true); assert.equal(typeof h.festivals, 'number');
+  assert.deepEqual({ ...h.sources, wikidata: typeof h.sources.wikidata }, { ticketmaster: false, seatgeek: false, edmtrain: false, wikidata: 'string', feeds: false }, 'no keys in tests; wikidata says why it is off');
+  assert.equal(h.imports.running, false);
   assert.equal((await api('POST', '/admin/import')).status, 401);
   const kick = await api('POST', '/admin/import', { headers: admin });
   assert.equal(kick.status, 202); assert.equal(kick.json.started, true);

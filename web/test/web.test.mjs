@@ -285,6 +285,7 @@ function fakeBackend(list) {
       const rep = path.match(/^\/festivals\/([^/]+)\/reports$/);
       if (m === 'POST' && rep) { const b = JSON.parse(raw); if (!b.summary || b.summary.length < 8) return send(400, { error: 'summary required' }); store.reports.push({ festival: rep[1], ...b }); return send(202, { id: `rep-${store.reports.length}`, queued: true }); }
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
+      if (m === 'GET' && path === '/health') return send(200, { ok: true, at: '2026-10-23T09:00:00Z', build: '4356d78', uptimeSeconds: 61, database: { path: '/data/fieldwatch.db', onVolume: true }, festivals: 14, push: { web: true }, adminKey: true, nwsUserAgent: 'placeholder', sources: { ticketmaster: false, seatgeek: false, edmtrain: true, wikidata: 'NWS_USER_AGENT not set', feeds: false }, imports: { running: false, lastStartedAt: '2026-10-23T09:00:00Z', lastFinishedAt: '2026-10-23T09:01:00Z' } });
       if (m === 'POST' && path === '/push/subscribe') { store.subs.push(JSON.parse(raw)); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
       if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' });
@@ -366,10 +367,20 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     await page.waitForSelector('.toast.show:has-text("Imported")');
     assert.equal(store.imports, 1);
 
-    // A key that does not match says so, instead of blaming the network.
+    // Check the backend: up, which build, which keys, and whether the admin key matches.
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('#admin');
+    await page.click('button.row:has-text("Check the backend")');
+    await page.waitForSelector('button.row:has-text("Check the backend") .pill.on');
+    const checked = await page.textContent('#app');
+    assert.match(checked, /Up, build 4356d78, 14 festivals, data on a volume/);
+    assert.match(checked, /Sources on: Edmtrain\. NWS_USER_AGENT is not set\. Last import .*Admin key matches\./);
+
+    // A key that does not match says so, instead of blaming the network.
     await page.fill('#admin', 'k-wrong'); await page.locator('#admin').blur();
+    await page.click('button.row:has-text("Check the backend")');
+    await page.waitForSelector('button.row:has-text("Check the backend") .pill:not(.on):has-text("Problem")');
+    assert.match(await page.textContent('#app'), /The admin key here does not match ADMIN_KEY on the backend/);
     await page.click('button:has-text("Festival sources")');
     await page.waitForSelector('.sub:has-text("Wrong admin key")');
     assert.match(await page.textContent('#app'), /must match ADMIN_KEY/);

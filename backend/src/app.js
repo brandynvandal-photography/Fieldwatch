@@ -14,6 +14,7 @@ import { RADAR_DIR, noteInterest, radarLoop, refreshRadarSoon } from './radar.js
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
+import { skipReason as wikidataSkipped } from './importers/wikidata.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -94,7 +95,20 @@ async function publishAndPush(festival, incident) {
   return result;
 }
 
-app.get('/health', (req, res) => res.json({ ok: true, at: iso() }));
+// A page to open in a browser when the app says it cannot reach the backend: which build this is, where its data
+// lives, which sources have keys and whether an import has run. No secrets: a key is reported as set or not.
+app.get('/health', (req, res) => res.json({
+  ok: true, at: iso(),
+  build: (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || null,
+  uptimeSeconds: Math.round(process.uptime()),
+  database: { path: process.env.DB_PATH || 'fieldwatch.db', onVolume: Boolean(process.env.RAILWAY_VOLUME_MOUNT_PATH) },
+  festivals: q.publishedFestivals().length,
+  push: { web: webPushEnabled() },
+  adminKey: Boolean(process.env.ADMIN_KEY),
+  nwsUserAgent: !process.env.NWS_USER_AGENT || /example\.com/.test(process.env.NWS_USER_AGENT) ? 'placeholder' : 'set',
+  sources: { ticketmaster: Boolean(process.env.TICKETMASTER_KEY), seatgeek: Boolean(process.env.SEATGEEK_CLIENT_ID), edmtrain: Boolean(process.env.EDMTRAIN_KEY), wikidata: wikidataSkipped() || 'on', feeds: Boolean(process.env.FESTIVAL_FEEDS) },
+  imports: { running: imports.running, lastStartedAt: imports.last?.startedAt || null, lastFinishedAt: imports.last?.finishedAt || null },
+}));
 
 // ---- Festivals: the list itself ------------------------------------------
 // What is on: grounds open through the day after the end (festivals.js). ?all=1 for everything published.

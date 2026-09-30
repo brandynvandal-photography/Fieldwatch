@@ -39,6 +39,7 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | GET | `/push/vapid` | The public VAPID key the web build subscribes with; 404 until keys are set |
 | POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings, or `{ subscription, point: { latitude, longitude } }` for wherever it is; either way one test notification comes straight back |
 | GET | `/admin/import` | The last festival import report, plus `running` while one is in progress (admin key) |
+| GET | `/health` | Open it in a browser when the app cannot reach the backend: build, uptime, where the database is, which sources have keys, whether an import ran. No secrets |
 | DELETE | `/push/subscribe` | `{ endpoint }` and it stops |
 | POST | `/devices` | `{ token, festivalId }` subscribe a phone |
 | DELETE | `/devices/:token` | Unsubscribe |
