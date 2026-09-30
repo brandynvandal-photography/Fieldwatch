@@ -139,13 +139,15 @@ button.row:active{background:rgba(255,255,255,.35)}
 /* Bubbles: a colour lit from behind, frosted in front. */
 .bubble{position:relative;display:block;width:100%;padding:0;text-align:center;isolation:isolate}
 .bubble .glow{position:absolute;left:10%;right:10%;top:4%;bottom:12%;border-radius:50%;background:radial-gradient(circle at 50% 40%,hsl(var(--hue) 96% 66% / .95),hsl(calc(var(--hue) + 45) 96% 70% / .55) 48%,transparent 74%);filter:blur(16px);z-index:-1}
-.bubble .glass{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-height:136px;padding:18px 12px;border-radius:32px}
-.bubble .t{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:22px;line-height:1.08;letter-spacing:-.01em;text-wrap:balance}
-.bubble .d{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
-.bubble .ph{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:hsl(var(--hue) 70% 36%);margin-top:2px}
+.bubble .glass{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:96px;padding:12px 10px 11px;border-radius:24px}
+.bubble .t{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:700;font-size:21px;line-height:1.02;letter-spacing:-.012em;text-wrap:balance;margin-bottom:3px}
+.bubble .d{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;line-height:1.2}
+.bubble .ph{font-size:9px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:hsl(var(--hue) 70% 36%);margin-top:1px;line-height:1.2}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .bubble .ph{color:hsl(var(--hue) 90% 74%)}}
 :root[data-theme="dark"] .bubble .ph{color:hsl(var(--hue) 90% 74%)}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:18px}
+/* The rest of the list, tighter: the name carries the row. */
+.tight .row{min-height:52px;padding:8px 14px;gap:10px}.tight .row .t{font-size:16px;font-weight:700}.tight .row .s{font-size:13px;margin-top:1px}.tight .row .tr{font-size:11px}.tight .row .tr b{font-size:14px}
 
 .orbrow{display:flex;justify-content:center;gap:14px;margin:22px 0 26px}
 .orb{display:flex;flex-direction:column;align-items:center;gap:9px;position:relative;isolation:isolate;padding:0;width:98px;text-align:center}
@@ -1189,9 +1191,9 @@ screens.picker = () => {
     body = `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>${hereRow}`;
   } else if (q) {
     const hits = on.filter(f => `${f.name} ${f.location} ${f.county || ''}`.toLowerCase().includes(q));
-    body = (hits.length ? `<div class="group glass">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
+    body = (hits.length ? `<div class="group glass tight">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
   } else {
-    body = `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
+    body = `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>${rest.length ? `<p class="h">Also on</p><div class="group glass tight">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
   }
   return topbar(backBtn(), '', gearBtn()) + `
     <h1 class="title">Which festival?</h1>
