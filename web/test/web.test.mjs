@@ -720,7 +720,7 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
   const { page, context, seen } = await newPage();
   const { server, store, base: api } = await fakeBackend([...FESTS]);
   const minutesAgo = n => new Date(Date.now() - n * 60000).toISOString(), allClearAt = new Date(Date.now() + 27 * 60000).toISOString();
-  store.lightning['hulaween-2026'] = { code: 'red', nearestMi: 3.6, nearestAt: minutesAgo(3), within: { 8: 2, 15: 4, 30: 9 }, lastNearMi: 3.6, lastNearAt: minutesAgo(3), allClearAt, at: minutesAgo(0), dataAt: minutesAgo(1), source: 'GOES GLM' };
+  store.lightning['hulaween-2026'] = { code: 'red', nearestMi: 3.6, nearestAt: minutesAgo(3), within: { 8: 2, 12: 4, 20: 9 }, lastNearMi: 3.6, lastNearAt: minutesAgo(3), allClearAt, orangeUntil: null, at: minutesAgo(0), dataAt: minutesAgo(1), source: 'GOES GLM' };
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
@@ -731,7 +731,7 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.bolt.red');
     assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code red');
-    assert.match(await page.textContent('.bolt .s'), /^Shelter now · all clear in 2[67] min$/);
+    assert.match(await page.textContent('.bolt .s'), /^Rapid evacuation, full work stoppage · all clear in 2[67] min$/);
     assert.ok(await page.$('.sky.warn'), 'the warning stays on the sky; lightning is its own tile');
     await shot(page, '23-lightning-home');
     await page.click('.bolt');
@@ -739,24 +739,28 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     assert.equal(await page.textContent('.codehead h2'), 'Code red');
     assert.match(await page.textContent('.codehead p'), /^Nearest flash 3\.6 mi, \d+:\d\d [AP]M$/);
     assert.match(await page.textContent('.codehead b'), /^2[67] min$/);
-    assert.match(await page.textContent('.code.now .t'), /Code red · Within 8 miles/);
+    assert.match(await page.textContent('.code.now .t'), /Code red · Under 8 miles/);
+    assert.match(await page.textContent('.code.red'), /Non-essential personnel should prioritize exit and do not need to maintain posts\. Full work stoppage\./, 'the protocol in its own words');
+    assert.match(await page.textContent('.code.orange'), /Execute evacuation procedures while maintaining assigned posts/);
+    assert.match(await page.textContent('.code.yellow'), /prepared for orange and a potential work stoppage/);
     assert.deepEqual(await page.$$eval('.kv .v', els => els.slice(0, 3).map(e => e.textContent)), ['2', '4', '9']);
     assert.match(await page.textContent('.note'), /lightning vendor|safety staff are the authority/);
     await shot(page, '24-lightning');
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.bolt.red');
     // A minute later, green: the tile says so, without a reload.
-    store.lightning['hulaween-2026'] = { code: 'green', nearestMi: null, nearestAt: null, within: { 8: 0, 15: 0, 30: 0 }, lastNearMi: null, lastNearAt: null, allClearAt: null, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' };
+    store.lightning['hulaween-2026'] = { code: 'green', nearestMi: null, nearestAt: null, within: { 8: 0, 12: 0, 20: 0 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: null, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' };
     await page.evaluate(() => loadLightning(fest()));
     await page.waitForSelector('.bolt.green');
-    assert.equal(await page.textContent('.bolt .t'), 'No lightning within 30 mi · Code green');
+    assert.equal(await page.textContent('.bolt .t'), 'No lightning within 20 mi · Code green');
     // Orange with no alert at all still puts a festival on the home page, as its own row.
     const other = FESTS.find(f => isLive(f) && f.id !== 'hulaween-2026');
     store.feed = [{ festivalId: other.id, alerts: [] }];
-    store.lightning = { [other.id]: { code: 'orange', nearestMi: 11.2, nearestAt: minutesAgo(2), within: { 8: 0, 15: 1, 30: 3 }, lastNearMi: null, lastNearAt: null, allClearAt: null, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' } };
+    store.lightning = { [other.id]: { code: 'orange', nearestMi: 11.2, nearestAt: minutesAgo(2), within: { 8: 0, 12: 1, 20: 3 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: new Date(Date.now() + 13 * 60000).toISOString(), at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' } };
     await page.click('button:has-text("Change")');
     await page.waitForSelector('h1.title:has-text("1 advisory")');
     assert.equal(await page.textContent('.feedfest .alert .t'), 'Lightning 11.2 mi');
+    assert.equal(await page.textContent('.feedfest .alert .s'), 'Code orange · Evacuation procedures, staff hold posts');
     assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code orange');
     await page.click('.feedfest .alert');
     await page.waitForSelector('.codehead.orange');

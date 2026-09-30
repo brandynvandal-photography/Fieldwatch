@@ -1,15 +1,17 @@
 // Lightning near each festival that is on, from the GOES-R Geostationary Lightning Mapper. NOAA publishes every
 // 20-second flash file (GLM-L2-LCFA) on public S3 buckets a minute or two after the fact; each is NetCDF-4, which is
 // HDF5, which h5wasm reads in Node with no native build. Every minute: list the current hour on each satellite, fetch
-// the files not seen yet, keep the flashes within reach of a live festival for thirty minutes, and grade each festival:
-//   red      a flash within 8 miles in the last 30 minutes: shelter now; all clear 30 minutes after the last one
-//   orange   nearest flash in the last 15 minutes 8 to 15 miles out: head for shelter
-//   yellow   15 to 30 miles: watch, plan the walk
-//   green    nothing within 30 miles in the last 15 minutes
+// the files not seen yet, keep the flashes within reach of a live festival for thirty minutes, and grade each festival
+// on the festival safety protocol (the wording in PROTOCOL is the staff's own):
+//   red      a flash within 8 miles in the last 30 minutes: rapid evacuation, full work stoppage; all clear 30 minutes after the last one
+//   orange   nearest flash in the last 15 minutes 8 to 12 miles out: evacuation procedures, staff hold posts to assist attendees
+//   yellow   12 to 20 miles: pay attention, prepare for orange and a work stoppage
+//   green    nothing within 20 miles in the last 15 minutes
 //   none     no data in the last 5 minutes (off, nothing is on, or the buckets are unreachable)
-// A turn to red is stored and pushed like a warning (channel 'lightning') and ends with the all-clear. The web build
-// shows the code on the festival page and explains it. The festival's own lightning vendor is the authority; the
-// mapper sees cloud tops at about 8 km resolution and misses some flashes under a thick anvil.
+// A change to orange or red is stored and pushed like a warning (channel 'lightning'); red ends with the all-clear,
+// orange fifteen minutes after the last flash within 12 miles or when the code changes. The web build shows the code
+// on the festival page and explains it. The festival's own lightning vendor is the authority; the mapper sees cloud
+// tops at about 8 km resolution and misses some flashes under a thick anvil.
 import { mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,7 +24,7 @@ import { pushWeb } from './webpush.js';
 import { iso } from './util.js';
 
 const MIN = 60_000, MI = 1609.344, J2000 = Date.UTC(2000, 0, 1, 12);   // GOES-R clocks count seconds from noon on 1 January 2000
-export const RINGS = { red: 8, orange: 15, yellow: 30 };
+export const RINGS = { red: 8, orange: 12, yellow: 20 };
 export const RECENT_MS = 15 * MIN, ALL_CLEAR_MS = 30 * MIN, STALE_MS = 5 * MIN, REACH_MI = 40;
 export const lightningOn = () => !/^(false|0|no|off)$/i.test(process.env.LIGHTNING || 'true');
 // GOES-East is GOES-19 since April 2025 (GOES-16 is in storage orbit and its bucket stops), GOES-West is GOES-18. Together they see all of the US.
@@ -76,12 +78,13 @@ export function assess(f, flashes, now = Date.now(), lastFileAt = null) {
   const recent = near.filter(x => now - x.t <= RECENT_MS);
   const nearest = recent.reduce((b, x) => (!b || x.mi < b.mi ? x : b), null);
   const lastNear = near.filter(x => x.mi <= RINGS.red).reduce((b, x) => (!b || x.t > b.t ? x : b), null);
+  const lastMid = recent.filter(x => x.mi <= RINGS.orange).reduce((b, x) => (!b || x.t > b.t ? x : b), null);
   const red = Boolean(lastNear && now - lastNear.t < ALL_CLEAR_MS), stale = lastFileAt == null || now - lastFileAt > STALE_MS;
   const code = red ? 'red' : stale ? 'none' : !nearest ? 'green' : nearest.mi <= RINGS.orange ? 'orange' : 'yellow';
   const within = r => recent.filter(x => x.mi <= r).length, mi = x => Math.round(x.mi * 10) / 10;
-  return { code, nearestMi: nearest ? mi(nearest) : null, nearestAt: nearest ? iso(nearest.t) : null, within: { 8: within(8), 15: within(15), 30: within(30) },
+  return { code, nearestMi: nearest ? mi(nearest) : null, nearestAt: nearest ? iso(nearest.t) : null, within: { [RINGS.red]: within(RINGS.red), [RINGS.orange]: within(RINGS.orange), [RINGS.yellow]: within(RINGS.yellow) },
     lastNearMi: lastNear ? mi(lastNear) : null, lastNearAt: lastNear ? iso(lastNear.t) : null, allClearAt: red ? iso(lastNear.t + ALL_CLEAR_MS) : null,
-    at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
+    orangeUntil: code === 'orange' && lastMid ? iso(lastMid.t + RECENT_MS) : null, at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
 }
 
 const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, lastFileAt: null, lastTickAt: null };
@@ -95,7 +98,7 @@ const errorText = e => `${e?.message || e}${e?.cause?.code ? ` (${e.cause.code})
 /** One pass: list, fetch what is new, trim the buffer, grade every festival that is on, announce a turn to red. */
 export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.fetch, festivals = festivalsInWindow(now), maxFiles = 30 } = {}) {
   state.lastTickAt = now;
-  if (!festivals.length) { state.flashes = []; state.per.clear(); return { skipped: 'nothing is on' }; }
+  if (!festivals.length) { state.flashes = []; state.per.clear(); state.episodes.clear(); return { skipped: 'nothing is on' }; }
   const prefixes = [...new Set([hourPrefix(now - ALL_CLEAR_MS), hourPrefix(now)])];
   const wanted = [];
   for (const bucket of buckets()) {
@@ -135,26 +138,46 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
   return { files: got, wanted: wanted.length, flashes: state.flashes.length };
 }
 
-/** Red is an alert: pushed once when it starts, its end moved out with every new flash within 8 miles. */
+// The festival safety protocol, in its own words. The web build's CODE table carries the same text; change both.
+const SHELTER = 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter.';
+export const PROTOCOL = {
+  red: { event: 'Code red: lightning within 8 miles', severity: 'severe', line: 'Rapid evacuation required. Full work stoppage.',
+    text: 'Lightning has been detected in less than an 8 mile radius. Rapid evacuation required. Non-essential personnel should prioritize exit and do not need to maintain posts. Full work stoppage.',
+    instruction: 'Get to shelter now. Non-essential personnel: exit first, posts can wait. Stay until the all-clear, thirty minutes after the last flash within 8 miles.',
+    ends: 'The all-clear is thirty minutes after the last flash within 8 miles; this alert ends with it.' },
+  orange: { event: 'Code orange: lightning within 12 miles', severity: 'moderate', line: 'Execute evacuation procedures; staff maintain posts to assist attendees.',
+    text: 'Lightning within 8 to 12 miles. Execute evacuation procedures while maintaining assigned posts to assist attendees.',
+    instruction: 'Head for shelter or the exits as staff direct. Staff: evacuation procedures, hold your post to assist attendees.',
+    ends: 'This alert ends fifteen minutes after the last flash within 12 miles, or when the code changes.' },
+  yellow: { text: 'Weather 12 to 20 miles from site. Pay attention and get things prepared for orange and a potential work stoppage.' },
+  green: { text: 'No lightning within 20 miles in the last 15 minutes.' },
+};
+const until = a => a.code === 'red' ? a.allClearAt : a.code === 'orange' ? a.orangeUntil : null;
+function codeAlert(f, a, tz, now) {
+  const p = PROTOCOL[a.code], mi = a.code === 'red' ? a.lastNearMi : a.nearestMi, at = a.code === 'red' ? a.lastNearAt : a.nearestAt;
+  return { id: `lightning-${f.id}-${a.code}-${Math.floor(now / MIN)}`, event: p.event, headline: `Lightning ${mi} mi away at ${clock(at, tz)}. ${p.line}`,
+    body: `${p.text} ${SHELTER} ${p.ends}`, instruction: p.instruction, severity: p.severity, area: f.location, source: 'GOES lightning mapper, via Fieldwatch',
+    issuedAt: iso(now), onset: at, expiresAt: until(a), channel: 'lightning', relayCount: 0, code: a.code, nearestMi: mi };
+}
+/** Orange and red are alerts: pushed when the code changes to them, ended when it changes away, their end kept in step with the flashes. */
 async function announce(f, prev, a, now) {
-  const wasRed = prev?.code === 'red';
-  if (a.code === 'red' && !wasRed) {
-    const tz = await point(f.latitude, f.longitude).then(p => p.timeZone).catch(() => null);
-    const id = `lightning-${f.id}-${Math.floor(now / MIN)}`;
-    const alert = {
-      id, event: 'Lightning within 8 miles', headline: `Lightning ${a.lastNearMi} mi away at ${clock(a.lastNearAt, tz)}. Shelter now.`,
-      body: 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter. The all-clear is thirty minutes after the last flash within 8 miles; this alert ends with it.',
-      instruction: 'Get to shelter now and stay until the all-clear. Do not go back for anything.', severity: 'severe', area: f.location, source: 'GOES lightning mapper, via Fieldwatch',
-      issuedAt: iso(now), onset: a.lastNearAt, expiresAt: a.allClearAt, channel: 'lightning', relayCount: 0, nearestMi: a.lastNearMi,
-    };
-    if (q.alert(id)) q.updateAlert(alert); else q.insertAlert(f.id, alert);
-    state.episodes.set(f.id, id);
-    const r = await pushAlert(q.tokensFor(f.id), f, alert), w = await pushWeb(f, alert);
-    console.log(`[${f.id}] lightning: red, ${a.lastNearMi} mi push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
-  } else if (a.code === 'red') {
-    const id = state.episodes.get(f.id), old = id && q.alert(id);
-    if (old && old.expiresAt !== a.allClearAt) q.updateAlert({ ...old, expiresAt: a.allClearAt, nearestMi: a.lastNearMi });
-  } else if (wasRed) { state.episodes.delete(f.id); console.log(`[${f.id}] lightning: all clear`); }
+  const ep = state.episodes.get(f.id);
+  if (prev && a.code === prev.code) {
+    const old = ep && q.alert(ep.id), end = until(a);
+    if (old && end && old.expiresAt !== end) q.updateAlert({ ...old, expiresAt: end, nearestMi: a.nearestMi ?? old.nearestMi });
+    return;
+  }
+  if (ep) { const old = q.alert(ep.id); if (old && (!old.expiresAt || Date.parse(old.expiresAt) > now)) q.updateAlert({ ...old, expiresAt: iso(now) }); state.episodes.delete(f.id); }
+  if (a.code !== 'red' && a.code !== 'orange') { if (prev && (prev.code === 'red' || prev.code === 'orange')) console.log(`[${f.id}] lightning: ${a.code}`); return; }
+  // After a restart the alert may already be there from before; adopt it rather than push it twice.
+  const had = q.activeAlerts(f.id, now).find(x => x.channel === 'lightning' && x.code === a.code);
+  if (had) { state.episodes.set(f.id, { code: a.code, id: had.id }); if (until(a) && had.expiresAt !== until(a)) q.updateAlert({ ...had, expiresAt: until(a) }); return; }
+  const tz = await point(f.latitude, f.longitude).then(p => p.timeZone).catch(() => null);
+  const alert = codeAlert(f, a, tz, now);
+  if (q.alert(alert.id)) q.updateAlert(alert); else q.insertAlert(f.id, alert);
+  state.episodes.set(f.id, { code: a.code, id: alert.id });
+  const r = await pushAlert(q.tokensFor(f.id), f, alert), w = await pushWeb(f, alert);
+  console.log(`[${f.id}] lightning: ${a.code}, ${alert.nearestMi} mi push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
 }
 
 export function startLightning(seconds = Number(process.env.LIGHTNING_SECONDS || 60)) {

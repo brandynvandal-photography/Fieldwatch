@@ -16,7 +16,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - Home card: NWS alerts and a 6-hour strip.
 - Forecast: temperature and rain, heat index, gust and thunder panels, day rows with a pack line.
 - On the way: when the next twelve hours turn stormy, windy, wet or dangerously hot, a card under the sky with a live countdown to when it starts, what to do first, and a prep screen behind it (where to shelter, how to solidify camp, a timeline you are somewhere on, what to pack for shelter). The backend pushes the same heads-up up to three hours ahead, once per window.
-- Lightning codes: the backend reads the GOES lightning mapper's 20-second flash files from NOAA's public buckets every minute while a festival is on and grades each one: red (a flash within 8 miles, shelter now, all clear 30 minutes after the last one, with the countdown), orange (8 to 15), yellow (15 to 30), green (none within 30 in 15 minutes). A tile on the festival page, a screen with the nearest flash and the counts by ring, the code on the home page, and a turn to red pushed like a warning. The screen says the festival's own lightning vendor is the authority.
+- Lightning codes: the backend reads the GOES lightning mapper's 20-second flash files from NOAA's public buckets every minute while a festival is on and grades each one on the festival safety protocol: red (a flash under 8 miles: rapid evacuation, full work stoppage, all clear 30 minutes after the last one, with the countdown), orange (8 to 12: execute evacuation procedures, staff hold posts to assist attendees), yellow (12 to 20: pay attention, prepare for orange and a work stoppage), green (none within 20 in 15 minutes). A tile on the festival page, a screen with the nearest flash, the counts by ring and the protocol in its own words, the code on the home page, and every change to orange or red pushed. The screen says the festival's own lightning vendor is the authority.
 - 12-hour radar loop with your position.
 - Web push warnings (VAPID, keys made on first boot) for a festival or for a spot, with a test notification the moment you switch on; deep links; share with a QR and a plain link.
 - Hazard reports into a moderated queue.
@@ -166,7 +166,7 @@ Decode dBZ from the cached IEM frames, cross-correlate the last few for motion, 
 Needs: the radar path run against the real archive first (roadmap 3). Unproven; the NWS motion line (Next 4) answers the same question for the warnings that matter.
 
 **4. Lightning on the radar loop**
-The codes are live (`backend/src/lightning.js` reads the GLM files in Node with h5wasm, no second service). Still to do: the flashes as dots on the radar square with 8, 15 and 30-mile rings, and the bearing of the nearest one.
+The codes are live (`backend/src/lightning.js` reads the GLM files in Node with h5wasm, no second service). Still to do: the flashes as dots on the radar square with 8, 12 and 20-mile rings, and the bearing of the nearest one.
 Needs: the first real run against the buckets (roadmap 15). 8 km footprint; a wrong all-clear is a liability, so red never clears on stale data.
 
 **5. Offline grounds map**

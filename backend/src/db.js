@@ -125,7 +125,7 @@ export const q = {
   alert: id => { const r = s.alert.get(id); return r ? JSON.parse(r.json) : null; },
   insertAlert: (festivalId, a) => s.insertAlert.run(a.id, festivalId, JSON.stringify(a), iso(), a.expiresAt),
   updateAlert: a => s.updateAlert.run(JSON.stringify(a), a.expiresAt, a.id),
-  activeAlerts: festivalId => s.activeAlerts.all(festivalId, iso()).map(r => JSON.parse(r.json)),
+  activeAlerts: (festivalId, at) => s.activeAlerts.all(festivalId, iso(at)).map(r => JSON.parse(r.json)),   // `at`: the clock to judge "active" by (tests run on a simulated one)
   activeAlertIds: festivalId => s.activeAlertIds.all(festivalId, iso()).map(r => r.id),
   purgeAlerts: olderThan => s.purgeAlerts.run(iso(olderThan)),
 

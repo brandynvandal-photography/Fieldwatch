@@ -235,6 +235,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .code.red .dot{background:var(--warn)} .code.orange .dot{background:#FF7A1A} .code.yellow .dot{background:var(--watch)}
 .code .main{flex:1;min-width:0} .code .t{font-weight:600;font-size:15px;line-height:1.3} .code .s{color:var(--muted);font-size:14px;margin-top:2px;line-height:1.35}
 .code.now{background:rgba(26,21,51,.05)}
+.code .you{color:var(--ink-2);margin-top:5px}
 .pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)}
 .feedfest .fh{display:flex;align-items:center;gap:10px} .feedfest .fh .main{flex:1;min-width:0}
 /* Alerts */
@@ -817,7 +818,21 @@ function outlook(f){
 }
 
 // ---- lightning codes (the backend grades them from the GOES lightning mapper, lightning.js; the phone only reads) ----
-const CODE = { red: { label: 'Code red', text: 'Shelter now' }, orange: { label: 'Code orange', text: 'Head for shelter' }, yellow: { label: 'Code yellow', text: 'Watch it, know your shelter' }, green: { label: 'Code green', text: 'None within 30 miles' } };
+// The festival safety protocol, in its own words (backend/src/lightning.js PROTOCOL carries the same text for the pushes; change both).
+const CODE = {
+  red:    { label: 'Code red', ring: 'Under 8 miles', text: 'Rapid evacuation, full work stoppage', within: 8,
+            protocol: 'Lightning has been detected in less than an 8 mile radius. Rapid evacuation required. Non-essential personnel should prioritize exit and do not need to maintain posts. Full work stoppage.',
+            you: 'Get to a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter. The all-clear is thirty minutes after the last flash within 8 miles.' },
+  orange: { label: 'Code orange', ring: '8 to 12 miles', text: 'Evacuation procedures, staff hold posts', within: 12,
+            protocol: 'Lightning within 8 to 12 miles. Execute evacuation procedures while maintaining assigned posts to assist attendees.',
+            you: 'Head for shelter or the exits as staff direct. Pack what you will carry.' },
+  yellow: { label: 'Code yellow', ring: '12 to 20 miles', text: 'Pay attention, prepare for orange', within: 20,
+            protocol: 'Weather 12 to 20 miles from site. Pay attention and get things prepared for orange and a potential work stoppage.',
+            you: 'Decide where you will shelter, and secure camp now.' },
+  green:  { label: 'Code green', ring: 'None within 20 miles', text: 'Normal operations', within: 20,
+            protocol: 'No lightning within 20 miles in the last 15 minutes.',
+            you: 'Not an all-clear from your safety team; they call it.' },
+};
 /** Lightning moves faster than the five-minute refresh: the grade is read every minute while a festival is open. A turn to red pulls the alerts too, and the new warning buzzes. */
 async function loadLightning(f){
   const b = backend(); if (!b || !f) return;
@@ -832,10 +847,10 @@ async function loadLightning(f){
 /** The tile under the sky: the nearest flash, the code, and the all-clear countdown when it is red. */
 function lightningTile(f){
   const l = data(f).lightning, c = l && CODE[l.code]; if (!c) return '';
-  const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 30 mi';
-  const n = l.within ? l.within[30] : 0;
+  const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 20 mi';
+  const n = l.within ? l.within[c.within] || 0 : 0;
   const sub = l.code === 'red' ? `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`
-    : l.code === 'green' ? `${esc(c.text)} in the last 15 min` : `${esc(c.text)} · ${n} flash${n === 1 ? '' : 'es'} within 30 mi in 15 min`;
+    : l.code === 'green' ? `${esc(c.text)} · nothing in the last 15 min` : `${esc(c.text)} · ${n} flash${n === 1 ? '' : 'es'} within ${c.within} mi in 15 min`;
   return `<button class="bolt glass ${esc(l.code)}" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(head)} · ${esc(c.label)}</div><div class="s">${sub}</div></div>${I.chev}</button>`;
 }
 
@@ -1327,10 +1342,8 @@ screens.prep = () => {
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
   const l = data(f).lightning, c = l && CODE[l.code], live = Boolean(c);
-  const rings = [['red', 'Within 8 miles', 'Shelter now: a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter. The all-clear is thirty minutes after the last flash within 8 miles.'],
-    ['orange', '8 to 15 miles', 'Head for shelter. A storm moving at 30 mph covers 8 miles in 15 minutes.'], ['yellow', '15 to 30 miles', 'Watch it, decide where you will shelter, and pack what you will carry.'], ['green', 'None within 30 miles', 'In the last 15 minutes. Not an all-clear from your safety team.']];
   const head = live ? c.label : backend() ? 'No lightning data' : 'Needs the Fieldwatch backend';
-  const line = live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi, ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 30 miles in the last 15 minutes')
+  const line = live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi, ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
     : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'The mapper has not been read yet, or nothing is on') : 'Lightning codes come from the backend, which reads the GOES lightning mapper every minute';
   const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
@@ -1339,9 +1352,9 @@ screens.lightning = () => {
     <p class="sub">${live ? esc(c.text) : esc(statusLine(f))}</p>
     <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>
       ${live && l.code === 'red' && l.allClearAt ? `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">until the all-clear, unless it strikes again</span>` : ''}</div>
-    ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 15 mi', l.within[15])}${kv('Within 30 mi', l.within[30])}${kv('Last within 8 mi', l.lastNearAt ? esc(fmtTime(l.lastNearAt)) : 'none in 30 min')}${kv('Data', l.dataAt ? esc(ago(l.dataAt)) : 'none')}</div>` : ''}
+    ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}${kv('Last within 8 mi', l.lastNearAt ? esc(fmtTime(l.lastNearAt)) : 'none in 30 min')}${kv('Data', l.dataAt ? esc(ago(l.dataAt)) : 'none')}</div>` : ''}
     <p class="h">The codes</p>
-    <div class="group glass">${rings.map(([k, t, s]) => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(t)}</div><div class="s">${esc(s)}</div></div></div>`).join('')}</div>
+    <div class="group glass">${Object.keys(CODE).map(k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(CODE[k].ring)}</div><div class="s">${esc(CODE[k].protocol)}</div><div class="s you">${esc(CODE[k].you)}</div></div></div>`).join('')}</div>
     <p class="note">Read every minute from the GOES satellites' lightning mapper (NOAA, public), which sees cloud tops at about 8 km and can miss flashes under a thick anvil. The festival's own lightning detection and its safety staff are the authority. Carrier emergency alerts still arrive on their own.</p>`;
 };
 
