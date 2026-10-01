@@ -1480,11 +1480,20 @@ function feedCard(i, opts){
   const own = i.lightning && CODE[i.lightning.code] ? i.lightning : null;
   const l = lightningState(own || (fd && fd.codes && fd.codes[f.id]) || i.lightning || null, i.alerts), c = l && CODE[l.code];
   const pill = c ? `<span class="pill ${esc(l.code)}">${esc(c.label)}</span>` : l && l.code === 'indoor' ? '<span class="pill">Indoors</span>' : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
-  const boltRow = l && (l.code === 'orange' || l.code === 'yellow') ? `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','')"><span class="bar watch"></span><div class="main"><div class="t">Lightning ${l.nearestMi != null ? esc(l.nearestMi) + ' mi' : 'near'}</div><div class="s">${esc(CODE[l.code].label)} · ${esc(CODE[l.code].text)}</div></div>${I.chev}</button>` : '';
+  // Lightning is one row, whatever says it: the live grade, the alert the backend stored, or both. The row carries the nearest
+  // flash, the code, the protocol line and the end, and opens the standing alert when there is one, else the lightning screen.
+  const bolts = i.alerts.filter(a => a.channel === 'lightning'), others = i.alerts.filter(a => a.channel !== 'lightning');
+  const standing = bolts.sort((a, b) => (CODE_RANK[b.code] || 0) - (CODE_RANK[a.code] || 0))[0];
+  let boltRow = '';
+  if (c && l.code !== 'green') {
+    const mi = l.code === 'red' ? l.lastNearMi : l.nearestMi, endAt = l.code === 'red' ? l.allClearAt : l.orangeUntil || (standing && standing.expiresAt) || null;
+    const end = endAt ? ` · ${l.code === 'red' ? 'all clear' : 'until'} ${fmtWhen(endAt)}` : '';
+    boltRow = `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${standing ? esc(standing.id) : ''}')"><span class="bar ${l.code === 'red' ? 'warn' : 'watch'}"></span><div class="main"><div class="t">Lightning ${mi != null ? esc(mi) + ' mi' : 'near'}</div><div class="s">${esc(c.label)} · ${esc(c.text)}${esc(end)}</div></div>${I.chev}</button>`;
+  }
   const main = `<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}${S.here && away(f) != null ? ' · ' + esc(fmtDist(away(f))) : ''}</div></div>${pill}`;
   const heart = fav ? `<span class="fav">${I.heartFull}</span>` : '';
   const header = open && on ? `<button class="fh" onclick="pick('${esc(f.id)}')">${heart}${main}${I.chev}</button>` : `<div class="fh">${heart}${main}</div>`;
-  return `<div class="group glass feedfest${fav ? ' fav' : ''}">${header}${boltRow}${i.alerts.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
+  return `<div class="group glass feedfest${fav ? ' fav' : ''}">${header}${boltRow}${others.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
 }
 const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'here');
 /** Favorites on the home page: every favorite as its own card, the loudest first, with its alerts under it. */

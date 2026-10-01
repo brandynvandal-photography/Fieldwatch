@@ -882,8 +882,11 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     assert.equal(await page.textContent('.codehead h2'), 'Code Red'); assert.match(await page.textContent('.codehead p'), /^Last flash within 8 mi at/);
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.red');
     store.feed = [{ festivalId: 'hulaween-2026', alerts: [redAlert] }];   // the home page's grade for it still says green
-    await page.click('button:has-text("Change")'); await page.waitForSelector('h1.title:has-text("1 warning")');
+    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy); await page.waitForSelector('h1.title:has-text("1 warning")');
     assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Red', 'on the home page too');
+    assert.deepEqual(await page.$$eval('.feedfest:has-text("Suwannee Hulaween") .alert .t', els => els.map(e => e.textContent)), ['Lightning 3.6 mi'], 'the grade and the alert it stands on are one row, not two');
+    assert.match(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .alert .s'), /^Code Red · Rapid evacuation, full work stoppage · all clear \w{3} \d+:\d\d [AP]M$/);
     await page.click('.feedfest .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
     delete store.alerts['hulaween-2026'];
     // An indoor event: the backend grades nothing, the tile and the screen say why, the home page says Indoors.
@@ -916,7 +919,7 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     await page.waitForSelector('h1.title:has-text("1 advisory")');
     const card = `.feedfest:has-text("${other.name}")`;
     assert.equal(await page.textContent(`${card} .alert .t`), 'Lightning 11.2 mi');
-    assert.equal(await page.textContent(`${card} .alert .s`), 'Code Orange · Evacuation procedures, staff hold posts');
+    assert.match(await page.textContent(`${card} .alert .s`), /^Code Orange · Evacuation procedures, staff hold posts · until \w{3} \d+:\d\d [AP]M$/, 'with the end of the orange');
     assert.equal(await page.textContent(`${card} .fh .pill`), 'Code Orange');
     assert.equal(await page.$('.feedfest:has-text("Suwannee Hulaween")'), null, 'the festival you looked at is not on the page: nothing is going on there');
     await page.click(`${card} .alert`);
