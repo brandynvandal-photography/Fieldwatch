@@ -338,7 +338,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .field{display:flex;align-items:center;gap:10px;padding:12px 16px}
 .field input{flex:1;border:0;background:none;outline:none;min-width:0}
 .field .k{color:var(--muted);font-size:14px;flex:none}
-.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,16px);opacity:0;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;max-width:calc(100% - 32px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,16px);opacity:0;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;max-width:calc(100% - 32px);width:max-content;white-space:normal;text-align:center;line-height:1.35;border-radius:22px}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .link{color:var(--accent);font-weight:600;text-decoration:none}
 .field input[type=date]{-webkit-appearance:auto;appearance:auto;text-align:right;min-height:26px;color:var(--ink);background:none}
