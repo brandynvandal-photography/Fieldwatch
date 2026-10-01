@@ -143,11 +143,23 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3); assert.equal(sent[2].payload.title, 'Code red: lightning within 8 miles');
   const live = q.activeAlerts(fest.id, t2 + 6 * MIN).filter(x => x.channel === 'lightning');
   assert.equal(live.length, 1); assert.equal(live[0].code, 'red'); assert.ok(Date.parse(q.alert(orange[0].id).expiresAt) <= t2 + 6 * MIN, 'the orange alert is ended, not left beside the red');
-  // A restart mid-red: the files are read again, the red alert already in the database is adopted, nobody is pushed twice.
+  // A restart mid-red: before a single file is read again, the red alert already in the database keeps the grade red, with its own
+  // all-clear, so the phone's tile and its sky card never disagree; then the files are read again, the alert is adopted, nobody is pushed twice.
   resetLightning();
+  await lightningTick({ now: t2 + 7 * MIN, fetchImpl, festivals: [fest], maxFiles: 0 });
+  assert.equal(lightningFor(fest.id).code, 'red', 'an empty buffer does not clear a red that is still out');
+  assert.equal(lightningFor(fest.id).allClearAt, q.alert(live[0].id).expiresAt, 'its all-clear is the alert\'s'); assert.equal(lightningFor(fest.id).lastNearMi, 5);
   await lightningTick({ now: t2 + 7 * MIN, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3);
   assert.equal(q.activeAlerts(fest.id, t2 + 7 * MIN).filter(x => x.channel === 'lightning').length, 1);
+  // Past that all-clear with a quiet file: green, and the alert is over; a restart then carries nothing.
+  const t3 = t2 + 5 * MIN + ALL_CLEAR_MS + MIN;
+  files.set(key('G19', t3 - MIN), lcfa(t3 - MIN, []));
+  await lightningTick({ now: t3, fetchImpl, festivals: [fest] });
+  assert.equal(lightningFor(fest.id).code, 'green'); assert.ok(Date.parse(q.alert(live[0].id).expiresAt) <= t3);
+  resetLightning();
+  await lightningTick({ now: t3 + MIN, fetchImpl, festivals: [fest], maxFiles: 0 });
+  assert.equal(lightningFor(fest.id).code, 'none', 'nothing read yet and nothing standing: no data, not a guess');
   // Nothing on: nothing kept, nothing graded.
   assert.deepEqual(await lightningTick({ now: t2 + 8 * MIN, fetchImpl, festivals: [] }), { skipped: 'nothing is on' });
   assert.equal(lightningFor(fest.id), null);

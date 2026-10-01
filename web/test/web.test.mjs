@@ -292,7 +292,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
   const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {} };
-  store.groundReports = {};
+  store.groundReports = {}; store.alerts = {};
   // The live stream: open responses, and a way for a test to push a change to every page on it (backend/src/live.js).
   store.live = [];
   store.emit = e => store.live.forEach(r => r.write(`event: change\ndata: ${JSON.stringify(e)}\n\n`));
@@ -325,6 +325,8 @@ function fakeBackend(list) {
       if (m === 'GET' && path === '/alerts') return send(200, { at: new Date().toISOString(), on: store.list.filter(f => isLive(f) && f.status !== 'hidden').length, items: (store.feed || []).map(x => ({ festival: store.list.find(f => f.id === x.festivalId), alerts: x.alerts, lightning: store.lightning[x.festivalId] || null })).filter(i => i.festival) });
       const gr = path.match(/^\/festivals\/([^/]+)\/ground$/);
       if (m === 'GET' && gr) return send(200, groundOf(gr[1]));
+      const fal = path.match(/^\/festivals\/([^/]+)\/alerts$/);
+      if (m === 'GET' && fal && store.alerts[fal[1]]) return send(200, store.alerts[fal[1]]);
       const grr = path.match(/^\/festivals\/([^/]+)\/ground\/report$/);
       if (m === 'POST' && grr) { const b = JSON.parse(raw); if (!['fine', 'soft', 'mud', 'water'].includes(b.state)) return send(400, { error: 'state' }); store.groundReports[grr[1]] = [{ state: b.state, at: new Date().toISOString() }, ...(store.groundReports[grr[1]] || [])]; return send(200, { ok: true, state: b.state, effective: 0.9, learned: b.state === 'fine' ? null : { threshold: 0.9, samples: store.groundReports[grr[1]].length, at: new Date().toISOString() }, reports: groundOf(grr[1]).reports }); }
       const ncm = path.match(/^\/festivals\/([^/]+)\/nowcast$/);
@@ -860,6 +862,22 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     store.emit({ festivalId: 'hulaween-2026', kind: 'lightning', at: minutesAgo(0) });
     await page.waitForSelector('.bolt.green');
     assert.equal(await page.textContent('.bolt .t'), 'No lightning within 20 mi · Code green');
+    // The backend restarted mid-red: its grade says green for a minute while the red alert it issued still stands. The phone shows
+    // the alert's red on the sky, the tile and the home page, with the alert's own all-clear: never a red card over a green tile.
+    const redAlert = { id: 'lightning-hulaween-2026-red-1', event: 'Code red: lightning within 8 miles', headline: 'Lightning 3.6 mi away at 6:40 PM. Rapid evacuation required. Full work stoppage.', body: 'Lightning has been detected in less than an 8 mile radius.', instruction: 'Get to shelter now.', severity: 'severe', area: 'Live Oak, FL', source: 'GOES lightning mapper, via Fieldwatch', issuedAt: minutesAgo(10), onset: minutesAgo(10), expiresAt: new Date(Date.now() + 20 * 60000).toISOString(), channel: 'lightning', relayCount: 0, code: 'red', nearestMi: 3.6 };
+    store.alerts['hulaween-2026'] = [redAlert];
+    await page.evaluate(() => refresh(fest())); await page.waitForSelector('.bolt.red');
+    assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code red');
+    assert.match(await page.textContent('.bolt .s'), /all clear in (19|20) min/, 'the countdown is the alert\'s own end');
+    assert.equal(await page.textContent('.sky h2'), 'Code red: lightning within 8 miles', 'the sky and the tile say the same thing');
+    await page.click('.bolt'); await page.waitForSelector('h1.title:has-text("Lightning")');
+    assert.equal(await page.textContent('.codehead h2'), 'Code red'); assert.match(await page.textContent('.codehead p'), /^Last flash within 8 mi at/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.red');
+    store.feed = [{ festivalId: 'hulaween-2026', alerts: [redAlert] }];   // the home page's grade for it still says green
+    await page.click('button:has-text("Change")'); await page.waitForSelector('h1.title:has-text("1 warning")');
+    assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code red', 'on the home page too');
+    await page.click('.feedfest .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    delete store.alerts['hulaween-2026'];
     // A new alert on the stream pulls the whole festival again; one at another festival does not.
     const pulls = () => store.calls.filter(c => c === 'GET /festivals/hulaween-2026/ground').length, settle = () => new Promise(r => setTimeout(r, 400));
     const was = pulls();

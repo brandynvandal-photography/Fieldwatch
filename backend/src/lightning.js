@@ -73,13 +73,22 @@ export async function readFlashes(bytes) {
   } finally { try { unlinkSync(path); } catch {} }
 }
 
-/** One festival's grade from the flashes in the buffer. `lastFileAt` says whether the data is fresh enough to call anything green. */
-export function assess(f, flashes, now = Date.now(), lastFileAt = null) {
+/**
+ * One festival's grade from the flashes in the buffer. `lastFileAt` says whether the data is fresh enough to call anything green.
+ * `carry` is a red or orange alert already standing (issued before a restart, while the files are read again, newest first): the
+ * flash it was issued on keeps its say until the alert's own end, so the grade never falls below an alert that is still out.
+ */
+export function assess(f, flashes, now = Date.now(), lastFileAt = null, carry = null) {
   const near = flashes.map(x => ({ ...x, mi: milesBetween(f.latitude, f.longitude, x.lat, x.lon) })).filter(x => x.mi <= RINGS.yellow);
   const recent = near.filter(x => now - x.t <= RECENT_MS);
-  const nearest = recent.reduce((b, x) => (!b || x.mi < b.mi ? x : b), null);
-  const lastNear = near.filter(x => x.mi <= RINGS.red).reduce((b, x) => (!b || x.t > b.t ? x : b), null);
-  const lastMid = recent.filter(x => x.mi <= RINGS.orange).reduce((b, x) => (!b || x.t > b.t ? x : b), null);
+  let nearest = recent.reduce((b, x) => (!b || x.mi < b.mi ? x : b), null);
+  let lastNear = near.filter(x => x.mi <= RINGS.red).reduce((b, x) => (!b || x.t > b.t ? x : b), null);
+  let lastMid = recent.filter(x => x.mi <= RINGS.orange).reduce((b, x) => (!b || x.t > b.t ? x : b), null);
+  if (carry && Number.isFinite(carry.t) && Number.isFinite(carry.mi)) {
+    const c = { t: carry.t, mi: carry.mi };
+    if (carry.code === 'red' && c.mi <= RINGS.red && (!lastNear || c.t > lastNear.t)) lastNear = c;
+    if (carry.code === 'orange' && now - c.t <= RECENT_MS && c.mi <= RINGS.orange) { if (!nearest || c.mi < nearest.mi) nearest = c; if (!lastMid || c.t > lastMid.t) lastMid = c; }
+  }
   const red = Boolean(lastNear && now - lastNear.t < ALL_CLEAR_MS), stale = lastFileAt == null || now - lastFileAt > STALE_MS;
   const code = red ? 'red' : stale ? 'none' : !nearest ? 'green' : nearest.mi <= RINGS.orange ? 'orange' : 'yellow';
   const within = r => recent.filter(x => x.mi <= r).length, mi = x => Math.round(x.mi * 10) / 10;
@@ -89,6 +98,13 @@ export function assess(f, flashes, now = Date.now(), lastFileAt = null) {
 }
 
 const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, lastFileAt: null, lastTickAt: null };
+/** A red or orange alert still standing for this festival, as the flash it stands on: its end, less the window that end was set from. */
+function carried(f, now) {
+  const ep = state.episodes.get(f.id);
+  const al = ep ? q.alert(ep.id) : q.activeAlerts(f.id, now).find(x => x.channel === 'lightning' && (x.code === 'red' || x.code === 'orange'));
+  if (!al || (al.code !== 'red' && al.code !== 'orange') || !al.expiresAt || Date.parse(al.expiresAt) <= now || !Number.isFinite(Number(al.nearestMi))) return null;
+  return { code: al.code, t: Date.parse(al.expiresAt) - (al.code === 'red' ? ALL_CLEAR_MS : RECENT_MS), mi: Number(al.nearestMi) };
+}
 export const lightningFor = id => state.per.get(id) || null;
 export const lightningStatus = () => ({ on: lightningOn(), lastTickAt: state.lastTickAt ? iso(state.lastTickAt) : null, lastFileAt: state.lastFileAt ? iso(state.lastFileAt) : null,
   files: state.files, flashes: state.flashes.length, buckets: buckets().map(b => ({ bucket: b, files: 0, lastFileAt: null, lastError: null, ...state.buckets[b] })) });
@@ -131,7 +147,7 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
   state.flashes = state.flashes.filter(x => now - x.t <= ALL_CLEAR_MS);
   for (const [k, t] of state.seen) if (t < now - 2 * 3_600_000) state.seen.delete(k);
   for (const f of festivals) {
-    const prev = state.per.get(f.id), a = assess(f, state.flashes, now, state.lastFileAt);
+    const prev = state.per.get(f.id), a = assess(f, state.flashes, now, state.lastFileAt, carried(f, now));
     state.per.set(f.id, a);
     if (!prev || prev.code !== a.code || prev.nearestMi !== a.nearestMi) changed(f.id, 'lightning');
     try { await announce(f, prev, a, now); } catch (e) { console.error(`[${f.id}] lightning alert failed:`, errorText(e)); }

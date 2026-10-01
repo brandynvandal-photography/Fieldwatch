@@ -987,9 +987,19 @@ async function loadLightning(f){
     else if (changed && ['home', 'lightning', 'weather'].includes(S.screen)) render();
   }catch(e){}
 }
+const CODE_RANK = { red: 4, orange: 3, yellow: 2, green: 1, none: 0 };
+/** The lightning state to show: the live grade, unless a red or orange alert still standing says more (the grade falls behind for a
+ *  minute or two while a restarted backend reads its files again). The tile, the screen, the sky and the home page then all agree. */
+function lightningState(l, alerts){
+  const al = (alerts || []).filter(a => a.channel === 'lightning' && isActive(a) && CODE[a.code]).sort((a, b) => CODE_RANK[b.code] - CODE_RANK[a.code])[0];
+  if (!al || (l && CODE[l.code] && CODE_RANK[l.code] >= CODE_RANK[al.code])) return l;
+  const red = al.code === 'red', mi = al.nearestMi != null ? Number(al.nearestMi) : null;
+  return { ...(l || { within: null, source: 'GOES GLM', at: al.issuedAt }), code: al.code, nearestMi: red ? null : mi, nearestAt: red ? null : al.onset, lastNearMi: red ? mi : (l && l.lastNearMi) || null, lastNearAt: red ? al.onset : (l && l.lastNearAt) || null, allClearAt: red ? al.expiresAt : null, orangeUntil: red ? null : al.expiresAt, standing: true };
+}
+const liveLightning = f => lightningState(data(f).lightning, data(f).alerts);
 /** The tile under the sky: the nearest flash, the code, and the all-clear countdown when it is red. */
 function lightningTile(f){
-  const l = data(f).lightning, c = l && CODE[l.code]; if (!c) return '';
+  const l = liveLightning(f), c = l && CODE[l.code]; if (!c) return '';
   const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 20 mi';
   const n = l.within ? l.within[c.within] || 0 : 0;
   const sub = l.code === 'red' ? `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`
@@ -1441,10 +1451,10 @@ function openFeedAlert(fid, aid){
 }
 const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin' : ''}" onclick="loadFeed()" aria-label="Refresh" ${S.feedBusy ? 'disabled' : ''}>${I.refresh}</button>`;
 /** How loud a festival's card is: its worst alert, or a red or orange lightning code. */
-const feedRank = i => Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, i.lightning && i.lightning.code === 'red' ? 3 : i.lightning && i.lightning.code === 'orange' ? 2 : 0);
+const feedRank = i => { const l = lightningState(i.lightning, i.alerts); return Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, l && l.code === 'red' ? 3 : l && l.code === 'orange' ? 2 : 0); };
 /** One festival's card on the home page: name and place, the lightning code, then each alert as a row. A favorite's header opens it, and says Clear, Checking or when gates open when there is nothing louder to say. */
 function feedCard(i, fav){
-  const f = i.festival, l = i.lightning, on = isLive(f), fd = S.feed;
+  const f = i.festival, l = lightningState(i.lightning, i.alerts), on = isLive(f), fd = S.feed;
   const codePill = l && CODE[l.code] && l.code !== 'green' ? `<span class="pill ${esc(l.code)}">${esc(CODE[l.code].label)}</span>` : '';
   const pill = codePill || (!fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>');
   const boltRow = l && (l.code === 'orange' || l.code === 'yellow') ? `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','')"><span class="bar watch"></span><div class="main"><div class="t">Lightning ${l.nearestMi != null ? esc(l.nearestMi) + ' mi' : 'near'}</div><div class="s">${esc(CODE[l.code].label)} · ${esc(CODE[l.code].text)}</div></div>${I.chev}</button>` : '';
@@ -1716,7 +1726,7 @@ screens.prep = () => {
 };
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
-  const l = data(f).lightning, c = l && CODE[l.code], live = Boolean(c);
+  const l = liveLightning(f), c = l && CODE[l.code], live = Boolean(c);
   const head = live ? c.label : backend() ? 'No lightning data' : 'Needs the Fieldwatch backend';
   const line = live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi, ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
     : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'The mapper has not been read yet, or nothing is on') : 'Lightning codes come from the backend, which reads the GOES lightning mapper every minute';
