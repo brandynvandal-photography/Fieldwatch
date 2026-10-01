@@ -29,6 +29,15 @@ export async function pastRain(lat, lon, { now = Date.now(), fetchImpl = globalT
 // ---- the surface: OpenStreetMap land use under the coordinate, a public Overpass instance, one query per festival ever ----
 const OVERPASS = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
 export const SURFACES = ['grass', 'dirt', 'sand', 'gravel', 'pavement', 'mixed'];
+// ---- indoors or out: a club, a hall or an arena is its own shelter, so the lightning protocol and the field advice stand down there ----
+const INDOOR_AMENITY = ['nightclub', 'bar', 'pub', 'theatre', 'cinema', 'arena', 'events_venue', 'community_centre', 'conference_centre', 'exhibition_centre', 'casino', 'concert_hall', 'music_venue'];
+const INDOOR_LEISURE = ['sports_centre', 'ice_rink', 'bowling_alley', 'dance'];
+const INDOOR_WORDS = /\b(night ?club|club|arena|theat(?:re|er)|hall|ballroom|auditorium|convention cent(?:er|re)|coliseum|dome|casino|lounge|bar|warehouse|tavern|saloon|brewery|cinema|church|indoors?)\b/i;
+const OUTDOOR_WORDS = /\b(park|fairgrounds?|ranch|farm|fields?|speedway|campground|grounds|beach|lake|forest|meadow|amphitheat(?:re|er)|raceway|downtown|streets?|plaza|lawn|island|mountain|resort|woods|valley|river|bay|shore|airfield|airport|orchard|vineyard|winery|estate|outdoors?)\b/i;
+/** One feature's tags, read for a roof: a building, a club, a hall, an arena says indoors; null when the tags say nothing. */
+export const indoorFromTags = (tags = {}) => (tags.building && !['no', 'roof', 'shed', 'grandstand'].includes(tags.building)) || INDOOR_AMENITY.includes(tags.amenity) || INDOOR_LEISURE.includes(tags.leisure) || tags.indoor === 'yes' ? true : null;
+/** What a venue's name says: a nightclub or a hall is indoors, a park or fairgrounds is not; the building's word wins when both appear. */
+export const indoorFromWords = text => (INDOOR_WORDS.test(text || '') ? true : OUTDOOR_WORDS.test(text || '') ? false : null);
 export const SOILS = ['A', 'B', 'C', 'D'];   // USDA hydrologic groups: A drains fast (sand), D barely drains (clay)
 export const STRUCTURES = ['canopies', 'inflatables', 'stage'];
 const SURFACE_TAG = { asphalt: 'pavement', concrete: 'pavement', paved: 'pavement', paving_stones: 'pavement', sett: 'pavement', gravel: 'gravel', fine_gravel: 'gravel', compacted: 'gravel', pebblestone: 'gravel',
@@ -57,19 +66,22 @@ export async function surfaceFromOSM(lat, lon, { fetchImpl = globalThis.fetch } 
   // The most telling feature wins: a surface tag, then a use (parking, pitch), then land cover. Boundaries and places say nothing.
   const rank = t => (t.surface ? 0 : t.amenity || t.leisure || t.aeroway || t.highway ? 1 : 2);
   const tagText = t => ['surface', 'amenity', 'leisure', 'landuse', 'natural', 'aeroway', 'highway'].filter(k => t[k]).map(k => `${k}=${t[k]}`).join(', ');
+  const roofText = t => ['building', 'amenity', 'leisure', 'indoor'].filter(k => t[k]).map(k => `${k}=${t[k]}`).join(', ');
   // Under the point first: every area that contains it.
   const under = await ask(`[out:json][timeout:10];is_in(${la},${lo});out tags;`);
   let camping = under.some(e => campingFromTags(e.tags || {}));
+  // Indoors when a building, a club or a hall sits under the point; outdoors when the ground under it is mapped as land; else unknown.
+  const roof = under.find(e => indoorFromTags(e.tags || {}) === true), indoor = roof ? true : under.some(e => surfaceFromTags(e.tags || {})) ? false : null, indoorTag = roof ? roofText(roof.tags) : null;
   const hits = under.map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}) })).filter(h => h.read).sort((a, b) => rank(a.tags) - rank(b.tags));
-  if (hits.length) { const [surface, low] = hits[0].read; return { surface, low, camping, source: 'OpenStreetMap', tag: tagText(hits[0].tags) }; }
+  if (hits.length) { const [surface, low] = hits[0].read; return { surface, low, camping, indoor, indoorTag, source: 'OpenStreetMap', tag: tagText(hits[0].tags) }; }
   // Nothing under it says: the nearest mapped ground within 250 m (a field whose outline stops short of the pin, the lot beside it).
   const near = await ask(`[out:json][timeout:10];nwr(around:${AROUND_M},${la},${lo})[~"^(surface|landuse|leisure|natural|amenity|aeroway|tourism)$"~"."];out tags center;`);
   const at = e => e.center || (e.lat != null ? { lat: e.lat, lon: e.lon } : null);
   const meters = e => { const c = at(e); if (!c) return AROUND_M; const dy = (c.lat - lat) * 111195, dx = (c.lon - lon) * 111195 * Math.cos(lat * Math.PI / 180); return Math.hypot(dx, dy); };
   camping = camping || near.some(e => campingFromTags(e.tags || {}));
   const close = near.map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}), m: meters(e) })).filter(h => h.read).sort((a, b) => a.m - b.m || rank(a.tags) - rank(b.tags));
-  if (close.length) { const [surface, low] = close[0].read; return { surface, low, camping, source: 'OpenStreetMap', tag: `${tagText(close[0].tags)}, ${Math.round(close[0].m)} m away` }; }
-  return camping ? { surface: null, low: false, camping, source: 'OpenStreetMap', tag: 'tourism=camp_site' } : null;
+  if (close.length) { const [surface, low] = close[0].read; return { surface, low, camping, indoor, indoorTag, source: 'OpenStreetMap', tag: `${tagText(close[0].tags)}, ${Math.round(close[0].m)} m away` }; }
+  return camping || indoor != null ? { surface: null, low: false, camping, indoor, indoorTag, source: 'OpenStreetMap', tag: indoorTag || 'tourism=camp_site' } : null;
 }
 
 // ---- the land cover: the National Land Cover Database at the point (MRLC's map service, 30 m cells), when OpenStreetMap has nothing ----
@@ -117,7 +129,7 @@ export async function soilFromUSDA(lat, lon, { fetchImpl = globalThis.fetch } = 
 /** Both lookups, written onto the festival record (the staff override, if any, is kept beside them). */
 export async function lookupGround(f, { now = Date.now(), fetchImpl = globalThis.fetch, save = null } = {}) {
   const found = { lookedUpAt: iso(now) }, errors = [];
-  try { const s = await surfaceFromOSM(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, ...(s.surface ? [{ surface: s.surface, surfaceSource: `${s.source}: ${s.tag}` }] : []), ...(s.low ? [{ low: true }] : []), ...(s.camping ? [{ camping: true, campingSource: 'OpenStreetMap: a campground under the grounds' }] : [])); }
+  try { const s = await surfaceFromOSM(f.latitude, f.longitude, { fetchImpl }); if (s) Object.assign(found, ...(s.indoor != null ? [{ indoor: s.indoor, indoorSource: s.indoor ? `${s.source}: ${s.indoorTag}` : `${s.source}: ${s.tag}` }] : []), ...(s.surface ? [{ surface: s.surface, surfaceSource: `${s.source}: ${s.tag}` }] : []), ...(s.low ? [{ low: true }] : []), ...(s.camping ? [{ camping: true, campingSource: 'OpenStreetMap: a campground under the grounds' }] : [])); }
   catch (e) { errors.push(`surface: ${errorText(e)}`); }
   if (!found.surface) { try { const c = await coverFromNLCD(f.latitude, f.longitude, { fetchImpl }); if (c) Object.assign(found, { surface: c.surface, surfaceSource: c.source }, ...(c.low ? [{ low: true }] : [])); }
     catch (e) { errors.push(`cover: ${errorText(e)}`); } }
@@ -132,8 +144,11 @@ export async function lookupGround(f, { now = Date.now(), fetchImpl = globalThis
 export function effectiveGround(f) {
   const g = f?.ground || {}, o = g.override || {};
   const camping = o.camping ?? g.camping ?? (f?.camping === true || f?.camping === false ? f.camping : null);
+  const said = f?.indoor === true || f?.indoor === false ? f.indoor : indoorFromWords(`${f?.name || ''} ${f?.location || ''}`);
+  const indoor = o.indoor ?? g.indoor ?? said, indoorSource = o.indoor != null ? 'staff' : g.indoor != null ? g.indoorSource || 'lookup' : said != null ? 'the listing' : 'unknown';
   return { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: Array.isArray(o.structures) ? o.structures : ['canopies'],
     camping, campingSource: o.camping != null ? 'staff' : g.camping != null ? g.campingSource || 'lookup' : f?.camping === true || f?.camping === false ? 'the listing' : 'unknown',
+    indoor, indoorSource,
     surfaceSource: o.surface ? 'staff' : g.surface ? g.surfaceSource || 'lookup' : 'assumed', soilSource: o.soil ? 'staff' : g.soil ? g.soilSource || 'lookup' : 'assumed',
     soilName: g.soilName || null, drainage: g.drainage || null, lookedUpAt: g.lookedUpAt || null, lookupError: g.lookupError || null, override: g.override || null, learned: g.learned || null };
 }
@@ -144,6 +159,7 @@ export function validOverride(body = {}) {
   if (body.soil != null && body.soil !== '') { if (!SOILS.includes(body.soil)) return { error: `soil must be one of ${SOILS.join(', ')}` }; o.soil = body.soil; }
   if (body.low != null) o.low = Boolean(body.low);
   if (body.camping != null) o.camping = body.camping === true || body.camping === 'true';
+  if (body.indoor != null) o.indoor = body.indoor === true || body.indoor === 'true';
   if (body.structures != null) { if (!Array.isArray(body.structures) || body.structures.some(s => !STRUCTURES.includes(s))) return { error: `structures must be some of ${STRUCTURES.join(', ')}` }; o.structures = body.structures; }
   if (body.note != null) o.note = String(body.note).slice(0, 200);
   return { override: { ...o, at: iso() } };

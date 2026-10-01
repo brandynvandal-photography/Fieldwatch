@@ -434,17 +434,20 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     store.ground['hulaween-2026'] = { ...(store.ground['hulaween-2026'] || {}), surface: 'sand', surfaceSource: 'OpenStreetMap: natural=beach' };
     store.emit({ festivalId: 'hulaween-2026', kind: 'ground', at: new Date().toISOString() });
     await page.waitForSelector('button.chip.on:has-text("Sand")');
-    await page.click('button.chip:has-text("Paved")'); await page.click('button.chip:has-text("Stage")'); await page.click('button.chip:has-text("No camping")');
+    await page.click('button.chip:has-text("Paved")'); await page.click('button.chip:has-text("Stage")'); await page.click('button.chip:has-text("No camping")'); await page.click('button.chip:has-text("Indoors")');
     // Once staff have touched a chip, a refresh leaves their choices alone.
     store.ground['hulaween-2026'] = { ...store.ground['hulaween-2026'], surface: 'gravel' };
     store.emit({ festivalId: 'hulaween-2026', kind: 'ground', at: new Date().toISOString() });
-    await page.waitForFunction(() => /Gravel/.test(document.querySelector('.kv')?.textContent || ''));
+    await page.waitForFunction(() => [...document.querySelectorAll('.kv')].some(k => /Gravel/.test(k.textContent)));
     assert.ok(await page.$('button.chip.on:has-text("Paved")'), 'the readout moved to gravel; the chip staff picked stays');
     assert.ok((await page.$$eval('.chips', rs => rs.map(r => r.getBoundingClientRect().height))).every(h => h < 44), 'every section of chips is one line');
     assert.deepEqual(await page.$$eval('.chips .chip', cs => cs.filter(c => c.scrollWidth > c.clientWidth).map(c => c.textContent)), [], 'and no chip is cut short');
     await page.click('button.btn:has-text("Save")'); await page.waitForSelector('.toast.show:has-text("Saved")');
     assert.ok(store.calls.includes('PUT /festivals/hulaween-2026/ground'));
-    assert.deepEqual({ surface: store.ground['hulaween-2026'].surface, structures: store.ground['hulaween-2026'].structures, low: store.ground['hulaween-2026'].low, camping: store.ground['hulaween-2026'].camping }, { surface: 'pavement', structures: ['canopies', 'stage'], low: false, camping: false });
+    assert.deepEqual({ surface: store.ground['hulaween-2026'].surface, structures: store.ground['hulaween-2026'].structures, low: store.ground['hulaween-2026'].low, camping: store.ground['hulaween-2026'].camping, indoor: store.ground['hulaween-2026'].indoor }, { surface: 'pavement', structures: ['canopies', 'stage'], low: false, camping: false, indoor: true });
+    assert.match(await page.textContent('.kv:has-text("Setting")'), /Indoors/);
+    await page.click('button.chip:has-text("Outdoors")'); await page.click('button.btn:has-text("Save")'); await page.waitForSelector('.toast.show:has-text("Saved")');
+    assert.equal(store.ground['hulaween-2026'].indoor, false);
     assert.match(await page.textContent('.kv:has-text("Surface")'), /Blacktop.*staff/s);
     await shot(page, '26-ground');
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
@@ -883,6 +886,20 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Red', 'on the home page too');
     await page.click('.feedfest .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
     delete store.alerts['hulaween-2026'];
+    // An indoor event: the backend grades nothing, the tile and the screen say why, the home page says Indoors.
+    store.lightning['hulaween-2026'] = { code: 'indoor', indoor: true, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' };
+    store.ground['hulaween-2026'] = { ...(store.ground['hulaween-2026'] || {}), indoor: true, indoorSource: 'the listing' };
+    await page.evaluate(() => refresh(fest())); await page.waitForSelector('.bolt.indoor');
+    assert.equal(await page.textContent('.bolt .t'), 'Indoors · No lightning codes');
+    await page.click('.bolt'); await page.waitForSelector('h1.title:has-text("Lightning")');
+    assert.equal(await page.textContent('.codehead h2'), 'Indoors'); assert.match(await page.textContent('.codehead p'), /^The lightning protocol is for outdoor grounds/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.indoor');
+    store.feed = [{ festivalId: 'hulaween-2026', alerts: [alertFeature().properties].map(p => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: '', instruction: null, severity: 'severe', area: '', source: 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0 })) }];
+    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy); await page.waitForSelector('h1.title:has-text("1 warning")');
+    assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Indoors');
+    await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    delete store.ground['hulaween-2026'];
     // A new alert on the stream pulls the whole festival again; one at another festival does not.
     const pulls = () => store.calls.filter(c => c === 'GET /festivals/hulaween-2026/ground').length, settle = () => new Promise(r => setTimeout(r, 400));
     const was = pulls();

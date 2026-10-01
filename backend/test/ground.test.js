@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 
 process.env.DB_PATH = ':memory:';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
-const { coverFromNLCD, effectiveGround, ensureGround, groundFor, learnedThreshold, lookupGround, pastRain, reportGround, reportSummary, soilFromUSDA, surfaceFromOSM, surfaceFromTags, validOverride } = await import('../src/ground.js');
+const { coverFromNLCD, effectiveGround, ensureGround, groundFor, indoorFromTags, indoorFromWords, learnedThreshold, lookupGround, pastRain, reportGround, reportSummary, soilFromUSDA, surfaceFromOSM, surfaceFromTags, validOverride } = await import('../src/ground.js');
 const { iso } = await import('../src/util.js');
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
@@ -34,7 +34,7 @@ test('the surface from Overpass: the most telling area under the point wins, a c
     { type: 'area', id: 3, tags: { leisure: 'park', name: 'Spirit of the Suwannee Music Park' } },
   ]); };
   const s = await surfaceFromOSM(fest.latitude, fest.longitude, { fetchImpl });
-  assert.deepEqual(s, { surface: 'grass', low: false, camping: false, source: 'OpenStreetMap', tag: 'leisure=park' }, 'the park (a use) beats the farmland (land cover)');
+  assert.deepEqual(s, { surface: 'grass', low: false, camping: false, indoor: false, indoorTag: null, source: 'OpenStreetMap', tag: 'leisure=park' }, 'the park (a use) beats the farmland (land cover); mapped land under the point means outdoors');
   assert.match(decodeURIComponent(calls[0].body), /is_in\(30\.40400,-82\.93950\)/); assert.equal(calls[0].ua, process.env.NWS_USER_AGENT);
   assert.equal(await surfaceFromOSM(0, 0, { fetchImpl: async () => overpass([{ type: 'area', id: 1, tags: { boundary: 'administrative' } }]) }), null, 'nothing telling: null, not a guess');
   const camp = await surfaceFromOSM(0, 0, { fetchImpl: async () => overpass([{ type: 'area', id: 1, tags: { tourism: 'camp_site', name: 'Spirit of the Suwannee' } }, { type: 'area', id: 2, tags: { landuse: 'meadow' } }]) });
@@ -50,7 +50,7 @@ test('nothing under the point: the nearest mapped ground within 250 m, its dista
                 { type: 'node', id: 9, lat: fest.latitude + 0.002, lon: fest.longitude, tags: { tourism: 'camp_site' } }]); };
   const s = await surfaceFromOSM(fest.latitude, fest.longitude, { fetchImpl });
   assert.equal(bodies.length, 2); assert.match(bodies[0], /is_in\(30\.40400,-82\.93950\)/); assert.match(bodies[1], /nwr\(around:250,30\.40400,-82\.93950\)/); assert.match(bodies[1], /out tags center/);
-  assert.deepEqual(s, { surface: 'grass', low: false, camping: true, source: 'OpenStreetMap', tag: 'landuse=farmland, 56 m away' }, 'the field 56 m off beats the lot 200 m off; the campground beside it says people camp');
+  assert.deepEqual(s, { surface: 'grass', low: false, camping: true, indoor: null, indoorTag: null, source: 'OpenStreetMap', tag: 'landuse=farmland, 56 m away' }, 'the field 56 m off beats the lot 200 m off; the campground beside it says people camp; nothing under the point says indoors or out');
 });
 
 test('the land cover at the point when OpenStreetMap has nothing: an NLCD class read as ground', async () => {
@@ -101,7 +101,7 @@ test('a lookup lands on the record, the override sits on top, and the effective 
   assert.equal(saved.length, 1); assert.equal(saved[0].ground.surface, 'pavement');
   const eff = effectiveGround(saved[0]);
   assert.deepEqual({ surface: eff.surface, soil: eff.soil, low: eff.low, structures: eff.structures, surfaceSource: eff.surfaceSource }, { surface: 'pavement', soil: 'D', low: false, structures: ['canopies'], surfaceSource: 'OpenStreetMap: surface=asphalt, amenity=parking' });
-  assert.deepEqual(effectiveGround({}), { surface: 'grass', soil: 'B', low: false, structures: ['canopies'], camping: null, campingSource: 'unknown', surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, lookedUpAt: null, lookupError: null, override: null, learned: null }, 'nothing known: trampled grass on average soil, and nobody knows if people camp');
+  assert.deepEqual(effectiveGround({}), { surface: 'grass', soil: 'B', low: false, structures: ['canopies'], camping: null, campingSource: 'unknown', indoor: null, indoorSource: 'unknown', surfaceSource: 'assumed', soilSource: 'assumed', soilName: null, drainage: null, lookedUpAt: null, lookupError: null, override: null, learned: null }, 'nothing known: trampled grass on average soil, and nobody knows if people camp or if there is a roof');
   // Staff know the lot is grass this year, and there is a stage.
   assert.equal(validOverride({ camping: false }).override.camping, false); assert.equal(validOverride({ camping: 'true' }).override.camping, true); assert.equal(validOverride({}).override.camping, undefined);
   assert.equal(effectiveGround({ camping: false }).camping, false, 'the listing says no camping'); assert.equal(effectiveGround({ camping: false, ground: { camping: true, campingSource: 'x' } }).camping, true, 'a lookup beats the listing'); assert.equal(effectiveGround({ ground: { camping: true, override: { camping: false } } }).camping, false, 'staff beat both');
@@ -164,4 +164,23 @@ test('the venue learns how much rain it takes from what people report, and a rep
   assert.equal(r.ok, true); assert.equal(r.effective, 0.9, 'today and yesterday at their weights: 1.5 at 0.6'); assert.equal(rows[0].tier, 'soft', 'what the table said at the time');
   assert.equal(r.learned.threshold, 0.9); assert.equal(saved[0].ground.learned.threshold, 0.9, 'written onto the record');
   assert.deepEqual(reportSummary(q, f.id, now), { last: { state: 'mud', at: rows[0].at }, recent: 1 });
+});
+
+test('indoors or out: a building or a club under the point, the venue words in the listing, and the staff word over both', async () => {
+  assert.equal(indoorFromTags({ building: 'yes', amenity: 'nightclub' }), true); assert.equal(indoorFromTags({ amenity: 'theatre' }), true); assert.equal(indoorFromTags({ leisure: 'sports_centre' }), true);
+  assert.equal(indoorFromTags({ building: 'roof' }), null, 'a roof with no walls is not inside'); assert.equal(indoorFromTags({ leisure: 'park' }), null, 'a park says nothing about a roof on its own');
+  assert.equal(indoorFromWords('Temple Tribal Fest - Playa Azul Playa Azul Nightclub, Temple, TX'), true);
+  assert.equal(indoorFromWords('Suwannee Hulaween Spirit of the Suwannee Music Park, Live Oak, FL'), false);
+  assert.equal(indoorFromWords('Music Hall at Fair Park, Dallas, TX'), true, 'the building word wins over the grounds it stands in');
+  assert.equal(indoorFromWords('House of Blues, Dallas, TX'), null, 'nothing said: unknown, and unknown is treated as outdoors, the safe side');
+  const club = await surfaceFromOSM(0, 0, { fetchImpl: async () => overpass([{ type: 'area', id: 1, tags: { building: 'yes', amenity: 'nightclub', name: 'Playa Azul' } }]) });
+  assert.deepEqual(club, { surface: null, low: false, camping: false, indoor: true, indoorTag: 'building=yes, amenity=nightclub', source: 'OpenStreetMap', tag: 'building=yes, amenity=nightclub' }, 'a club under the point: indoors, no ground to speak of');
+  const looked = await lookupGround({ ...fest, location: 'Playa Azul Nightclub, Temple, TX' }, { fetchImpl: async url => String(url).includes('overpass') ? overpass([{ type: 'area', id: 1, tags: { building: 'yes', amenity: 'nightclub' } }]) : String(url).includes('mrlc') ? nlcd(23) : sda([['1', 'Urban land', 'Urban land', 'D', 'Well drained', '95']]) });
+  assert.equal(looked.indoor, true); assert.equal(looked.indoorSource, 'OpenStreetMap: building=yes, amenity=nightclub');
+  const e = effectiveGround({ name: 'Temple Tribal Fest', location: 'Playa Azul Nightclub, Temple, TX' });
+  assert.equal(e.indoor, true); assert.equal(e.indoorSource, 'the listing');
+  assert.equal(effectiveGround({ name: 'X', location: 'Playa Azul Nightclub', ground: { indoor: false, indoorSource: 'OpenStreetMap: leisure=park' } }).indoor, false, 'the lookup beats the words');
+  const over = effectiveGround({ name: 'X', location: 'Playa Azul Nightclub', ground: { indoor: true, override: validOverride({ indoor: 'false' }).override } });
+  assert.equal(over.indoor, false); assert.equal(over.indoorSource, 'staff');
+  assert.equal(validOverride({ indoor: true }).override.indoor, true); assert.equal(validOverride({}).override.indoor, undefined);
 });

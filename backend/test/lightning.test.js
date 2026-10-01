@@ -165,3 +165,22 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   assert.equal(lightningFor(fest.id), null);
   q.deleteFestival(fest.id);
 });
+
+test('an indoor event gets no code and no alert, whatever the sky does: the building is the shelter', async () => {
+  resetLightning();
+  const club = { ...fest, id: 'club-test', name: 'Club Test', location: 'Playa Azul Nightclub, Temple, TX' };
+  q.upsertFestival({ ...club, county: '', isPartner: false, feeds: [], site: [], status: 'published' });
+  const sent = []; setWebPushTransport(async (s, payload) => { sent.push(JSON.parse(payload)); });
+  const now = Date.UTC(2026, 8, 30, 15, 10);
+  const files = new Map([[key('G19', now - 2 * MIN), lcfa(now - 2 * MIN, [north(3)])]]);
+  const listing = keys => `<ListBucketResult>${keys.map(k => `<Contents><Key>${k}</Key></Contents>`).join('')}</ListBucketResult>`;
+  const fetchImpl = async url => { const u = new URL(String(url)); if (u.searchParams.get('prefix')) return new Response(listing([...files.keys()].filter(k => k.startsWith(u.searchParams.get('prefix'))))); const k = u.pathname.slice(1); return files.has(k) ? new Response(files.get(k)) : new Response('no', { status: 404 }); };
+  await lightningTick({ now, fetchImpl, festivals: [club] });
+  const a = lightningFor(club.id);
+  assert.equal(a.code, 'indoor'); assert.equal(a.indoor, true);
+  assert.equal(q.activeAlerts(club.id, now).filter(x => x.channel === 'lightning').length, 0, 'a flash 3 miles out is no code red for a nightclub'); assert.equal(sent.length, 0);
+  // Staff say it is outdoors after all: the same flash is a red, with its alert.
+  q.upsertFestival({ ...q.festival(club.id), ground: { override: { indoor: false } } });
+  await lightningTick({ now: now + MIN, fetchImpl, festivals: [q.festival(club.id)] });
+  assert.equal(lightningFor(club.id).code, 'red'); assert.equal(q.activeAlerts(club.id, now + MIN).filter(x => x.channel === 'lightning').length, 1);
+});

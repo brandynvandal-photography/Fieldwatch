@@ -180,3 +180,16 @@ test('rain already on the radar pulls the start of a window earlier, or is a win
   const later = incoming({ hourly: periods, grid: g, nowcast: { ...nowcast, minutes: 200 }, now: at(0, 30) });
   assert.equal(later.minutes, 150, 'a radar arrival after the forecast start changes nothing');
 });
+
+test('indoors: storms still count (people come and go), wind, heat and rain do not, and the advice is the building', () => {
+  const inc = incoming({ hourly: periods, grid: g, ground: { indoor: true }, now: at(0, 30) });
+  assert.equal(inc.hazard, 'storms'); assert.equal(inc.indoor, true); assert.equal(inc.mud, undefined, 'no mud indoors');
+  assert.deepEqual(campFor(inc, 'camping'), ['Stay inside until it passes', 'Keep the line and the lot clear while it is overhead', 'Charge the phone'], 'the same list for everyone inside');
+  const a = headsUpAlert(festival, inc, TZ, at(0, 30), { indoor: true });
+  assert.match(a.body, /Inside is shelter: a building with wiring and plumbing\. The line outside and the lot are not; a car is\./);
+  assert.ok(!/canop|tent|camp/i.test(a.instruction), `nothing about tents or canopies: ${a.instruction}`);
+  const calm = { ...g, thunder: {} };
+  assert.equal(incoming({ hourly: periods, grid: calm, ground: { indoor: true }, now: at(0, 30) }), null, 'gusts of 34 mph and rain are nothing to a building');
+  assert.ok(incoming({ hourly: periods, grid: calm, ground: {}, now: at(0, 30) }), 'outdoors the same forecast is a heads-up');
+  assert.equal(prep('storms', 120, true).shelter, 'Inside is shelter: a building with wiring and plumbing. The line outside and the lot are not; a car is.');
+});

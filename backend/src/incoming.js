@@ -14,6 +14,8 @@ const windLine = ground => Math.min(...((ground && Array.isArray(ground.structur
 /** "the canopy line", "the inflatables and canopy lines". */
 const lineWords = crossed => { const l = crossed.map(s => WIND_LABEL[s]).filter(Boolean); return !l.length ? '' : l.length === 1 ? `the ${l[0]}` : `the ${l.slice(0, -1).map(x => x.replace(/ line$/, '')).join(', ')} and ${l[l.length - 1].replace(/ line$/, ' lines')}`; };
 const PRIORITY = ['tornado', 'storms', 'hail', 'wind', 'flood', 'rain', 'heat'];
+// Indoors (a club, a hall, an arena) the building is the shelter: only what can reach inside or the way in and out is a hazard.
+const INDOOR_HAZARDS = ['tornado', 'storms', 'flood'];
 const ALERT_HAZARD = [[/tornado/i, 'tornado'], [/thunderstorm|lightning/i, 'storms'], [/hail/i, 'hail'], [/wind|gale/i, 'wind'], [/flood/i, 'flood'], [/heat/i, 'heat'], [/rain|storm/i, 'rain']];
 const LABEL = { tornado: 'Tornado', storms: 'Storms', hail: 'Hail', wind: 'Strong wind', flood: 'Flooding', rain: 'Heavy rain', heat: 'Dangerous heat' };
 const DURATION = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/;
@@ -69,18 +71,19 @@ const alertHazard = event => (ALERT_HAZARD.find(([re]) => re.test(event || '')) 
  */
 function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = null, now = Date.now(), hours = 12 } = {}) {
   const end = now + hours * HOUR, gustLine = windLine(ground), standing = ground && Array.isArray(ground.structures) && ground.structures.length ? ground.structures : ['canopies'];
+  const indoor = Boolean(ground && ground.indoor === true);
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
       const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
       const wbgt = wbgtF(grid.temp?.[k] ?? null, grid.rh?.[k] ?? null, grid.wind?.[k] ?? 0, grid.sky?.[k] ?? 0);
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
-      if (gust >= gustLine) hazards.push('wind');
-      if (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF) hazards.push('heat');
+      if (!indoor && gust >= gustLine) hazards.push('wind');
+      if (!indoor && (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF)) hazards.push('heat');
       return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
   // A run of wet hours is rain when it adds up: a drizzle that never reaches rainIn is not worth a heads-up.
-  for (let i = 0; i < marks.length; i++) {
+  for (let i = 0; !indoor && i < marks.length; i++) {
     if (!marks[i].wet) continue;
     let j = i; while (j + 1 < marks.length && marks[j + 1].wet && marks[j + 1].t - marks[j].t <= HOUR) j++;
     const run = marks.slice(i, j + 1), known = run.some(m => m.rain != null), total = run.reduce((s, m) => s + (m.rain || 0), 0);
@@ -104,15 +107,15 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
   let watch = null;
   for (const a of alerts) {
     const onset = Date.parse(a.onset || ''), hz = alertHazard(a.event);
-    if (!hz || !Number.isFinite(onset) || onset <= now || onset >= end || a.channel === 'headsup') continue;
+    if (!hz || (indoor && !INDOOR_HAZARDS.includes(hz)) || !Number.isFinite(onset) || onset <= now || onset >= end || a.channel === 'headsup') continue;
     if (!watch || onset < Date.parse(watch.startsAt)) watch = { hazard: hz, startsAt: new Date(onset).toISOString(), endsAt: a.expiresAt || null, source: 'alert', event: a.event, peak: {} };
   }
   // Rain already on the radar inside two hours moves a window's start earlier, or is a window of its own when the forecast has none.
-  const radar = nowcast && nowcast.minutes != null && nowcast.minutes <= 120 ? { hazard: 'rain', startsAt: new Date(now + nowcast.minutes * 60000).toISOString(), endsAt: new Date(now + (nowcast.minutes + 120) * 60000).toISOString(), source: 'radar', peak: {}, nowcast } : null;
+  const radar = !indoor && nowcast && nowcast.minutes != null && nowcast.minutes <= 120 ? { hazard: 'rain', startsAt: new Date(now + nowcast.minutes * 60000).toISOString(), endsAt: new Date(now + (nowcast.minutes + 120) * 60000).toISOString(), source: 'radar', peak: {}, nowcast } : null;
   if (radar && forecast) { if (Date.parse(radar.startsAt) < Date.parse(forecast.startsAt)) forecast.startsAt = radar.startsAt; forecast.nowcast = nowcast; }
   const soon = forecast || radar;
   const pick = watch && (!soon || Date.parse(watch.startsAt) <= Date.parse(soon.startsAt)) ? watch : soon;
-  return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)) } : null;
+  return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)), ...(indoor ? { indoor: true } : {}) } : null;
 }
 /** Rain in a sentence: "0.6 in of rain" when the grid says how much, "a 70% chance of rain" when it only says how likely. */
 const rainWords = p => p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.rainIn.toFixed(1)} in of rain` : p.precip != null ? `a ${Math.round(p.precip)}% chance of rain` : '';
@@ -162,6 +165,7 @@ const taskMinutes = t => (TASK_MIN.find(([k]) => t.startsWith(k)) || [null, 10])
  * inflatables past their line are crew's to deal with.
  */
 function campFor(inc, setup = 'day') {
+  if (inc.indoor) return ((PREP[inc.hazard] || PREP.storms).indoor || PREP.storms.indoor).slice();   // inside, the list is the same for everyone
   const s = setup === 'camping' || setup === 'crew' ? setup : 'day', tierList = t => TIER[t][s === 'day' ? 'day' : 'camping'];
   const own = inc.hazard === 'rain' && inc.mud ? tierList(inc.mud.tier) : (PREP[inc.hazard] || PREP.storms)[s];
   const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? tierList(inc.mud.tier).filter(t => /^(Anything that must leave|If the car|If you must be somewhere|The lot will be slow|Move the tent off)/.test(t)) : [];
@@ -180,6 +184,7 @@ function deadlines(startsAt, tasks, now = Date.now()) {
 // and vendors with things standing; what it is like while it is here, and after. The push says the first two, shorter.
 const PREP = {
   storms:  { label: 'Storms', shelter: 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter.',
+             indoorShelter: 'Inside is shelter: a building with wiring and plumbing. The line outside and the lot are not; a car is.', indoor: ['Stay inside until it passes', 'Keep the line and the lot clear while it is overhead', 'Charge the phone'],
              camping: ['Drop pop-up canopies and flags', 'Stake every loop, tie guy lines, weigh the legs', 'Unplug and bag electronics', 'Move poles and chairs away from where people sit'],
              day: ['Know where the shelter is and how long the walk takes', 'Charge the phone, fill water', 'Bag the phone and anything that must stay dry', 'When it starts, head for a building or the car, not a tree or a pop-up'],
              crew: ['Drop vendor canopies and banners, weigh the legs', 'Unplug and bag electronics', 'Secure stock, signage and anything that flies', 'Know where the shelter is and how long the walk takes'],
@@ -195,6 +200,7 @@ const PREP = {
              crew: ['Tarp over the stock, off the floor', 'Unplug and bag electronics', 'Rain shell and boots'],
              during: 'Stay dry and off low ground. Watch the paths for standing water.', after: 'Dry the sleeping gear first. Wet nights are how people get cold.' },
   flood:   { label: 'Flooding', shelter: 'Move to high ground now, away from creeks and low fields. Never drive or walk through moving water.',
+             indoorShelter: 'Upstairs is shelter from water. Never drive or walk through moving water.', indoor: ['Know the way to high ground', 'Keep off the low end and out of underpasses', 'Pack what you can carry'],
              camping: ['Pack what you can carry', 'Know the route to high ground', 'Leave the car if water is rising around it'],
              day: ['Know the route to high ground', 'Pack what you can carry', 'Leave the car if water is rising around it'],
              crew: ['Close the booth and get to high ground', 'Know the route to high ground', 'Leave the car if water is rising around it'],
@@ -215,6 +221,8 @@ const PREP = {
              crew: ['Get to the shelter the festival named', 'Not the car, not a tent', 'Head down, cover your head'],
              during: 'Stay down in the shelter until the warning ends.', after: 'Watch for downed lines and broken glass on the way back.' },
 };
+/** Where to shelter for a hazard: the building itself when the event is indoors. */
+const shelterFor = (hazard, indoor) => { const P = PREP[hazard] || PREP.storms; return indoor && P.indoorShelter ? P.indoorShelter : P.shelter; };
 const SHELTER_PACK = ['Phone and a battery pack', 'Water and a snack', 'Rain shell and a warm layer', 'ID, cash, keys, medication', 'A light'];
 /** What to do with the time there is, the same line the push carries. */
 function timing(hazard, m) {
@@ -240,9 +248,9 @@ export function headline(inc, tz) {
   return `${LABEL[inc.hazard] || 'Weather'} expected ${at}`;
 }
 /** Where to shelter, the camp list and the timing line for a hazard, from the shared tables. */
-export function prep(hazard, minutes) {
+export function prep(hazard, minutes, indoor = false) {
   const P = PREP[hazard] || PREP.storms;
-  return { shelter: P.shelter, camp: P.camping, timing: timing(hazard, minutes) };
+  return { shelter: shelterFor(hazard, indoor), camp: indoor ? (P.indoor || PREP.storms.indoor) : P.camping, timing: timing(hazard, minutes) };
 }
 /** What this rain does to this ground, in a sentence: "Paths will be soft and muddy: 0.8 in of rain on grass over clay, after 1.1 in already down." */
 export function mudWords(inc, ground = {}) {
@@ -253,7 +261,7 @@ export function mudWords(inc, ground = {}) {
 const taskLine = (d, tz) => `${d.task} ${d.late ? 'now' : `by ${clock(d.startBy, tz)}`}`;
 /** The heads-up as an alert: pushed like a warning, listed with the alerts, and gone when the weather is. */
 export function headsUpAlert(festival, inc, tz, now = Date.now(), ground = {}) {
-  const p = prep(inc.hazard, inc.minutes), head = headline(inc, tz), pk = inc.peak || {};
+  const p = prep(inc.hazard, inc.minutes, inc.indoor), head = headline(inc, tz), pk = inc.peak || {};
   // The list for the festival's default: campers where people camp, day visitors where they do not or nobody knows. The app redoes it per person.
   const setup = ground.camping === true ? 'camping' : 'day';
   const plan = deadlines(inc.startsAt, campFor(inc, setup), now), first = plan[0] ? `${taskLine(plan[0], tz)}.` : '';

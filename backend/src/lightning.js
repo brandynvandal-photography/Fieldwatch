@@ -8,6 +8,7 @@
 //   yellow   12 to 20 miles: pay attention, prepare for orange and a work stoppage
 //   green    nothing within 20 miles in the last 15 minutes
 //   none     no data in the last 5 minutes (off, nothing is on, or the buckets are unreachable)
+//   indoor   the event is indoors (ground.js effectiveGround): the building is the shelter, so no code and no alert
 // A change to orange or red is stored and pushed like a warning (channel 'lightning'); red ends with the all-clear,
 // orange fifteen minutes after the last flash within 12 miles or when the code changes. The web build shows the code
 // on the festival page and explains it. The festival's own lightning vendor is the authority; the mapper sees cloud
@@ -23,6 +24,7 @@ import { pushAlert } from './push.js';
 import { pushWeb } from './webpush.js';
 import { iso } from './util.js';
 import { changed } from './live.js';
+import { effectiveGround } from './ground.js';
 
 const MIN = 60_000, MI = 1609.344, J2000 = Date.UTC(2000, 0, 1, 12);   // GOES-R clocks count seconds from noon on 1 January 2000
 export const RINGS = { red: 8, orange: 12, yellow: 20 };
@@ -147,7 +149,14 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
   state.flashes = state.flashes.filter(x => now - x.t <= ALL_CLEAR_MS);
   for (const [k, t] of state.seen) if (t < now - 2 * 3_600_000) state.seen.delete(k);
   for (const f of festivals) {
-    const prev = state.per.get(f.id), a = assess(f, state.flashes, now, state.lastFileAt, carried(f, now));
+    const prev = state.per.get(f.id);
+    // Indoors (a club, a hall, an arena) the building is the shelter: the protocol is for outdoor grounds, so no code and no alert.
+    if (effectiveGround(f).indoor === true) {
+      state.per.set(f.id, { code: 'indoor', indoor: true, at: iso(now), dataAt: state.lastFileAt ? iso(state.lastFileAt) : null, source: 'GOES GLM' });
+      if (!prev || prev.code !== 'indoor') { for (const al of q.activeAlerts(f.id, now).filter(x => x.channel === 'lightning')) q.updateAlert({ ...al, expiresAt: iso(now) }); state.episodes.delete(f.id); changed(f.id, 'lightning'); }
+      continue;
+    }
+    const a = assess(f, state.flashes, now, state.lastFileAt, carried(f, now));
     state.per.set(f.id, a);
     if (!prev || prev.code !== a.code || prev.nearestMi !== a.nearestMi) changed(f.id, 'lightning');
     try { await announce(f, prev, a, now); } catch (e) { console.error(`[${f.id}] lightning alert failed:`, errorText(e)); }

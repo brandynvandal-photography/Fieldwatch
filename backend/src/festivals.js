@@ -60,6 +60,7 @@ export function normalizeFestival(input = {}, { base = null, origin = 'curated',
   if (f.submittedAt) out.submittedAt = f.submittedAt;
   if (f.ground && typeof f.ground === 'object') out.ground = f.ground;   // what the lookups found and what staff set (ground.js)
   if (f.camping === true || f.camping === false) out.camping = f.camping;   // whether people camp here: tent and canopy advice only where they do
+  if (f.indoor === true || f.indoor === false) out.indoor = f.indoor;       // indoors: no lightning codes, and the advice keeps to what reaches inside
   return { festival: out };
 }
 

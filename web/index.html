@@ -226,6 +226,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .bolt{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;min-height:62px;border-radius:var(--radius);margin:12px 0 4px;text-align:left;color:var(--ink);position:relative}
 .bolt .lead{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;background:var(--ok)}
 .bolt.orange .lead{background:#FF7A1A} .bolt.yellow .lead{background:var(--watch);color:var(--watch-ink)}
+.bolt.indoor .lead{background:rgba(26,21,51,.08);color:var(--muted)}
 .bolt .lead svg{width:20px;height:20px}
 .bolt .main{flex:1;min-width:0} .bolt .t{font-weight:600;font-size:17px;line-height:1.25} .bolt .s{color:var(--muted);font-size:14px;margin-top:2px;line-height:1.3}
 .bolt.red{background:linear-gradient(160deg,var(--warn),var(--warn-2));color:#fff;border-color:transparent;box-shadow:0 12px 34px rgba(244,63,94,.32)}
@@ -881,6 +882,7 @@ function setupFor(f){
 }
 function setSetup(v){ const f = fest(); if (!f) return; S.setups = { ...(S.setups || {}), [f.id]: v }; save(); render(); }
 function setupRow(f){
+  if (data(f).ground && data(f).ground.indoor === true) return '';   // inside, the list is the same for everyone
   const camping = campingAt(f), on = setupFor(f), opts = Object.entries(SETUP_LABEL).filter(([v]) => v !== 'camping' || camping !== false);
   return `<div class="chips setup">${opts.map(([v, l]) => `<button class="chip ${on === v ? 'on' : ''}" onclick="setSetup('${v}')">${esc(l)}</button>`).join('')}</div>${camping === false ? '<p class="note">No camping at this festival.</p>' : ''}`;
 }
@@ -899,7 +901,7 @@ async function reportGround(state){
   S.groundReporting = false; render();
 }
 function groundReportRow(f){
-  if (f.id === 'here') return '';
+  if (f.id === 'here' || (data(f).ground && data(f).ground.indoor === true)) return '';
   const g = data(f).ground || {}, last = g.reports && g.reports.last, fresh = last && Date.now() - Date.parse(last.at) < 6 * 3600000;
   return `<p class="h">How is the ground?</p>
     <div class="chips">${Object.entries(GROUND_STATE_LABEL).map(([v, l]) => `<button class="chip ${fresh && last.state === v ? 'on' : ''}" onclick="reportGround('${v}')" ${S.groundReporting ? 'disabled' : ''}>${l}</button>`).join('')}</div>
@@ -908,6 +910,7 @@ function groundReportRow(f){
 /** One line about the ground for the prep screen: "Grass, drains fast · 1.2 in of rain in the last two days". */
 function groundLine(g){
   if (!g) return '';
+  if (g.indoor === true) return 'Indoors';
   const soil = { A: 'drains fast', B: 'drains normally', C: 'drains slowly', D: 'clay, barely drains' }[g.soil] || '';
   const past = g.past && g.past.in48 != null ? `${g.past.in48.toFixed(1)} in of rain in the last two days` : '';
   return [`${SURFACE_LABEL[g.surface] || 'Grass'}${soil && g.surface !== 'pavement' ? `, ${soil}` : ''}${g.low ? ', low ground' : ''}`, past].filter(Boolean).join(' · ');
@@ -915,7 +918,7 @@ function groundLine(g){
 function startGroundEdit(){
   const f = fest(), g = (f && data(f).ground) || {}, o = g.override || {};
   S.groundDirty = false;
-  S.groundEdit = { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: (o.structures || g.structures || ['canopies']).slice(), camping: o.camping ?? g.camping ?? (f && (f.camping === true || f.camping === false) ? f.camping : null) };
+  S.groundEdit = { indoor: o.indoor ?? g.indoor ?? null, surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: (o.structures || g.structures || ['canopies']).slice(), camping: o.camping ?? g.camping ?? (f && (f.camping === true || f.camping === false) ? f.camping : null) };
 }
 function setGround(k, v){
   const e = S.groundEdit; if (!e) return;
@@ -995,6 +998,7 @@ const CODE_RANK = { red: 4, orange: 3, yellow: 2, green: 1, none: 0 };
 /** The lightning state to show: the live grade, unless a red or orange alert still standing says more (the grade falls behind for a
  *  minute or two while a restarted backend reads its files again). The tile, the screen, the sky and the home page then all agree. */
 function lightningState(l, alerts){
+  if (l && l.code === 'indoor') return l;
   const al = (alerts || []).filter(a => a.channel === 'lightning' && isActive(a) && CODE[a.code]).sort((a, b) => CODE_RANK[b.code] - CODE_RANK[a.code])[0];
   if (!al || (l && CODE[l.code] && CODE_RANK[l.code] >= CODE_RANK[al.code])) return l;
   const red = al.code === 'red', mi = al.nearestMi != null ? Number(al.nearestMi) : null;
@@ -1003,7 +1007,9 @@ function lightningState(l, alerts){
 const liveLightning = f => lightningState(data(f).lightning, data(f).alerts);
 /** The tile under the sky: the nearest flash, the code, and the all-clear countdown when it is red. */
 function lightningTile(f){
-  const l = liveLightning(f), c = l && CODE[l.code]; if (!c) return '';
+  const l = liveLightning(f), g = data(f).ground;
+  if ((l && l.code === 'indoor') || (g && g.indoor === true)) return `<button class="bolt glass indoor" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Indoors · No lightning codes</div><div class="s">Inside is shelter. The codes are for outdoor grounds.</div></div>${I.chev}</button>`;
+  const c = l && CODE[l.code]; if (!c) return '';
   const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 20 mi';
   const n = l.within ? l.within[c.within] || 0 : 0;
   const sub = l.code === 'red' ? `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`
@@ -1027,6 +1033,8 @@ const windLine = ground => Math.min(...((ground && Array.isArray(ground.structur
 /** "the canopy line", "the inflatables and canopy lines". */
 const lineWords = crossed => { const l = crossed.map(s => WIND_LABEL[s]).filter(Boolean); return !l.length ? '' : l.length === 1 ? `the ${l[0]}` : `the ${l.slice(0, -1).map(x => x.replace(/ line$/, '')).join(', ')} and ${l[l.length - 1].replace(/ line$/, ' lines')}`; };
 const PRIORITY = ['tornado', 'storms', 'hail', 'wind', 'flood', 'rain', 'heat'];
+// Indoors (a club, a hall, an arena) the building is the shelter: only what can reach inside or the way in and out is a hazard.
+const INDOOR_HAZARDS = ['tornado', 'storms', 'flood'];
 const ALERT_HAZARD = [[/tornado/i, 'tornado'], [/thunderstorm|lightning/i, 'storms'], [/hail/i, 'hail'], [/wind|gale/i, 'wind'], [/flood/i, 'flood'], [/heat/i, 'heat'], [/rain|storm/i, 'rain']];
 const LABEL = { tornado: 'Tornado', storms: 'Storms', hail: 'Hail', wind: 'Strong wind', flood: 'Flooding', rain: 'Heavy rain', heat: 'Dangerous heat' };
 const DURATION = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/;
@@ -1082,18 +1090,19 @@ const alertHazard = event => (ALERT_HAZARD.find(([re]) => re.test(event || '')) 
  */
 function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = null, now = Date.now(), hours = 12 } = {}) {
   const end = now + hours * HOUR, gustLine = windLine(ground), standing = ground && Array.isArray(ground.structures) && ground.structures.length ? ground.structures : ['canopies'];
+  const indoor = Boolean(ground && ground.indoor === true);
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
       const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
       const wbgt = wbgtF(grid.temp?.[k] ?? null, grid.rh?.[k] ?? null, grid.wind?.[k] ?? 0, grid.sky?.[k] ?? 0);
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
-      if (gust >= gustLine) hazards.push('wind');
-      if (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF) hazards.push('heat');
+      if (!indoor && gust >= gustLine) hazards.push('wind');
+      if (!indoor && (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF)) hazards.push('heat');
       return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
   // A run of wet hours is rain when it adds up: a drizzle that never reaches rainIn is not worth a heads-up.
-  for (let i = 0; i < marks.length; i++) {
+  for (let i = 0; !indoor && i < marks.length; i++) {
     if (!marks[i].wet) continue;
     let j = i; while (j + 1 < marks.length && marks[j + 1].wet && marks[j + 1].t - marks[j].t <= HOUR) j++;
     const run = marks.slice(i, j + 1), known = run.some(m => m.rain != null), total = run.reduce((s, m) => s + (m.rain || 0), 0);
@@ -1117,15 +1126,15 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
   let watch = null;
   for (const a of alerts) {
     const onset = Date.parse(a.onset || ''), hz = alertHazard(a.event);
-    if (!hz || !Number.isFinite(onset) || onset <= now || onset >= end || a.channel === 'headsup') continue;
+    if (!hz || (indoor && !INDOOR_HAZARDS.includes(hz)) || !Number.isFinite(onset) || onset <= now || onset >= end || a.channel === 'headsup') continue;
     if (!watch || onset < Date.parse(watch.startsAt)) watch = { hazard: hz, startsAt: new Date(onset).toISOString(), endsAt: a.expiresAt || null, source: 'alert', event: a.event, peak: {} };
   }
   // Rain already on the radar inside two hours moves a window's start earlier, or is a window of its own when the forecast has none.
-  const radar = nowcast && nowcast.minutes != null && nowcast.minutes <= 120 ? { hazard: 'rain', startsAt: new Date(now + nowcast.minutes * 60000).toISOString(), endsAt: new Date(now + (nowcast.minutes + 120) * 60000).toISOString(), source: 'radar', peak: {}, nowcast } : null;
+  const radar = !indoor && nowcast && nowcast.minutes != null && nowcast.minutes <= 120 ? { hazard: 'rain', startsAt: new Date(now + nowcast.minutes * 60000).toISOString(), endsAt: new Date(now + (nowcast.minutes + 120) * 60000).toISOString(), source: 'radar', peak: {}, nowcast } : null;
   if (radar && forecast) { if (Date.parse(radar.startsAt) < Date.parse(forecast.startsAt)) forecast.startsAt = radar.startsAt; forecast.nowcast = nowcast; }
   const soon = forecast || radar;
   const pick = watch && (!soon || Date.parse(watch.startsAt) <= Date.parse(soon.startsAt)) ? watch : soon;
-  return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)) } : null;
+  return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)), ...(indoor ? { indoor: true } : {}) } : null;
 }
 /** Rain in a sentence: "0.6 in of rain" when the grid says how much, "a 70% chance of rain" when it only says how likely. */
 const rainWords = p => p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.rainIn.toFixed(1)} in of rain` : p.precip != null ? `a ${Math.round(p.precip)}% chance of rain` : '';
@@ -1175,6 +1184,7 @@ const taskMinutes = t => (TASK_MIN.find(([k]) => t.startsWith(k)) || [null, 10])
  * inflatables past their line are crew's to deal with.
  */
 function campFor(inc, setup = 'day') {
+  if (inc.indoor) return ((PREP[inc.hazard] || PREP.storms).indoor || PREP.storms.indoor).slice();   // inside, the list is the same for everyone
   const s = setup === 'camping' || setup === 'crew' ? setup : 'day', tierList = t => TIER[t][s === 'day' ? 'day' : 'camping'];
   const own = inc.hazard === 'rain' && inc.mud ? tierList(inc.mud.tier) : (PREP[inc.hazard] || PREP.storms)[s];
   const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? tierList(inc.mud.tier).filter(t => /^(Anything that must leave|If the car|If you must be somewhere|The lot will be slow|Move the tent off)/.test(t)) : [];
@@ -1193,6 +1203,7 @@ function deadlines(startsAt, tasks, now = Date.now()) {
 // and vendors with things standing; what it is like while it is here, and after. The push says the first two, shorter.
 const PREP = {
   storms:  { label: 'Storms', shelter: 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter.',
+             indoorShelter: 'Inside is shelter: a building with wiring and plumbing. The line outside and the lot are not; a car is.', indoor: ['Stay inside until it passes', 'Keep the line and the lot clear while it is overhead', 'Charge the phone'],
              camping: ['Drop pop-up canopies and flags', 'Stake every loop, tie guy lines, weigh the legs', 'Unplug and bag electronics', 'Move poles and chairs away from where people sit'],
              day: ['Know where the shelter is and how long the walk takes', 'Charge the phone, fill water', 'Bag the phone and anything that must stay dry', 'When it starts, head for a building or the car, not a tree or a pop-up'],
              crew: ['Drop vendor canopies and banners, weigh the legs', 'Unplug and bag electronics', 'Secure stock, signage and anything that flies', 'Know where the shelter is and how long the walk takes'],
@@ -1208,6 +1219,7 @@ const PREP = {
              crew: ['Tarp over the stock, off the floor', 'Unplug and bag electronics', 'Rain shell and boots'],
              during: 'Stay dry and off low ground. Watch the paths for standing water.', after: 'Dry the sleeping gear first. Wet nights are how people get cold.' },
   flood:   { label: 'Flooding', shelter: 'Move to high ground now, away from creeks and low fields. Never drive or walk through moving water.',
+             indoorShelter: 'Upstairs is shelter from water. Never drive or walk through moving water.', indoor: ['Know the way to high ground', 'Keep off the low end and out of underpasses', 'Pack what you can carry'],
              camping: ['Pack what you can carry', 'Know the route to high ground', 'Leave the car if water is rising around it'],
              day: ['Know the route to high ground', 'Pack what you can carry', 'Leave the car if water is rising around it'],
              crew: ['Close the booth and get to high ground', 'Know the route to high ground', 'Leave the car if water is rising around it'],
@@ -1228,6 +1240,8 @@ const PREP = {
              crew: ['Get to the shelter the festival named', 'Not the car, not a tent', 'Head down, cover your head'],
              during: 'Stay down in the shelter until the warning ends.', after: 'Watch for downed lines and broken glass on the way back.' },
 };
+/** Where to shelter for a hazard: the building itself when the event is indoors. */
+const shelterFor = (hazard, indoor) => { const P = PREP[hazard] || PREP.storms; return indoor && P.indoorShelter ? P.indoorShelter : P.shelter; };
 const SHELTER_PACK = ['Phone and a battery pack', 'Water and a snack', 'Rain shell and a warm layer', 'ID, cash, keys, medication', 'A light'];
 /** What to do with the time there is, the same line the push carries. */
 function timing(hazard, m) {
@@ -1464,7 +1478,7 @@ function feedCard(i, opts){
   // The code beside the name whenever there is one, green included: the card's own grade, else the feed's for that festival.
   const own = i.lightning && CODE[i.lightning.code] ? i.lightning : null;
   const l = lightningState(own || (fd && fd.codes && fd.codes[f.id]) || i.lightning || null, i.alerts), c = l && CODE[l.code];
-  const pill = c ? `<span class="pill ${esc(l.code)}">${esc(c.label)}</span>` : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
+  const pill = c ? `<span class="pill ${esc(l.code)}">${esc(c.label)}</span>` : l && l.code === 'indoor' ? '<span class="pill">Indoors</span>' : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
   const boltRow = l && (l.code === 'orange' || l.code === 'yellow') ? `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','')"><span class="bar watch"></span><div class="main"><div class="t">Lightning ${l.nearestMi != null ? esc(l.nearestMi) + ' mi' : 'near'}</div><div class="s">${esc(CODE[l.code].label)} · ${esc(CODE[l.code].text)}</div></div>${I.chev}</button>` : '';
   const main = `<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}${S.here && away(f) != null ? ' · ' + esc(fmtDist(away(f))) : ''}</div></div>${pill}`;
   const heart = fav ? `<span class="fav">${I.heartFull}</span>` : '';
@@ -1719,7 +1733,7 @@ screens.prep = () => {
     <h1 class="title">${esc(label)}</h1>
     <p class="sub">${esc(incomingLine(inc))}</p>
     <div class="countdown glass"><span class="eyebrow">${now ? 'Started' : 'Arrives in'}</span><b class="num" data-countdown="${esc(inc.startsAt)}" data-bare="1">${esc(countdownText(inc.startsAt, true))}</b><span class="s">${esc(mudLine || timing(inc.hazard, m))}</span></div>
-    <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${esc(P.shelter)}</p></div></div>
+    <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${esc(shelterFor(inc.hazard, inc.indoor))}</p></div></div>
     ${groundReportRow(f)}
     <p class="h">${setupFor(f) === 'camping' ? 'Solidify camp, in order' : setupFor(f) === 'crew' ? 'Secure the booth, in order' : 'Before it comes, in order'}</p>
     ${setupRow(f)}
@@ -1732,15 +1746,16 @@ screens.prep = () => {
 };
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
-  const l = liveLightning(f), c = l && CODE[l.code], live = Boolean(c);
-  const head = live ? c.label : backend() ? 'No lightning data' : 'Needs the Fieldwatch backend';
-  const line = live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi, ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
+  const l = liveLightning(f), c = l && CODE[l.code], live = Boolean(c), indoor = (l && l.code === 'indoor') || Boolean(data(f).ground && data(f).ground.indoor === true);
+  const head = indoor ? 'Indoors' : live ? c.label : backend() ? 'No lightning data' : 'Needs the Fieldwatch backend';
+  const line = indoor ? 'The lightning protocol is for outdoor grounds. Inside a building with wiring and plumbing, you are in shelter; the line outside and the lot are not.'
+    : live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi, ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
     : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'The mapper has not been read yet, or nothing is on') : 'Lightning codes come from the backend, which reads the GOES lightning mapper every minute';
   const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Lightning</h1>
-    <p class="sub">${live ? esc(c.text) : esc(statusLine(f))}</p>
+    <p class="sub">${indoor ? 'No codes for this event' : live ? esc(c.text) : esc(statusLine(f))}</p>
     <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>
       ${live && l.code === 'red' && l.allClearAt ? `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">until the all-clear, unless it strikes again</span>` : ''}</div>
     ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}${kv('Last within 8 mi', l.lastNearAt ? esc(fmtTime(l.lastNearAt)) : 'none in 30 min')}${kv('Data', l.dataAt ? esc(ago(l.dataAt)) : 'none')}</div>` : ''}
@@ -1758,10 +1773,12 @@ screens.ground = () => {
     <h1 class="title">Ground</h1>
     <p class="sub">What the rain and wind advice assumes about the grounds. Change what you know better.</p>
     <div class="group glass">
+      ${kv('Setting', `${g.indoor === true ? 'Indoors' : g.indoor === false ? 'Outdoors' : 'Outdoors, assumed'}<br><span class="dim">${esc(g.indoorSource === 'unknown' || !g.indoorSource ? 'nothing says' : g.indoorSource)}</span>`)}
       ${kv('Surface', `${esc(SURFACE_LABEL[g.surface] || 'Grass')}<br><span class="dim">${esc(g.surfaceSource === 'assumed' ? 'assumed, nothing found' : g.surfaceSource || 'assumed')}</span>`)}
       ${kv('Soil', `${esc(g.soilName || SOIL_LABEL[g.soil] || 'Average')}${g.soil ? ` · ${esc(SOIL_LABEL[g.soil])} (${esc(g.soil)})` : ''}<br><span class="dim">${esc(g.soilSource === 'assumed' ? 'assumed, nothing found' : g.soilSource || 'assumed')}${g.drainage ? ' · ' + esc(g.drainage.toLowerCase()) : ''}</span>`)}
       ${kv('Rain, 48 h', g.past && g.past.in48 != null ? `${esc(g.past.in48.toFixed(2))} in<br><span class="dim">${esc(g.past.source)}</span>` : `<span class="dim">${esc(g.pastError ? 'analysis out of reach' : 'not read yet')}</span>`)}
     </div>
+    <p class="h">Setting</p>${chips('indoor', [[false, 'Outdoors'], [true, 'Indoors']], v => e.indoor === v)}
     <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_CHIP), v => e.surface === v)}
     <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_CHIP), v => e.soil === v)}
     <p class="h">Low ground</p>${chips('low', [[true, 'Yes, it floods'], [false, 'No']], v => e.low === v)}
