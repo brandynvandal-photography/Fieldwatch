@@ -713,7 +713,7 @@ test('warnings stay on across a backend redeploy: on open the phone registers ag
     assert.equal(store.subs[0].quiet, true, 'registered again without a welcome notification');
     assert.equal(store.subs[0].festivalId, 'hulaween-2026');
     assert.equal(store.subs[0].subscription.endpoint, 'https://push.example.test/new');
-    await page.click('.group .row:has-text("Suwannee Hulaween")');
+    await page.click('.feedfest.fav:has-text("Suwannee Hulaween") button.fh');
     await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('button.row:has-text("Favorite") .pill'), 'On', 'the old one-festival record became a favorite');
     await page.reload();
@@ -737,6 +737,7 @@ test('the home page is every current alert at every festival that is on: the wor
     assert.equal(cards.length, 2);
     assert.deepEqual(await page.$$eval('.feedfest .alert .t', els => els.map(e => e.textContent)), ['Severe Thunderstorm Warning', 'Heat Advisory']);
     assert.ok(await page.$('button.row:has-text("All festivals")'), 'the list is one tap away, not the page');
+    assert.match(await page.textContent('.empty'), /None yet.*Tap the heart/, 'no favorites: the section says how to get one, under the alerts');
     await shot(page, '20-feed');
     await page.click('.feedfest .alert:has-text("Severe Thunderstorm Warning")');
     await page.waitForSelector('.alerthead h2:has-text("Severe Thunderstorm Warning")');
@@ -939,6 +940,7 @@ test('the screen rises once, on a move: data landing later swaps in place with n
     await reset();
     await page.click('.sky.warn'); await page.waitForSelector('details.more');
     await page.click('details.more summary'); assert.ok(await page.$eval('details.more', d => d.open));
+    await page.waitForFunction(() => !entering);
     await page.evaluate(() => render()); await page.waitForTimeout(300);
     assert.ok(await page.$eval('details.more', d => d.open), 'the fold stays open through a re-render');
     assert.equal(await rises(), 1, 'the alert screen rose once, on arrival');
@@ -999,8 +1001,9 @@ test('favorites: a heart on the festival page follows its warnings on this phone
     assert.deepEqual(store.subs.map(s => s.festivalId), ['hulaween-2026']);
     // A second favorite: the same phone, one more follow.
     await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)).then(h => h.slice(0, 1)), ['Your festivals']);
-    assert.match(await page.textContent('.group .row:has-text("Suwannee Hulaween") .s'), /Severe Thunderstorm Warning/, 'each favorite says what is happening there');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Favorites', 'Everywhere else'], 'favorites have their own section on the home page, the rest follows');
+    assert.equal(await page.textContent('.feedfest.fav:has-text("Suwannee Hulaween") .alert .t'), 'Severe Thunderstorm Warning', 'each favorite card carries its alerts');
+    assert.equal(await page.$$eval('.feedfest:not(.fav) .fh .t', els => els.map(e => e.textContent)).then(n => n.includes('Suwannee Hulaween')), false, 'and is not listed again below');
     await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
     assert.ok(await page.$(`button:has-text("Suwannee Hulaween") .favmark, button:has-text("Suwannee Hulaween") .fav`), 'the list marks it');
     await page.click(`button:has-text("${other.name}")`); await page.waitForSelector('.sky');
@@ -1009,17 +1012,25 @@ test('favorites: a heart on the festival page follows its warnings on this phone
     assert.deepEqual(store.subs.map(s => s.festivalId).sort(), ['hulaween-2026', other.id].sort());
     assert.ok(store.subs.every(s => s.subscription.endpoint === 'https://push.example.test/fav'), 'one phone, two follows');
     await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
-    assert.deepEqual(await page.$$eval('.group .row .lead.fav', els => els.length), 2, 'both listed first on the home page');
+    await page.waitForFunction(() => !S.feedBusy);
+    assert.deepEqual(await page.$$eval('.feedfest.fav .fh .t', els => els.map(e => e.textContent)).then(n => n.sort()), ['Suwannee Hulaween', other.name].sort(), 'both cards in the Favorites section');
+    assert.equal(await page.textContent(`.feedfest.fav:has-text("${other.name}") .alert .t`), 'Heat Advisory', 'its advisory rides on its card');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Favorites'], 'nothing left for Everywhere else');
+    await shot(page, '27-favorites');
+    // Its advisory ends: the card says Clear.
+    store.feed = store.feed.filter(x => x.festivalId === 'hulaween-2026');
+    await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy);
+    assert.equal(await page.textContent(`.feedfest.fav:has-text("${other.name}") .pill`), 'Clear', 'a favorite with nothing going on says so');
     // On open, every favorite registers again, quietly, once an hour.
     await page.waitForFunction(() => !S.feedBusy && !S.busy);
     await page.evaluate(() => { S.push.checked = 0; save(); });   // through the app's state, so a save landing later keeps it
     store.subs = []; store.calls = [];
     await page.reload(); await page.waitForSelector('span.eyebrow:has-text("Right now")');
-    await page.waitForFunction(() => document.querySelectorAll('.group .row .lead.fav').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('.feedfest.fav').length === 2);
     for (let i = 0; i < 100 && store.subs.length < 2; i++) await new Promise(r => setTimeout(r, 50));
     assert.deepEqual(store.subs.map(s => [s.festivalId, s.quiet]).sort(), [['hulaween-2026', true], [other.id, true]].sort());
     // Dropping one keeps the other.
-    await page.click('.group .row:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
+    await page.click('.feedfest.fav:has-text("Suwannee Hulaween") button.fh'); await page.waitForSelector('.sky.warn');
     await page.click('button.tb.fav.on'); await page.waitForSelector('button.tb.fav:not(.on)');
     await page.waitForFunction(() => /Removed Suwannee Hulaween/.test(document.querySelector('.toast.show')?.textContent || ''));
     assert.deepEqual(store.subs.map(s => s.festivalId), [other.id]);
