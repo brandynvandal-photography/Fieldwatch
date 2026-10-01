@@ -30,7 +30,7 @@ It installs: on an iPhone, Share then "Add to Home Screen" gives a full-screen a
 
 ## The interface
 
-One loud element per screen. The home screen's status card answers "am I safe right now" in color, carries the next six hours, and adds one line derived from the forecast. The forecast is two aligned single-measure panels (temperature curve with a scrub-to-read tooltip, chance-of-rain bars), never a dual axis. Alert detail leads with what to do, then the NWS bullets as sections. Radar has crossfading frames, a stamp with time and age, and a scrubber with hour ticks. Dark theme is designed, not inverted; motion respects reduced-motion; everything is keyboard focusable. Change `icon.svg` and re-render the PNGs (`test/` has the Chromium harness) rather than editing the PNGs.
+One loud element per screen. The home screen's status card answers "am I safe right now" in color, carries the next six hours, and adds one line derived from the forecast. The forecast is two aligned single-measure panels (temperature curve with a scrub-to-read tooltip, chance-of-rain bars), never a dual axis. Alert detail leads with what to do, then the NWS bullets as sections. Radar has crossfading frames, a stamp with time and age (and a Now mark on the latest frame), and a scrubber with hour ticks whose right end is now; a pass over the loop takes about fifteen seconds whatever the step, and the latest frame holds before it starts over. Dark theme is designed, not inverted; motion respects reduced-motion; everything is keyboard focusable. Change `icon.svg` and re-render the PNGs (`test/` has the Chromium harness) rather than editing the PNGs.
 
 ## Where the data comes from
 

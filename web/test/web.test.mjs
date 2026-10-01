@@ -231,7 +231,8 @@ test('the radar screen asks the archive for 48 frames, newest first, and plays t
   assert.match(await page.textContent('#radar-time'), /\d:\d\d/);
   assert.match(await page.textContent('#radar-ago'), /ago|just now/);
   const ticks = await page.$$eval('.ticks span', els => els.map(e => e.textContent));
-  assert.equal(ticks.length, 5); for (const t of ticks) assert.match(t, /\d/);
+  assert.equal(ticks.length, 5); for (const t of ticks.slice(0, 4)) assert.match(t, /\d/); assert.equal(ticks[4], 'Now', 'the right end of the scrubber is the present');
+  assert.deepEqual(await page.evaluate(() => [frameMs(48), frameMs(72), frameMs(6)]), [313, 208, 400], 'a pass over the loop takes about fifteen seconds, whatever the step');
   assert.equal(await page.$eval('#radar-progress', el => el.style.width), '100%');
   await shot(page, '5-radar');
 
@@ -241,6 +242,11 @@ test('the radar screen asks the archive for 48 frames, newest first, and plays t
   await page.$eval('#radar-slider', el => el.dispatchEvent(new Event('input', { bubbles: true })));
   const shown = await page.$$eval('.frame', els => els.findIndex(e => e.classList.contains('on')));
   assert.equal(shown, 3);
+  assert.equal(await page.$('.stamp.now'), null, 'an older frame is not the present');
+  await page.locator('#radar-slider').fill('47');
+  await page.$eval('#radar-slider', el => el.dispatchEvent(new Event('input', { bubbles: true })));
+  assert.ok(await page.$('.stamp.now') && await page.$('#radar-slider.now'), 'the latest frame is marked as now on the stamp and the thumb');
+  assert.equal(await page.$eval('#radar-now', el => getComputedStyle(el).display), 'inline-flex');
   assert.match(await page.textContent('p.note:last-of-type'), /NOAA NEXRAD via Iowa Environmental Mesonet/);
   await page.click('button[aria-label="Back"]');
   assert.equal(await page.$$eval('.frame', els => els.length), 0, 'leaving the screen stops the loop');

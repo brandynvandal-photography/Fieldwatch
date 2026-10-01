@@ -329,7 +329,14 @@ details.more .inner{padding:0 16px 6px}
 .rctl{display:flex;align-items:center;gap:12px;margin:2px 0 0}
 .play{width:50px;height:50px;border-radius:50%;background:var(--grad);color:#fff;display:grid;place-items:center;flex:none;box-shadow:0 8px 22px rgba(155,123,255,.4)}
 .play svg{width:20px;height:20px}
-.scrubwrap{flex:1;min-width:0}
+.scrubwrap{flex:1;min-width:0;position:relative}
+.scrubwrap::after{content:"";position:absolute;right:0;top:50%;width:3px;height:18px;margin-top:-9px;border-radius:2px;background:var(--accent);pointer-events:none}
+input[type=range].scrub.now::-webkit-slider-thumb{box-shadow:0 0 0 5px rgba(123,92,245,.35),0 2px 8px rgba(0,0,0,.25)}
+.ticks .now{color:var(--accent);font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.stamp .nowtag{display:none;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-right:8px}
+.stamp.now .nowtag{display:inline-flex}
+.stamp .nowtag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent)}
+@media (prefers-reduced-motion:no-preference){.stamp .nowtag::before{animation:pulse 1.6s ease-out infinite}}
 input[type=range].scrub{-webkit-appearance:none;appearance:none;width:100%;height:36px;background:transparent;margin:0}
 input[type=range].scrub::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:rgba(155,123,255,.28)}
 input[type=range].scrub::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:24px;height:24px;border-radius:50%;background:var(--grad);border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.25);margin-top:-9px}
@@ -632,17 +639,22 @@ function nextLoaded(from){
   for (let k = 1; k <= n; k++) { const i = (from + k) % n; if (radar.loaded.has(i)) return i; }
   return from;
 }
+/** How long each frame shows: a pass over the loop takes about fifteen seconds whatever the step, never faster than 160 ms a frame nor slower than 400. */
+const frameMs = n => Math.min(400, Math.max(160, Math.round(15000 / Math.max(n, 1))));
+const HOLD_MS = 2500;   // the latest frame holds, so the present reads before the loop starts over
 function tick(){
   clearTimeout(radar.timer);
   if (!radar.playing || !radar.frames.length) return;
   const last = radar.index === Math.max(...radar.loaded);
-  radar.timer = setTimeout(() => { if (!radar.playing) return; radar.index = nextLoaded(radar.index); showFrame(); tick(); }, last ? 1500 : 120);
+  radar.timer = setTimeout(() => { if (!radar.playing) return; radar.index = nextLoaded(radar.index); showFrame(); tick(); }, last ? HOLD_MS : frameMs(radar.loaded.size || radar.frames.length));
 }
 function showFrame(){
   document.querySelectorAll('.frame').forEach((el, i) => el.classList.toggle('on', i === radar.index));
-  const fr = radar.frames[radar.index]; const t = document.getElementById('radar-time'), a = document.getElementById('radar-ago'), sl = document.getElementById('radar-slider');
+  const fr = radar.frames[radar.index], now = radar.index === radar.frames.length - 1;
+  const t = document.getElementById('radar-time'), a = document.getElementById('radar-ago'), sl = document.getElementById('radar-slider'), stamp = t && t.closest('.stamp');
   if (fr && t) { t.textContent = fmtTime(fr.time); a.textContent = ago(fr.time); }
-  if (sl) sl.value = radar.index;
+  if (stamp) stamp.classList.toggle('now', now);   // the latest frame is the present: the stamp and the thumb say so
+  if (sl) { sl.value = radar.index; sl.classList.toggle('now', now); }
 }
 function radarScrub(v){ radar.playing = false; clearTimeout(radar.timer); radar.index = +v; showFrame(); updatePlay(); }
 function radarToggle(){ radar.playing = !radar.playing; updatePlay(); if (radar.playing) tick(); else clearTimeout(radar.timer); }
@@ -1664,7 +1676,7 @@ screens.radar = () => {
         ${loop.frames.map((fr, i) => `<img class="frame" id="fr${i}" alt="">`).join('')}
         <div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}
       </div>
-      <div class="stamp"><b id="radar-time" class="num">Loading</b><span id="radar-ago">&nbsp;</span></div>
+      <div class="stamp"><span id="radar-now" class="nowtag">Now</span><b id="radar-time" class="num">Loading</b><span id="radar-ago">&nbsp;</span></div>
       <div class="legend"><i></i>light to heavy</div>
       <div class="progress" id="radar-progress"></div>
     </div>
@@ -1672,7 +1684,7 @@ screens.radar = () => {
       <button class="play" id="radar-play" onclick="radarToggle()" aria-label="Pause">${I.pause}</button>
       <div class="scrubwrap"><input type="range" class="scrub" id="radar-slider" min="0" max="${Math.max(n - 1, 0)}" value="${Math.max(n - 1, 0)}" oninput="radarScrub(this.value)" aria-label="Scrub through the last ${HOURS} hours"></div>
     </div>
-    <div class="ticks" aria-hidden="true"><span>${tickAt(0)}</span><span>${tickAt(.25)}</span><span>${tickAt(.5)}</span><span>${tickAt(.75)}</span><span>${tickAt(1)}</span></div>
+    <div class="ticks" aria-hidden="true"><span>${tickAt(0)}</span><span>${tickAt(.25)}</span><span>${tickAt(.5)}</span><span>${tickAt(.75)}</span><span class="now">Now</span></div>
     <p class="note" id="radar-loaded"></p>
     <p class="note">${esc(loop.attribution)} · Map © OpenStreetMap contributors</p>`;
   return topbar(backBtn(), '', '') + `<span class="eyebrow">${esc(f.county)}</span><h1 class="title">Radar</h1><p class="sub">Last ${HOURS} hours, 160 km around ${esc(f.name)}</p>${body}`;
