@@ -82,7 +82,7 @@ export function distanceKm(a, b) {
 const overlap = (a, b) => Date.parse(a.startDate) <= Date.parse(b.endDate) + 24 * HOUR && Date.parse(b.startDate) <= Date.parse(a.endDate) + 24 * HOUR;
 /** Same grounds on overlapping dates, or the same name: one festival listed twice. */
 export const sameFestival = (a, b) => overlap(a, b) && (distanceKm(a, b) < 3 || slug(a.name) === slug(b.name) || sameNamedNearby(a, b));
-/** Overlapping dates, the same name once day and pass words are gone, within the sprawl of one set of grounds. */
+/** Overlapping dates, the same name (or its nickname) once day and pass words are gone, within the sprawl of one set of grounds. */
 export const sameNamedNearby = (a, b) => overlap(a, b) && distanceKm(a, b) < 8 && sameCore(a.name, b.name);
 
 // The National Weather Service covers the fifty states, DC and the territories; a festival elsewhere can get no alerts here.

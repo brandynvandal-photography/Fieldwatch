@@ -37,14 +37,36 @@ export const normalizeName = n => cleanName(n).replace(/[-:|–—(),.!&+/'"]+/g
 const STOP = new Set(['music', 'festival', 'fest', 'the', 'a', 'an', 'of', 'and', 'at', 'in', 'on', 'weekend', 'presents', 'annual', 'edition']);
 /** The words that make a name its own: "Country Calling Festival" and "Country Calling" share one core. */
 export const coreName = n => normalizeName(n).split(' ').filter(w => w && !STOP.has(w) && !/^\d+(st|nd|rd|th)$/.test(w)).join(' ');
-/** One core is the other, or the other with a word or two on the end: the same festival named twice. */
-export const sameCore = (x, y) => { const a = coreName(x), b = coreName(y); return Boolean(a && b) && (a === b || a.startsWith(`${b} `) || b.startsWith(`${a} `) || a.endsWith(` ${b}`) || b.endsWith(` ${a}`)); };
+const alike = (a, b) => a === b || a.startsWith(`${b} `) || b.startsWith(`${a} `) || a.endsWith(` ${b}`) || b.endsWith(` ${a}`);
+const SMALL = new Set(['a', 'an', 'the', 'of', 'and']);
+const initials = words => words.map(w => w[0]).join('');
+/**
+ * What a word of one name stands for in the other, or the word itself: "acl" is Austin City Limits (the initials of
+ * the core), "lib" Lightning in a Bottle (the initials once only the small words are gone), "lolla" Lollapalooza (the
+ * front of its first word, four letters or more). Ticket sites sell a festival's side shows under the short name.
+ */
+function standsFor(word, core, full) {
+  const words = core.split(' ');
+  if (/^[a-z]{3,}$/.test(word) && words.length >= 2 && (word === initials(words) || word === initials(full.split(' ').filter(w => !SMALL.has(w))))) return core;
+  if (word.length >= 4 && words[0].length > word.length && words[0].startsWith(word)) return words[0];
+  return word;
+}
+/** One core is the other, or the other with a word or two on the end, or says the other by its nickname: the same festival named twice. */
+export function sameCore(x, y) {
+  const a = coreName(x), b = coreName(y);
+  if (!a || !b) return false;
+  if (alike(a, b)) return true;
+  const fullA = normalizeName(x), fullB = normalizeName(y);
+  return alike(a.split(' ').map(w => standsFor(w, b, fullB)).join(' '), b) || alike(a, b.split(' ').map(w => standsFor(w, a, fullA)).join(' '));
+}
 
 // A listing is a festival, or something sold beside one, or plainly not one.
 export const FESTIVAL_WORD = /\b(fest|festival|festivals|fete|jam|jamboree|jubilee|gathering|revival|revue|roundup|round-up|carnival|fair|palooza|weekender|weekend|campout|camp-out|block party|hoedown|smokeout|smoke-out|fiesta|oktoberfest|brewfest|beerfest|bluesfest|jazzfest|rise up|picnic|rendezvous|powwow|pow-wow|days)\b|fest\b|palooza\b|fest$/i;
 export const NOT_A_FESTIVAL = /\b(tour|tribute|concert|symphony|philharmonic|orchestra|comedy|awards?|gala|screening|conference|convention|expo|seminar|worship night)\b/i;
 export const CANCELED = /\b(cancell?ed|postponed)\b/i;
-export const ADD_ON = /\b(parking|shuttle|camping|campsite|campground|locker|merch|payment plan|layaway|upgrade|add[- ]?on|glamping|rv pass|car pass|bus pass|car registration|registration|kick-?off|after ?party|pre-?party|fest nights?|meet (and|&) greet|package)\b/i;
+// Sold beside a festival rather than the festival: a pass for the lot or the campground, a kick-off or an afterparty,
+// and the late-night shows and aftershows a festival puts on in clubs across town under its own name.
+export const ADD_ON = /\b(parking|shuttle|camping|campsite|campground|locker|merch|payment plan|layaway|upgrade|add[- ]?on|glamping|rv pass|car pass|bus pass|car registration|registration|kick-?off|after ?party|pre-?party|fest nights?|late[- ]?night|after[- ]?shows?|meet (and|&) greet|package)\b/i;
 /** A name that says festival, and not a tour, tribute or concert unless it also says fest. */
 export const looksLikeFestival = name => FESTIVAL_WORD.test(name) && !plainlyNotFestival(name);
 // What no festival word redeems: a traveling show, a benefit concert, an orchestra, an awards night, or a

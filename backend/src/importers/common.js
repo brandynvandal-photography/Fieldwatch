@@ -67,11 +67,23 @@ export function groupListings(listings, { origin, prefix, today = iso().slice(0,
   return out;
 }
 
+// The imports in the order the app trusts them, which is the order they run: a festival on several sites is kept
+// once, from the first. A record made by hand (curated, a suggestion, a feed) stands above every import.
+const SOURCES = ['ticketmaster', 'seatgeek', 'edmtrain', 'wikidata'];
+const rank = origin => { const i = SOURCES.indexOf(origin); return i < 0 ? -1 : i; };
+/** Whether a record from one origin stands above one from another: hand-made over imported, then the run order. */
+export const outranks = (a, b) => rank(a) < rank(b);
+/** A record that is listed or hidden on purpose; a suggestion still waiting covers nothing. */
+const stands = f => ['published', 'hidden'].includes(f.status || 'published');
+
 /**
  * Writes one source's festivals: skips any that another source already lists (same grounds on
- * overlapping dates, or the same name), keeps what an admin set by hand on an existing import,
- * and prunes this source's own records that vanished before they started (canceled) or ended
- * a month ago. A run with fetch errors never prunes on absence; it only knows what it fetched.
+ * overlapping dates, or the same name, or its nickname), keeps what an admin set by hand on an
+ * existing import, and prunes this source's own records that vanished before they started
+ * (canceled), ended a month ago, or turned out to be a copy of a festival a source ahead of this
+ * one holds (a curated record, a suggestion, a feed, then the imports in run order), so a
+ * duplicate never needs hiding by hand. A run with fetch errors never prunes on absence; it only
+ * knows what it fetched.
  */
 export const applyImport = db.transaction(({ origin, found, now = Date.now(), errors = 0 }) => {
   const existing = q.allFestivals();
@@ -88,7 +100,9 @@ export const applyImport = db.transaction(({ origin, found, now = Date.now(), er
   }
   for (const [id, f] of before) {
     const gone = !seen.has(id), unstarted = Date.parse(f.startDate) > now, longOver = Date.parse(f.endDate) < now - 30 * DAY;
-    if ((gone && unstarted && errors === 0) || longOver) { q.deleteFestival(id); pruned++; }
+    // Covered: a source ahead of this one holds the same festival (one the matcher may only now see, say by its nickname), so this copy goes, started or not.
+    const covered = others.some(o => stands(o) && outranks(o.origin, origin) && sameFestival(o, f));
+    if ((gone && unstarted && errors === 0) || longOver || covered) { q.deleteFestival(id); pruned++; }
   }
   return { festivals: found.length, added, updated, duplicates, pruned };
 });

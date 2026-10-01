@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanName, coreName, sameCore, looksLikeFestival, normalizeName } from '../src/names.js';
+import { ADD_ON, cleanName, coreName, sameCore, looksLikeFestival, normalizeName } from '../src/names.js';
 import { inNwsArea, normalizeFestival, sameFestival } from '../src/festivals.js';
 
 // Names as the first live import printed them.
@@ -56,6 +56,19 @@ test('the core of a name is what makes it its own, so the same festival named tw
   }
 });
 
+test('a nickname is the same core: the initials of the name, or the front of its first word', () => {
+  for (const [a, b, want] of [['ACL Fest', 'Austin City Limits, Weekend 1', true], ['Austin City Limits Music Festival', 'ACL Fest Late Night Show: Khruangbin', true],
+    ['LIB', 'Lightning in a Bottle', true], ['EDC Las Vegas', 'Electric Daisy Carnival', true], ['Lolla Aftershow', 'Lollapalooza', true], ['Summer Fest', 'Summerfest', true],
+    ['ABC Fest', 'Austin City Limits', false], ['Austin Reggae Fest', 'ACL Fest', false], ['Roo', 'Bonnaroo', false], ['Rock the Bells', 'RTB', false]]) {
+    assert.equal(sameCore(a, b), want, `${a} | ${b}`);
+  }
+});
+
+test('a late-night show or an aftershow sold under a festival\'s name is an add-on, like parking', () => {
+  for (const [n, want] of [['ACL Fest: Late Night with Khruangbin', true], ['Lollapalooza Aftershow: Artist', true], ['Bonnaroo Late-Night', true], ['ACL Fest Nights: Artist', true],
+    ['Electric Forest Parking', true], ['Suwannee Hulaween', false], ['Lights All Night Festival', false], ['Moonrise Fest - Saturday', false]]) assert.equal(ADD_ON.test(n), want, n);
+});
+
 test('a name that says festival, and not a tour, tribute or concert unless it also says fest', () => {
   for (const [n, want] of [['Tracy Byrd', false], ['Morrissey - Live in Concert', false], ['The Concert: A Tribute To ABBA', false], ['Latin Grammy Awards', false],
     ['MOVEMENTS - HAPPIER NOW USA TOUR', false], ['Halloween Bash', false], ['Fort Collins Symphony - Signature Concert 1', false],
@@ -80,4 +93,9 @@ test('the same festival from two sources: same grounds, or the same name within 
   assert.equal(sameFestival(tm, { ...sg, name: 'Boardwalk Reggae Fest' }), false, 'four kilometers apart, another name');
   assert.equal(sameFestival(tm, { ...sg, startDate: '2026-11-02T16:00:00Z', endDate: '2026-11-03T17:00:00Z' }), false, 'a month apart');
   assert.equal(sameFestival(tm, { ...sg, name: 'Ocean City Bluegrass', latitude: 38.378, longitude: -75.069 }), true, 'same grounds, any name');
+  // A side show across town under the festival's initials: Stubb's is 3.5 km from Zilker Park.
+  const zilker = { name: 'Austin City Limits, Weekend 1', latitude: 30.2669, longitude: -97.7729, startDate: '2026-10-02T16:00:00Z', endDate: '2026-10-05T05:00:00Z' };
+  const stubbs = { name: 'ACL Fest', latitude: 30.2687, longitude: -97.7362, startDate: '2026-10-02T23:00:00Z', endDate: '2026-10-04T06:00:00Z' };
+  assert.equal(sameFestival(zilker, stubbs), true, 'ACL Fest at Stubb\'s the same weekend is Austin City Limits');
+  assert.equal(sameFestival(zilker, { ...stubbs, latitude: 30.35 }), false, 'ten kilometers out is past the sprawl of one set of grounds');
 });

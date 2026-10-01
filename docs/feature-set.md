@@ -9,7 +9,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 ## Live today
 
 - Picker lists only what is on: a week before gates to the day after.
-- List from the curated seed, Ticketmaster, SeatGeek, Edmtrain and feed importers (keys), and a keyless Wikidata pass that reads each festival site's own schema.org dates (robots honored).
+- List from the curated seed, Ticketmaster, SeatGeek, Edmtrain and feed importers (keys), and a keyless Wikidata pass that reads each festival site's own schema.org dates (robots honored); each festival listed once across them (same grounds, or the same name or its nickname within 8 km; side shows sold under the name are dropped; a stored copy a source ahead holds goes on the next run).
 - Location opens the festival you are at and sorts by distance.
 - Right where you are: the phone's own spot as a festival for the week (alerts, forecast, radar, push), named by one OpenStreetMap lookup. This replaced adding a festival by hand.
 - Warn people near you: on a warning, the alert text and link go to the share sheet, so AirDrop reaches phones with nothing installed and no signal.

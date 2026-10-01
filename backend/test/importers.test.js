@@ -13,6 +13,7 @@ const { seedAll } = await import('../src/seed.js');
 const { candidate, festivalsFrom, normalizeName, importTicketmaster } = await import('../src/importers/ticketmaster.js');
 const { parseCSV, recordsFrom, importFeeds } = await import('../src/importers/feeds.js');
 const { normalizeFestival, sameFestival } = await import('../src/festivals.js');
+const { applyImport, outranks } = await import('../src/importers/common.js');
 const { runImports } = await import('../src/importers/index.js');
 seedAll();
 const NOW = Date.parse('2026-09-28T12:00:00Z');
@@ -354,4 +355,30 @@ test('a camping pass on sale beside a festival says people camp there; a festiva
   const sgAt = new Set();
   sg(sgEvent({ title: 'Harvest Music Festival RV Pass' }), { campingAt: sgAt });
   assert.equal(sgAt.size, 1, 'SeatGeek too');
+});
+
+test('a stored import that a source ahead of it covers goes on its own next run, started or not, so a duplicate never needs hiding by hand', () => {
+  assert.ok(outranks('curated', 'ticketmaster') && outranks('community', 'wikidata') && outranks('ticketmaster', 'seatgeek') && !outranks('seatgeek', 'ticketmaster') && !outranks('edmtrain', 'edmtrain'));
+  const at = { startDate: '2026-09-25T16:00:00Z', endDate: '2026-09-29T05:00:00Z' };   // under way at NOW, so the vanished-before-it-started rule cannot reach it
+  const make = (name, location, latitude, longitude, opts) => normalizeFestival({ name, location, latitude, longitude, ...at }, { status: 'published', ...opts }).festival;
+  const zilker = make('Austin City Limits, Weekend 1', 'Zilker Park, Austin, TX', 30.2669, -97.7729, { origin: 'curated', id: 'acl-test-w1' });
+  const stubbs = make('ACL Fest', "Stubb's Waller Creek Amphitheater, Austin, TX", 30.2687, -97.7362, { origin: 'seatgeek', id: 'sg-acl-fest-test' });
+  for (const f of [zilker, stubbs]) q.upsertFestival(f);
+  // Before the matcher knew the nickname this copy got in; the first run after sees it covered, errors or not.
+  const r = applyImport({ origin: 'seatgeek', found: [], now: NOW, errors: 1 });
+  assert.deepEqual({ added: r.added, updated: r.updated, duplicates: r.duplicates, pruned: r.pruned }, { added: 0, updated: 0, duplicates: 0, pruned: 1 });
+  assert.equal(q.festival('sg-acl-fest-test'), null, 'the side show across town is gone'); assert.ok(q.festival('acl-test-w1'), 'the curated record stands');
+  // Two imports of one festival: only the one lower in the run order gives way, so the two never remove each other.
+  const tm = make('Lollapalooza', 'Grant Park, Chicago, IL', 41.8738, -87.6194, { origin: 'ticketmaster', id: 'tm-lolla-test' });
+  const sg = make('Lolla', 'Grant Park, Chicago, IL', 41.8738, -87.6194, { origin: 'seatgeek', id: 'sg-lolla-test' });
+  for (const f of [tm, sg]) q.upsertFestival(f);
+  assert.equal(applyImport({ origin: 'ticketmaster', found: [tm], now: NOW, errors: 1 }).pruned, 0, 'Ticketmaster runs first and keeps its record');
+  const r2 = applyImport({ origin: 'seatgeek', found: [sg], now: NOW, errors: 1 });
+  assert.deepEqual({ duplicates: r2.duplicates, pruned: r2.pruned }, { duplicates: 1, pruned: 1 }); assert.equal(q.festival('sg-lolla-test'), null); assert.ok(q.festival('tm-lolla-test'));
+  // A suggestion still waiting for review covers nothing.
+  const pending = make('Riverbend Roots', 'Riverbend Farm, Athens, GA', 33.95, -83.38, { origin: 'community', status: 'pending', id: 'sub-riverbend-test' });
+  const edm = make('Riverbend Roots', 'Riverbend Farm, Athens, GA', 33.95, -83.38, { origin: 'edmtrain', id: 'edm-riverbend-test' });
+  for (const f of [pending, edm]) q.upsertFestival(f);
+  assert.equal(applyImport({ origin: 'edmtrain', found: [], now: NOW, errors: 1 }).pruned, 0); assert.ok(q.festival('edm-riverbend-test'));
+  for (const id of ['acl-test-w1', 'tm-lolla-test', 'sub-riverbend-test', 'edm-riverbend-test']) q.deleteFestival(id);
 });
