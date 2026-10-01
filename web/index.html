@@ -248,7 +248,6 @@ button.row:active{background:rgba(255,255,255,.35)}
 .code.now{background:rgba(26,21,51,.05)}
 .code .you{color:var(--ink-2);margin-top:5px}
 .pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)} .pill.green{background:var(--ok);color:#fff}
-.codebadge{font-family:var(--font-body);font-variation-settings:normal;font-size:13px;line-height:1;letter-spacing:.04em;vertical-align:middle;position:relative;top:-6px;margin-left:2px;white-space:nowrap}
 .feedfest .fh{display:flex;align-items:center;gap:10px;width:100%} .feedfest .fh .main{flex:1;min-width:0} .feedfest .fh .fav{color:var(--accent);display:inline-flex;flex:none} .feedfest .fh .fav svg{width:16px;height:16px} .feedfest button.fh>svg:last-child{flex:none;color:var(--muted)}
 /* Alerts */
 .alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative;align-items:center}
@@ -964,16 +963,16 @@ function creditsTap(){ if (staffMode()) return; if (++creditsTaps >= 5) { S.staf
 // ---- lightning codes (the backend grades them from the GOES lightning mapper, lightning.js; the phone only reads) ----
 // The festival safety protocol, in its own words (backend/src/lightning.js PROTOCOL carries the same text for the pushes; change both).
 const CODE = {
-  red:    { label: 'Code red', ring: 'Under 8 miles', text: 'Rapid evacuation, full work stoppage', within: 8,
+  red:    { label: 'Code Red', ring: 'Under 8 miles', text: 'Rapid evacuation, full work stoppage', within: 8,
             protocol: 'Lightning has been detected in less than an 8 mile radius. Rapid evacuation required. Non-essential personnel should prioritize exit and do not need to maintain posts. Full work stoppage.',
             you: 'Get to a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter. The all-clear is thirty minutes after the last flash within 8 miles.' },
-  orange: { label: 'Code orange', ring: '8 to 12 miles', text: 'Evacuation procedures, staff hold posts', within: 12,
+  orange: { label: 'Code Orange', ring: '8 to 12 miles', text: 'Evacuation procedures, staff hold posts', within: 12,
             protocol: 'Lightning within 8 to 12 miles. Execute evacuation procedures while maintaining assigned posts to assist attendees.',
             you: 'Head for shelter or the exits as staff direct. Pack what you will carry.' },
-  yellow: { label: 'Code yellow', ring: '12 to 20 miles', text: 'Pay attention, prepare for orange', within: 20,
+  yellow: { label: 'Code Yellow', ring: '12 to 20 miles', text: 'Pay attention, prepare for orange', within: 20,
             protocol: 'Weather 12 to 20 miles from site. Pay attention and get things prepared for orange and a potential work stoppage.',
             you: 'Decide where you will shelter, and secure camp now.' },
-  green:  { label: 'Code green', ring: 'None within 20 miles', text: 'Normal operations', within: 20,
+  green:  { label: 'Code Green', ring: 'None within 20 miles', text: 'Normal operations', within: 20,
             protocol: 'No lightning within 20 miles in the last 15 minutes.',
             you: 'Not an all-clear from your safety team; they call it.' },
 };
@@ -998,8 +997,6 @@ function lightningState(l, alerts){
   return { ...(l || { within: null, source: 'GOES GLM', at: al.issuedAt }), code: al.code, nearestMi: red ? null : mi, nearestAt: red ? null : al.onset, lastNearMi: red ? mi : (l && l.lastNearMi) || null, lastNearAt: red ? al.onset : (l && l.lastNearAt) || null, allClearAt: red ? al.expiresAt : null, orangeUntil: red ? null : al.expiresAt, standing: true };
 }
 const liveLightning = f => lightningState(data(f).lightning, data(f).alerts);
-/** The code beside the festival's name, whenever there is one. */
-const codeBadge = f => { const l = f && f.id !== 'here' ? liveLightning(f) : null, c = l && CODE[l.code]; return c ? `&nbsp;<span class="pill ${esc(l.code)} codebadge">${esc(c.label)}</span>` : ''; };
 /** The tile under the sky: the nearest flash, the code, and the all-clear countdown when it is red. */
 function lightningTile(f){
   const l = liveLightning(f), c = l && CODE[l.code]; if (!c) return '';
@@ -1569,7 +1566,7 @@ screens.home = () => {
   const here = f.id === 'here';
   return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', (here ? '' : favBtn() + shareBtn()) + refreshBtn() + gearBtn()) + `
     <span class="eyebrow num">${here ? `Your location${f.at ? ' · ' + esc(ago(new Date(f.at).toISOString())) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
-    <h1 class="title">${esc(f.name)}${codeBadge(f)}</h1>
+    <h1 class="title">${esc(f.name)}</h1>
     <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
     ${sky}
     ${lightningTile(f)}

@@ -750,7 +750,7 @@ test('the home page is every current alert at every festival that is on: the wor
     await page.click('button:has-text("Change")');
     await page.waitForSelector('h1.title:has-text("1 warning")');
     assert.match(await page.textContent('.feedfest .fh .t'), /Suwannee Hulaween/, 'and the festival you opened stays at the top of the home page');
-    assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code green', 'with its code beside its name, green included');
+    assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Green', 'with its code beside its name, green included');
 
     store.feed = [];
     await page.click('button[aria-label="Refresh"]');
@@ -835,22 +835,22 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
     await page.waitForSelector('h1.title:has-text("1 warning")');
-    assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Code red', 'the code sits on the festival\'s card on the home page');
+    assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Code Red', 'the code sits on the festival\'s card on the home page');
     await page.click('.feedfest .alert:has-text("Severe Thunderstorm Warning")');
     await page.waitForSelector('.alerthead');
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.bolt.red');
-    assert.equal(await page.textContent('h1.title .codebadge'), 'Code red', 'the code sits beside the festival\'s name');
-    assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code red');
+    assert.equal(await page.$('h1.title .pill'), null, 'the code is on the tile under the sky, not beside the name');
+    assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code Red');
     assert.match(await page.textContent('.bolt .s'), /^Rapid evacuation, full work stoppage · all clear in 2[67] min$/);
     assert.ok(await page.$('.sky.warn'), 'the warning stays on the sky; lightning is its own tile');
     await shot(page, '23-lightning-home');
     await page.click('.bolt');
     await page.waitForSelector('h1.title:has-text("Lightning")');
-    assert.equal(await page.textContent('.codehead h2'), 'Code red');
+    assert.equal(await page.textContent('.codehead h2'), 'Code Red');
     assert.match(await page.textContent('.codehead p'), /^Nearest flash 3\.6 mi, \d+:\d\d [AP]M$/);
     assert.match(await page.textContent('.codehead b'), /^2[67] min$/);
-    assert.match(await page.textContent('.code.now .t'), /Code red · Under 8 miles/);
+    assert.match(await page.textContent('.code.now .t'), /Code Red · Under 8 miles/);
     assert.match(await page.textContent('.code.red'), /Non-essential personnel should prioritize exit and do not need to maintain posts\. Full work stoppage\./, 'the protocol in its own words');
     assert.match(await page.textContent('.code.orange'), /Execute evacuation procedures while maintaining assigned posts/);
     assert.match(await page.textContent('.code.yellow'), /prepared for orange and a potential work stoppage/);
@@ -864,22 +864,21 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     store.lightning['hulaween-2026'] = { code: 'green', nearestMi: null, nearestAt: null, within: { 8: 0, 12: 0, 20: 0 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: null, at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' };
     store.emit({ festivalId: 'hulaween-2026', kind: 'lightning', at: minutesAgo(0) });
     await page.waitForSelector('.bolt.green');
-    assert.equal(await page.textContent('.bolt .t'), 'No lightning within 20 mi · Code green');
-    assert.equal(await page.textContent('h1.title .codebadge'), 'Code green', 'green too');
+    assert.equal(await page.textContent('.bolt .t'), 'No lightning within 20 mi · Code Green');
     // The backend restarted mid-red: its grade says green for a minute while the red alert it issued still stands. The phone shows
     // the alert's red on the sky, the tile and the home page, with the alert's own all-clear: never a red card over a green tile.
-    const redAlert = { id: 'lightning-hulaween-2026-red-1', event: 'Code red: lightning within 8 miles', headline: 'Lightning 3.6 mi away at 6:40 PM. Rapid evacuation required. Full work stoppage.', body: 'Lightning has been detected in less than an 8 mile radius.', instruction: 'Get to shelter now.', severity: 'severe', area: 'Live Oak, FL', source: 'GOES lightning mapper, via Fieldwatch', issuedAt: minutesAgo(10), onset: minutesAgo(10), expiresAt: new Date(Date.now() + 20 * 60000).toISOString(), channel: 'lightning', relayCount: 0, code: 'red', nearestMi: 3.6 };
+    const redAlert = { id: 'lightning-hulaween-2026-red-1', event: 'Code Red: lightning within 8 miles', headline: 'Lightning 3.6 mi away at 6:40 PM. Rapid evacuation required. Full work stoppage.', body: 'Lightning has been detected in less than an 8 mile radius.', instruction: 'Get to shelter now.', severity: 'severe', area: 'Live Oak, FL', source: 'GOES lightning mapper, via Fieldwatch', issuedAt: minutesAgo(10), onset: minutesAgo(10), expiresAt: new Date(Date.now() + 20 * 60000).toISOString(), channel: 'lightning', relayCount: 0, code: 'red', nearestMi: 3.6 };
     store.alerts['hulaween-2026'] = [redAlert];
     await page.evaluate(() => refresh(fest())); await page.waitForSelector('.bolt.red');
-    assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code red');
+    assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code Red');
     assert.match(await page.textContent('.bolt .s'), /all clear in (19|20) min/, 'the countdown is the alert\'s own end');
-    assert.equal(await page.textContent('.sky h2'), 'Code red: lightning within 8 miles', 'the sky and the tile say the same thing');
+    assert.equal(await page.textContent('.sky h2'), 'Code Red: lightning within 8 miles', 'the sky and the tile say the same thing');
     await page.click('.bolt'); await page.waitForSelector('h1.title:has-text("Lightning")');
-    assert.equal(await page.textContent('.codehead h2'), 'Code red'); assert.match(await page.textContent('.codehead p'), /^Last flash within 8 mi at/);
+    assert.equal(await page.textContent('.codehead h2'), 'Code Red'); assert.match(await page.textContent('.codehead p'), /^Last flash within 8 mi at/);
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.red');
     store.feed = [{ festivalId: 'hulaween-2026', alerts: [redAlert] }];   // the home page's grade for it still says green
     await page.click('button:has-text("Change")'); await page.waitForSelector('h1.title:has-text("1 warning")');
-    assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code red', 'on the home page too');
+    assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Red', 'on the home page too');
     await page.click('.feedfest .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
     delete store.alerts['hulaween-2026'];
     // A new alert on the stream pulls the whole festival again; one at another festival does not.
@@ -898,9 +897,9 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     await page.waitForSelector('h1.title:has-text("1 advisory")');
     const card = `.feedfest:has-text("${other.name}")`;
     assert.equal(await page.textContent(`${card} .alert .t`), 'Lightning 11.2 mi');
-    assert.equal(await page.textContent(`${card} .alert .s`), 'Code orange · Evacuation procedures, staff hold posts');
-    assert.equal(await page.textContent(`${card} .fh .pill`), 'Code orange');
-    assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Code green', 'the festival you opened sits above it with its own code');
+    assert.equal(await page.textContent(`${card} .alert .s`), 'Code Orange · Evacuation procedures, staff hold posts');
+    assert.equal(await page.textContent(`${card} .fh .pill`), 'Code Orange');
+    assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Code Green', 'the festival you opened sits above it with its own code');
     await page.click(`${card} .alert`);
     await page.waitForSelector('.codehead.orange');
     assert.equal(await page.textContent('h1.title'), 'Lightning');

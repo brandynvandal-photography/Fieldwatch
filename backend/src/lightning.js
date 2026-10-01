@@ -159,11 +159,11 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
 // The festival safety protocol, in its own words. The web build's CODE table carries the same text; change both.
 const SHELTER = 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter.';
 export const PROTOCOL = {
-  red: { event: 'Code red: lightning within 8 miles', severity: 'severe', line: 'Rapid evacuation required. Full work stoppage.',
+  red: { event: 'Code Red: lightning within 8 miles', severity: 'severe', line: 'Rapid evacuation required. Full work stoppage.',
     text: 'Lightning has been detected in less than an 8 mile radius. Rapid evacuation required. Non-essential personnel should prioritize exit and do not need to maintain posts. Full work stoppage.',
     instruction: 'Get to shelter now. Non-essential personnel: exit first, posts can wait. Stay until the all-clear, thirty minutes after the last flash within 8 miles.',
     ends: 'The all-clear is thirty minutes after the last flash within 8 miles; this alert ends with it.' },
-  orange: { event: 'Code orange: lightning within 12 miles', severity: 'moderate', line: 'Execute evacuation procedures; staff maintain posts to assist attendees.',
+  orange: { event: 'Code Orange: lightning within 12 miles', severity: 'moderate', line: 'Execute evacuation procedures; staff maintain posts to assist attendees.',
     text: 'Lightning within 8 to 12 miles. Execute evacuation procedures while maintaining assigned posts to assist attendees.',
     instruction: 'Head for shelter or the exits as staff direct. Staff: evacuation procedures, hold your post to assist attendees.',
     ends: 'This alert ends fifteen minutes after the last flash within 12 miles, or when the code changes.' },

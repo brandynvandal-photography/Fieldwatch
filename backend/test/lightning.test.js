@@ -108,10 +108,10 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   assert.equal(st.files, 2); assert.equal(st.buckets[0].bucket, 'noaa-goes19'); assert.equal(st.buckets[0].lastError, null);
   assert.match(st.buckets[1].lastError, /HTTP 403/, 'one satellite failing is reported, and does not stop the other');
   const alerts = q.activeAlerts(fest.id, now).filter(x => x.channel === 'lightning');
-  assert.equal(alerts.length, 1); assert.equal(alerts[0].event, 'Code red: lightning within 8 miles'); assert.equal(alerts[0].severity, 'severe'); assert.equal(alerts[0].expiresAt, a.allClearAt); assert.equal(alerts[0].code, 'red');
+  assert.equal(alerts.length, 1); assert.equal(alerts[0].event, 'Code Red: lightning within 8 miles'); assert.equal(alerts[0].severity, 'severe'); assert.equal(alerts[0].expiresAt, a.allClearAt); assert.equal(alerts[0].code, 'red');
   assert.match(alerts[0].headline, /^Lightning 3 mi away at \d+:\d\d [AP]M\. Rapid evacuation required\. Full work stoppage\.$/);
   assert.match(alerts[0].body, /^Lightning has been detected in less than an 8 mile radius\. Rapid evacuation required\. Non-essential personnel should prioritize exit and do not need to maintain posts\. Full work stoppage\. Shelter is a hard-topped vehicle/);
-  assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Code red: lightning within 8 miles'); assert.equal(sent[0].opts.urgency, 'high');
+  assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Code Red: lightning within 8 miles'); assert.equal(sent[0].opts.urgency, 'high');
   assert.match(sent[0].payload.body, /^Bolt Test Fest\. Lightning 3 mi away at .*Full work stoppage\.$/);
   // A minute on, nothing new: still red, no second push. A new flash within 8 miles moves the all-clear out on the same alert.
   await lightningTick({ now: now + MIN, fetchImpl, festivals: [fest] });
@@ -131,7 +131,7 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   files.set(key('G19', t2 + 2 * MIN), lcfa(t2 + 2 * MIN, [north(10)]));
   await lightningTick({ now: t2 + 3 * MIN, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'orange'); assert.equal(sent.length, 2);
-  assert.equal(sent[1].payload.title, 'Code orange: lightning within 12 miles'); assert.equal(sent[1].opts.urgency, 'normal');
+  assert.equal(sent[1].payload.title, 'Code Orange: lightning within 12 miles'); assert.equal(sent[1].opts.urgency, 'normal');
   assert.match(sent[1].payload.body, /^Bolt Test Fest\. Lightning 10 mi away at .*Execute evacuation procedures; staff maintain posts to assist attendees\.$/);
   const orange = q.activeAlerts(fest.id, t2 + 3 * MIN).filter(x => x.channel === 'lightning');
   assert.equal(orange.length, 1); assert.equal(orange[0].code, 'orange'); assert.equal(orange[0].severity, 'moderate'); assert.equal(orange[0].expiresAt, new Date(t2 + 17 * MIN).toISOString().replace('.000Z', 'Z'));
@@ -140,7 +140,7 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   // Then one 5 miles out: red, pushed, and the orange alert ends now, superseded.
   files.set(key('G19', t2 + 5 * MIN), lcfa(t2 + 5 * MIN, [north(5)]));
   await lightningTick({ now: t2 + 6 * MIN, fetchImpl, festivals: [fest] });
-  assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3); assert.equal(sent[2].payload.title, 'Code red: lightning within 8 miles');
+  assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3); assert.equal(sent[2].payload.title, 'Code Red: lightning within 8 miles');
   const live = q.activeAlerts(fest.id, t2 + 6 * MIN).filter(x => x.channel === 'lightning');
   assert.equal(live.length, 1); assert.equal(live[0].code, 'red'); assert.ok(Date.parse(q.alert(orange[0].id).expiresAt) <= t2 + 6 * MIN, 'the orange alert is ended, not left beside the red');
   // A restart mid-red: before a single file is read again, the red alert already in the database keeps the grade red, with its own
