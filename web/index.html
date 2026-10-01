@@ -1474,11 +1474,19 @@ async function loadFeed(){
   }catch(e){ S.feedErr = e; }
   S.feedBusy = false; save(); render();
 }
+/** A festival on the home page, made ready to open: in the list, with what the feed knows of it in the cache. */
+function feedFest(fid){
+  const item = (S.feed && S.feed.items || []).find(i => i.festival.id === fid); if (!item) return null;
+  if (!FESTS.find(f => f.id === fid)) FESTS.push(item.festival);
+  S.cache[fid] = { ...(S.cache[fid] || {}), alerts: item.alerts, lightning: item.lightning || (S.cache[fid] || {}).lightning || null, at: S.feed.at }; save();
+  return item;
+}
+/** A card's header opens its festival, favorite or not: the home page is the way in to whatever is going on. */
+function openFeedFest(fid){ feedFest(fid); if (FESTS.find(f => f.id === fid)) pick(fid); }
 /** An alert on the home page opens on that festival, with the festival's own page behind it. */
 function openFeedAlert(fid, aid){
-  const item = (S.feed && S.feed.items || []).find(i => i.festival.id === fid); if (!item) return;
-  if (!FESTS.find(f => f.id === fid)) FESTS.push(item.festival);
-  S.fest = fid; S.cache[fid] = { ...(S.cache[fid] || {}), alerts: item.alerts, lightning: item.lightning || (S.cache[fid] || {}).lightning || null, at: S.feed.at }; save();
+  if (!feedFest(fid)) return;
+  S.fest = fid; save();
   stopRadar();
   S.stack = [{ name: 'feed', param: null }, { name: 'home', param: null }]; S.screen = aid ? 'alert' : 'lightning'; S.param = aid || null;
   render(false); window.scrollTo(0, 0);
@@ -1487,9 +1495,9 @@ function openFeedAlert(fid, aid){
 const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin' : ''}" onclick="loadFeed()" aria-label="Refresh" ${S.feedBusy ? 'disabled' : ''}>${I.refresh}</button>`;
 /** How loud a festival's card is: its worst alert, or a red or orange lightning code. */
 const feedRank = i => { const l = lightningState(i.lightning, i.alerts); return Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, l && l.code === 'red' ? 3 : l && l.code === 'orange' ? 2 : 0); };
-/** One festival's card on the home page: name and place, the lightning code, then each alert as a row. A favorite's header opens it, and says Clear, Checking or when gates open when there is nothing louder to say. */
+/** One festival's card on the home page: name and place, the lightning code, then each alert as a row. The header opens the festival; a favorite's says Clear, Checking or when gates open when there is nothing louder to say. */
 function feedCard(i, opts){
-  const { fav = false, open = fav } = opts || {};
+  const { fav = false } = opts || {};
   const f = i.festival, fd = S.feed, on = isLive(f);
   // The code beside the name whenever there is one, green included: the card's own grade, else the feed's for that festival.
   const own = i.lightning && CODE[i.lightning.code] ? i.lightning : null;
@@ -1507,7 +1515,7 @@ function feedCard(i, opts){
   }
   const main = `<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}${S.here && away(f) != null ? ' · ' + esc(fmtDist(away(f))) : ''}</div></div>${pill}`;
   const heart = fav ? `<span class="fav">${I.heartFull}</span>` : '';
-  const header = open && on ? `<button class="fh" onclick="pick('${esc(f.id)}')">${heart}${main}${I.chev}</button>` : `<div class="fh">${heart}${main}</div>`;
+  const header = `<button class="fh" onclick="openFeedFest('${esc(f.id)}')">${heart}${main}${I.chev}</button>`;
   return `<div class="group glass feedfest${fav ? ' fav' : ''}">${header}${boltRow}${others.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
 }
 const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'here');

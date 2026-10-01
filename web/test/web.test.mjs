@@ -754,6 +754,10 @@ test('the home page is every current alert at every festival that is on: the wor
     assert.ok(await page.$('button.row:has-text("All festivals")'), 'the list is one tap away, not the page');
     assert.match(await page.textContent('.empty'), /None yet.*Tap the heart/, 'no favorites: the section says how to get one, under the alerts');
     await shot(page, '20-feed');
+    // The card itself opens its festival, favorite or not; the alert under it opens on the alert.
+    await page.click('.feedfest:has-text("Suwannee Hulaween") button.fh'); await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'the card header opens the festival');
+    await page.click('button:has-text("Change")'); await page.waitForSelector('h1.title:has-text("1 warning")');
     await page.click('.feedfest .alert:has-text("Severe Thunderstorm Warning")');
     await page.waitForSelector('.alerthead h2:has-text("Severe Thunderstorm Warning")');
     await page.click('button[aria-label="Back"]');
