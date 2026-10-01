@@ -169,6 +169,9 @@ test('the venue learns how much rain it takes from what people report, and a rep
 test('indoors or out: a building or a club under the point, the venue words in the listing, and the staff word over both', async () => {
   assert.equal(indoorFromTags({ building: 'yes', amenity: 'nightclub' }), true); assert.equal(indoorFromTags({ amenity: 'theatre' }), true); assert.equal(indoorFromTags({ leisure: 'sports_centre' }), true);
   assert.equal(indoorFromTags({ building: 'roof' }), null, 'a roof with no walls is not inside'); assert.equal(indoorFromTags({ leisure: 'park' }), null, 'a park says nothing about a roof on its own');
+  assert.equal(indoorFromTags({ building: 'stadium' }), null, 'a stadium is open to the sky'); assert.equal(indoorFromTags({ building: 'pavilion' }), null, 'a pavilion is a roof on posts');
+  assert.equal(indoorFromTags({ amenity: 'theatre', 'theatre:type': 'amphi' }), null, 'an amphitheater is a theatre with no roof');
+  assert.equal(indoorFromTags({ amenity: 'events_venue' }), null, 'an events venue is as often a field as a hall'); assert.equal(indoorFromTags({ building: 'yes', amenity: 'events_venue' }), true, 'unless it is a building');
   assert.equal(indoorFromWords('Temple Tribal Fest - Playa Azul Playa Azul Nightclub, Temple, TX'), true);
   assert.equal(indoorFromWords('Suwannee Hulaween Spirit of the Suwannee Music Park, Live Oak, FL'), false);
   assert.equal(indoorFromWords('Music Hall at Fair Park, Dallas, TX'), true, 'the building word wins over the grounds it stands in');
@@ -180,6 +183,15 @@ test('indoors or out: a building or a club under the point, the venue words in t
   const e = effectiveGround({ name: 'Temple Tribal Fest', location: 'Playa Azul Nightclub, Temple, TX' });
   assert.equal(e.indoor, true); assert.equal(e.indoorSource, 'the listing');
   assert.equal(effectiveGround({ name: 'X', location: 'Playa Azul Nightclub', ground: { indoor: false, indoorSource: 'OpenStreetMap: leisure=park' } }).indoor, false, 'the lookup beats the words');
+  // Wakaan at Mulberry Mountain: the pin falls on the lodge of a campground on a mountain. Any one thing that says outdoors beats the roof.
+  const lodge = await surfaceFromOSM(0, 0, { fetchImpl: async () => overpass([{ type: 'area', id: 1, tags: { building: 'yes', name: 'Lodge' } }, { type: 'area', id: 2, tags: { tourism: 'camp_site', name: 'Mulberry Mountain' } }]) });
+  assert.deepEqual({ indoor: lodge.indoor, camping: lodge.camping }, { indoor: false, camping: true }, 'a building inside a campground is a building on the grounds');
+  const mountain = effectiveGround({ name: 'Wakaan Music Festival', location: 'Mulberry Mountain, Ozark, AR', ground: { indoor: true, indoorSource: 'OpenStreetMap: building=yes' } });
+  assert.equal(mountain.indoor, false); assert.equal(mountain.indoorSource, 'the listing', 'a mountain in the listing beats a roof under the pin');
+  const camp = effectiveGround({ name: 'X', location: 'Somewhere, AR', camping: true, ground: { indoor: true, indoorSource: 'OpenStreetMap: building=yes' } });
+  assert.equal(camp.indoor, false); assert.equal(camp.indoorSource, 'people camp here');
+  assert.equal(effectiveGround({ name: 'X', location: 'Somewhere, AR', ground: { indoor: true, indoorSource: 'OpenStreetMap: building=yes, amenity=nightclub' } }).indoor, true, 'nothing says out: the roof stands');
+  assert.equal(effectiveGround({ name: 'X', location: 'Mulberry Mountain', camping: true, ground: { indoor: true, override: validOverride({ indoor: true }).override } }).indoor, true, 'staff still have the last word');
   const over = effectiveGround({ name: 'X', location: 'Playa Azul Nightclub', ground: { indoor: true, override: validOverride({ indoor: 'false' }).override } });
   assert.equal(over.indoor, false); assert.equal(over.indoorSource, 'staff');
   assert.equal(validOverride({ indoor: true }).override.indoor, true); assert.equal(validOverride({}).override.indoor, undefined);

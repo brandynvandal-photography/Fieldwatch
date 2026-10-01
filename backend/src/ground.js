@@ -30,12 +30,20 @@ export async function pastRain(lat, lon, { now = Date.now(), fetchImpl = globalT
 const OVERPASS = process.env.OVERPASS_URL || 'https://overpass-api.de/api/interpreter';
 export const SURFACES = ['grass', 'dirt', 'sand', 'gravel', 'pavement', 'mixed'];
 // ---- indoors or out: a club, a hall or an arena is its own shelter, so the lightning protocol and the field advice stand down there ----
-const INDOOR_AMENITY = ['nightclub', 'bar', 'pub', 'theatre', 'cinema', 'arena', 'events_venue', 'community_centre', 'conference_centre', 'exhibition_centre', 'casino', 'concert_hall', 'music_venue'];
+const INDOOR_AMENITY = ['nightclub', 'bar', 'pub', 'theatre', 'cinema', 'arena', 'community_centre', 'conference_centre', 'exhibition_centre', 'casino', 'concert_hall', 'music_venue'];
 const INDOOR_LEISURE = ['sports_centre', 'ice_rink', 'bowling_alley', 'dance'];
+// A building tag with no walls to speak of: a stadium or a grandstand is open to the sky, a pavilion or a bandstand is a roof on posts.
+const OPEN_AIR = ['no', 'roof', 'shed', 'grandstand', 'stadium', 'pavilion', 'bandstand', 'carport', 'tent'];
 const INDOOR_WORDS = /\b(night ?club|club|arena|theat(?:re|er)|hall|ballroom|auditorium|convention cent(?:er|re)|coliseum|dome|casino|lounge|bar|warehouse|tavern|saloon|brewery|cinema|church|indoors?)\b/i;
 const OUTDOOR_WORDS = /\b(park|fairgrounds?|ranch|farm|fields?|speedway|campground|grounds|beach|lake|forest|meadow|amphitheat(?:re|er)|raceway|downtown|streets?|plaza|lawn|island|mountain|resort|woods|valley|river|bay|shore|airfield|airport|orchard|vineyard|winery|estate|outdoors?)\b/i;
-/** One feature's tags, read for a roof: a building, a club, a hall, an arena says indoors; null when the tags say nothing. */
-export const indoorFromTags = (tags = {}) => (tags.building && !['no', 'roof', 'shed', 'grandstand'].includes(tags.building)) || INDOOR_AMENITY.includes(tags.amenity) || INDOOR_LEISURE.includes(tags.leisure) || tags.indoor === 'yes' ? true : null;
+/**
+ * One feature's tags, read for a roof: a building, a club, a hall, an arena says indoors; an amphitheater, or an events
+ * venue with no building (as often a field as a hall), does not; null when the tags say nothing.
+ */
+export function indoorFromTags(tags = {}) {
+  if (tags.indoor === 'no' || /amphi|open_air/.test(tags['theatre:type'] || '')) return null;
+  return (tags.building && !OPEN_AIR.includes(tags.building)) || INDOOR_AMENITY.includes(tags.amenity) || INDOOR_LEISURE.includes(tags.leisure) || tags.indoor === 'yes' ? true : null;
+}
 /** What a venue's name says: a nightclub or a hall is indoors, a park or fairgrounds is not; the building's word wins when both appear. */
 export const indoorFromWords = text => (INDOOR_WORDS.test(text || '') ? true : OUTDOOR_WORDS.test(text || '') ? false : null);
 export const SOILS = ['A', 'B', 'C', 'D'];   // USDA hydrologic groups: A drains fast (sand), D barely drains (clay)
@@ -70,8 +78,10 @@ export async function surfaceFromOSM(lat, lon, { fetchImpl = globalThis.fetch } 
   // Under the point first: every area that contains it.
   const under = await ask(`[out:json][timeout:10];is_in(${la},${lo});out tags;`);
   let camping = under.some(e => campingFromTags(e.tags || {}));
-  // Indoors when a building, a club or a hall sits under the point; outdoors when the ground under it is mapped as land; else unknown.
-  const roof = under.find(e => indoorFromTags(e.tags || {}) === true), indoor = roof ? true : under.some(e => surfaceFromTags(e.tags || {})) ? false : null, indoorTag = roof ? roofText(roof.tags) : null;
+  // Indoors when a building, a club or a hall sits under the point and no campground does (the lodge or the showers on a
+  // campground are buildings on the grounds, not the venue); outdoors when the ground under it is mapped as land; else unknown.
+  const roof = camping ? null : under.find(e => indoorFromTags(e.tags || {}) === true);
+  const indoor = roof ? true : camping || under.some(e => surfaceFromTags(e.tags || {})) ? false : null, indoorTag = roof ? roofText(roof.tags) : null;
   const hits = under.map(e => ({ tags: e.tags || {}, read: surfaceFromTags(e.tags || {}) })).filter(h => h.read).sort((a, b) => rank(a.tags) - rank(b.tags));
   if (hits.length) { const [surface, low] = hits[0].read; return { surface, low, camping, indoor, indoorTag, source: 'OpenStreetMap', tag: tagText(hits[0].tags) }; }
   // Nothing under it says: the nearest mapped ground within 250 m (a field whose outline stops short of the pin, the lot beside it).
@@ -145,7 +155,12 @@ export function effectiveGround(f) {
   const g = f?.ground || {}, o = g.override || {};
   const camping = o.camping ?? g.camping ?? (f?.camping === true || f?.camping === false ? f.camping : null);
   const said = f?.indoor === true || f?.indoor === false ? f.indoor : indoorFromWords(`${f?.name || ''} ${f?.location || ''}`);
-  const indoor = o.indoor ?? g.indoor ?? said, indoorSource = o.indoor != null ? 'staff' : g.indoor != null ? g.indoorSource || 'lookup' : said != null ? 'the listing' : 'unknown';
+  // Indoors only when nothing says otherwise. Mapped open ground under the pin, a park, a farm or a mountain in the listing, or
+  // people camping here each say outdoors, and each beats a building under the pin: an imported pin often sits on the lodge or
+  // the box office of grounds open to the sky, and out is the safe side, where the lightning codes run. Staff keep the last word.
+  const open = g.indoor === false ? g.indoorSource || 'lookup' : said === false ? 'the listing' : camping === true ? 'people camp here' : null;
+  const indoor = o.indoor ?? (open ? false : g.indoor ?? said);
+  const indoorSource = o.indoor != null ? 'staff' : open ? open : g.indoor != null ? g.indoorSource || 'lookup' : said != null ? 'the listing' : 'unknown';
   return { surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: Array.isArray(o.structures) ? o.structures : ['canopies'],
     camping, campingSource: o.camping != null ? 'staff' : g.camping != null ? g.campingSource || 'lookup' : f?.camping === true || f?.camping === false ? 'the listing' : 'unknown',
     indoor, indoorSource,
