@@ -94,6 +94,7 @@ a{color:var(--accent)}
 .tb.spin svg{animation:spin 1s linear infinite}
 .tb.fav.on,.lead.fav,.row .fav,.bubble .favmark{color:var(--accent)}
 .row .fav{flex:none;display:inline-flex;margin-right:2px}.row .fav svg{width:18px;height:18px}
+.row .dotfav{width:12px;justify-content:center;margin-right:0}.row .dotfav svg{width:20px;height:20px}
 .bubble .favmark{position:absolute;top:9px;right:11px;display:inline-flex}.bubble .favmark svg{width:15px;height:15px}
 .ask .btn svg{width:18px;height:18px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -1533,7 +1534,7 @@ function pickerBody(){
   const top = others.filter(isFeatured);
   const bubbles = (top.length ? top : others).slice(0, 6), rest = others.filter(f => !bubbles.includes(f));
   const bubble = f => `<button class="bubble" style="--hue:${hue(f)}" onclick="pick('${f.id}')"><i class="glow"></i><span class="glass">${isFav(f.id) ? `<span class="favmark">${I.heartFull}</span>` : ''}<span class="t">${esc(f.name)}</span><span class="d">${esc(fmtRange(f))}</span><span class="ph">${esc(phase(f).text)}${esc(distNote(f))}</span></span></button>`;
-  const row = f => `<button class="row" onclick="pick('${f.id}')"><span class="dotc" style="--hue:${hue(f)}"></span><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div>${isFav(f.id) ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}${esc(distNote(f))}</div>${I.chev}</button>`;
+  const row = f => `<button class="row" onclick="pick('${f.id}')">${isFav(f.id) ? `<span class="fav dotfav">${I.heartFull}</span>` : `<span class="dotc" style="--hue:${hue(f)}"></span>`}<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}${esc(distNote(f))}</div>${I.chev}</button>`;
   const hereRow = `<div class="group glass"><button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button></div>`;
   if (!FESTS.length) return `<div class="card glass"><h3>Nothing loaded</h3><p>The festival list did not load.</p></div>`;
   if (!on.length) return `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>${hereRow}`;
@@ -1541,7 +1542,7 @@ function pickerBody(){
     const hits = on.filter(f => matches(f, words));
     return (hits.length ? `<div class="group glass tight">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
   }
-  const favGroup = favs.length ? `<p class="h">Favorites</p><div class="group glass tight">${favs.map(row).join('')}</div>` : '';
+  const favGroup = favs.length ? `<p class="h">Favorites</p><div class="grid">${favs.map(bubble).join('')}</div>` : '';
   const bubbleGroup = bubbles.length ? `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>` : '';
   return `${favGroup}${bubbleGroup}${rest.length ? `<p class="h">Also on</p><div class="group glass tight">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
 }

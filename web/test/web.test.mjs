@@ -1047,7 +1047,11 @@ test('favorites: a heart on the festival page follows its warnings on this phone
     assert.equal(await page.textContent('.feedfest.fav:has-text("Suwannee Hulaween") .alert .t'), 'Severe Thunderstorm Warning', 'each favorite card carries its alerts');
     assert.equal(await page.$$eval('.feedfest:not(.fav) .fh .t', els => els.map(e => e.textContent)).then(n => n.includes('Suwannee Hulaween')), false, 'and is not listed again below');
     await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
-    assert.ok(await page.$(`button:has-text("Suwannee Hulaween") .favmark, button:has-text("Suwannee Hulaween") .fav`), 'the list marks it');
+    assert.ok(await page.$('.bubble:has-text("Suwannee Hulaween") .favmark'), 'the list shows it as a bubble under Favorites, with the heart in the corner');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)).then(h => h[0]), 'Favorites');
+    await page.fill('#q', 'hula');
+    assert.ok(await page.$('button.row:has-text("Suwannee Hulaween") .dotfav'), 'in a search the heart stands where the dot would');
+    await page.fill('#q', '');
     await page.click(`button:has-text("${other.name}")`); await page.waitForSelector('.sky');
     await page.click('button.row:has-text("Favorite")'); await page.waitForSelector('button.tb.fav.on');
     await page.waitForFunction(() => /^Favorited /.test(document.querySelector('.toast.show')?.textContent || ''));
