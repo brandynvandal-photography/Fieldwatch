@@ -138,12 +138,17 @@ export function refreshRadarSoon(f) {
   refreshRadar(f).catch(e => console.error(`[${f.id}] radar refresh failed:`, e.message));
 }
 
-/** What the phone downloads: the square, and one immutable URL per frame, oldest first. Mirrors RadarLoop in Swift. */
-export function radarLoop(f) {
+/**
+ * What the phone downloads: the square, and one immutable URL per frame, oldest first. Mirrors RadarLoop in Swift. Only the frames
+ * inside the window as of now: a cache that stopped filling (the archive out of reach for a while) must not hand out last evening
+ * as if it were the present. With fewer than a dozen left the phone goes to the archive itself.
+ */
+export function radarLoop(f, now = Date.now()) {
+  const times = storedFrames(f.id).filter(t => t >= now - HOURS * 3600_000 - STEP_MS && t <= now + STEP_MS);   // a step of slack at each end: the window moves in steps, the clock does not
   return {
-    festivalId: f.id, generatedAt: iso(), hours: HOURS, stepMinutes: STEP_MS / 60_000, size: SIZE,
-    bounds: coverage(f).bounds, attribution: ATTRIBUTION,
-    frames: storedFrames(f.id).map(t => ({ time: iso(t), url: `/radar/${f.id}/${frameName(t)}` })),
+    festivalId: f.id, generatedAt: iso(now), hours: HOURS, stepMinutes: STEP_MS / 60_000, size: SIZE,
+    bounds: coverage(f).bounds, attribution: ATTRIBUTION, newestAt: times.length ? iso(times[times.length - 1]) : null,
+    frames: times.map(t => ({ time: iso(t), url: `/radar/${f.id}/${frameName(t)}` })),
   };
 }
 

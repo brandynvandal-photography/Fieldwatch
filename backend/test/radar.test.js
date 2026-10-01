@@ -99,7 +99,8 @@ test('an error page from the archive is not cached and is retried, but not forev
 });
 
 test('the manifest lists what is on disk, oldest first, as the phone expects', () => {
-  const loop = radar.radarLoop(festival);
+  const loop = radar.radarLoop(festival, NOW + 20 * 60_000);
+  assert.equal(loop.newestAt, '2026-10-24T21:10:00Z');
   assert.equal(loop.festivalId, festival.id);
   assert.equal(loop.hours, 12); assert.equal(loop.stepMinutes, 10); assert.equal(loop.size, 512);
   assert.equal(loop.attribution, 'NOAA NEXRAD via Iowa Environmental Mesonet');
@@ -114,4 +115,11 @@ test('the manifest lists what is on disk, oldest first, as the phone expects', (
   writeFileSync(join(process.env.RADAR_DIR, 'nowhere-2026', 'notes.txt'), 'x');
   assert.deepEqual(radar.storedFrames('nowhere-2026'), []);
   assert.deepEqual(radar.storedFrames('never-heard-of-it'), []);
+  // A cache that stopped filling: last evening's frames are on disk, but the manifest as of this afternoon leaves them out.
+  const stale = { ...festival, id: 'stale-2026' };
+  mkdirSync(join(process.env.RADAR_DIR, stale.id), { recursive: true });
+  for (const name of ['20261024T1800Z.png', '20261024T1810Z.png', '20261025T0900Z.png']) writeFileSync(join(process.env.RADAR_DIR, stale.id, name), 'png');
+  const afternoon = radar.radarLoop(stale, Date.UTC(2026, 9, 25, 16, 0));
+  assert.deepEqual(afternoon.frames.map(x => x.time), ['2026-10-25T09:00:00Z'], 'only what falls inside the last twelve hours as of now');
+  assert.equal(afternoon.newestAt, '2026-10-25T09:00:00Z');
 });

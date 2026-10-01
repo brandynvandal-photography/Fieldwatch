@@ -299,7 +299,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
   const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {} };
-  store.groundReports = {}; store.alerts = {};
+  store.groundReports = {}; store.alerts = {}; store.radar = {};
   // The live stream: open responses, and a way for a test to push a change to every page on it (backend/src/live.js).
   store.live = [];
   store.emit = e => store.live.forEach(r => r.write(`event: change\ndata: ${JSON.stringify(e)}\n\n`));
@@ -332,6 +332,9 @@ function fakeBackend(list) {
       if (m === 'GET' && path === '/alerts') return send(200, { at: new Date().toISOString(), on: store.list.filter(f => isLive(f) && f.status !== 'hidden').length, items: (store.feed || []).map(x => ({ festival: store.list.find(f => f.id === x.festivalId), alerts: x.alerts, lightning: store.lightning[x.festivalId] || null })).filter(i => i.festival), codes: { ...store.lightning } });
       const gr = path.match(/^\/festivals\/([^/]+)\/ground$/);
       if (m === 'GET' && gr) return send(200, groundOf(gr[1]));
+      const rad = path.match(/^\/festivals\/([^/]+)\/radar$/);
+      if (m === 'GET' && rad && store.radar[rad[1]]) return send(200, store.radar[rad[1]]);
+      if (m === 'GET' && /^\/radar\/[^/]+\/[^/]+\.png$/.test(path)) { res.writeHead(200, { ...cors, 'content-type': 'image/png' }); return res.end(PNG); }
       const fal = path.match(/^\/festivals\/([^/]+)\/alerts$/);
       if (m === 'GET' && fal && store.alerts[fal[1]]) return send(200, store.alerts[fal[1]]);
       const grr = path.match(/^\/festivals\/([^/]+)\/ground\/report$/);
@@ -1090,6 +1093,33 @@ test('favorites: a heart on the festival page follows its warnings on this phone
     await page.waitForFunction(() => /Removed Suwannee Hulaween/.test(document.querySelector('.toast.show')?.textContent || ''));
     assert.deepEqual(store.subs.map(s => s.festivalId), [other.id]);
     assert.equal(await page.evaluate(() => window.__subscribed), true, 'the browser subscription stays while a favorite remains');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('the radar loop comes from the backend when its cache is current, and from the archive when the cache is stale', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  const STEP = 10 * 60000, frames = (newest, n) => Array.from({ length: n }, (_, i) => { const t = newest - (n - 1 - i) * STEP; return { time: new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z'), url: `/radar/hulaween-2026/${new Date(t).toISOString().slice(0, 16).replace(/[-:]/g, '')}Z.png` }; });
+  const manifest = newest => ({ festivalId: 'hulaween-2026', hours: 12, stepMinutes: 10, size: 512, bounds: { west: 0, south: 0, east: 1, north: 1 }, attribution: 'NOAA NEXRAD via Iowa Environmental Mesonet', frames: frames(newest, 24) });
+  try {
+    // Last evening's frames: the backend's cache stopped filling. The phone goes to the archive itself, and the loop ends near now.
+    store.radar['hulaween-2026'] = manifest(Date.now() - 5 * 3600000);
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky');
+    await page.click('button.orb:has-text("Radar")');
+    await page.waitForFunction(() => document.querySelectorAll('.frame').length === 48 && document.getElementById('radar-loaded')?.textContent === '');
+    assert.equal(seen.frames.length, 48, 'the archive, directly');
+    assert.ok(Date.now() - Math.max(...seen.frames.map(t => Date.parse(t))) < 25 * 60000, 'and the newest frame is minutes old, not hours');
+    // The cache caught up: the backend's own frames serve, and the archive is not asked.
+    store.radar['hulaween-2026'] = manifest(Math.floor((Date.now() - 12 * 60000) / STEP) * STEP);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    await page.click('button.orb:has-text("Radar")');
+    await page.waitForFunction(() => document.querySelectorAll('.frame').length === 24 && document.getElementById('radar-loaded')?.textContent === '');
+    assert.equal(seen.frames.length, 48, 'no new archive requests');
+    assert.ok(store.calls.some(c => /^GET \/radar\/hulaween-2026\/.*\.png$/.test(c)), 'the frames came from the backend');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

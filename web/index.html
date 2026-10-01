@@ -414,6 +414,7 @@ const IEM_WMS = 'https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q-t.cgi'
 const OSM = 'https://tile.openstreetmap.org';
 const ATTRIBUTION = 'NOAA NEXRAD via Iowa Environmental Mesonet';
 const HOURS = 12, DIRECT_STEP_MIN = 15, LAG_MIN = 10, HALF_M = 160000, SIZE = 512, R = 6378137;
+const RADAR_STALE_MS = 45 * 60000;   // a backend loop whose newest frame is older than this is not the present; the archive answers instead
 const DAY = 86400000;
 // A festival is listed only while it is on: from the grounds opening (a week before gates for early entry,
 // vendors and build crews, unless the festival says when) until the day after it ends. Mirrors backend/src/festivals.js.
@@ -594,10 +595,12 @@ function iemURL(bbox, t){
 async function radarLoop(f){
   const b = backend(), bbox = coverage(f);
   if (b) {
-    // The backend's cache serves everyone once it holds a couple of hours; until then, or when it is down, the archive answers directly, like the alerts.
+    // The backend's cache serves everyone once it holds a couple of hours and is current; until then, when it is down, or when its newest
+    // frame is stale (the archive was out of its reach for a while), the archive answers directly, like the alerts.
     try {
-      const m = await getJSON(`${b}/festivals/${f.id}/radar`);
-      if (m && Array.isArray(m.frames) && m.frames.length >= 12) return { bbox, frames: m.frames.map(x => ({ time: x.time, url: /^https?:/.test(x.url) ? x.url : b + x.url })), attribution: m.attribution, hours: m.hours, step: m.stepMinutes };
+      const m = await getJSON(`${b}/festivals/${f.id}/radar`), frames = m && Array.isArray(m.frames) ? m.frames : [];
+      const newest = frames.length ? Date.parse(frames[frames.length - 1].time) : 0;
+      if (frames.length >= 12 && Date.now() - newest < RADAR_STALE_MS) return { bbox, frames: frames.map(x => ({ time: x.time, url: /^https?:/.test(x.url) ? x.url : b + x.url })), attribution: m.attribution, hours: m.hours, step: m.stepMinutes };
     } catch(e) {}
   }
   // Straight from the archive: 12 hours at 15-minute steps, newest at least 10 minutes old (composites land late).
