@@ -138,7 +138,9 @@ app.get('/alerts', (req, res) => {
   const items = on.map(f => ({ festival: f, alerts: q.activeAlerts(f.id).sort((a, b) => rank(b) - rank(a)), lightning: lightningFor(f.id) })).filter(i => i.alerts.length || ['red', 'orange'].includes(i.lightning?.code));
   const top = i => Math.max(i.alerts[0] ? rank(i.alerts[0]) : 0, i.lightning?.code === 'red' ? 3 : i.lightning?.code === 'orange' ? 2 : 0);
   items.sort((a, b) => top(b) - top(a) || Date.parse(a.festival.startDate) - Date.parse(b.festival.startDate));
-  res.set('Cache-Control', 'no-store').json({ at: iso(), on: on.length, items });
+  // The lightning code of every festival that is on, alerts or not, so the home page can show it beside each name.
+  const codes = Object.fromEntries(on.map(f => [f.id, lightningFor(f.id)]).filter(([, l]) => l));
+  res.set('Cache-Control', 'no-store').json({ at: iso(), on: on.length, items, codes });
 });
 // A listing the importers got wrong (a concert, a tour, a car show) goes out of sight; an import keeps it hidden.
 const setStatus = status => (req, res) => {

@@ -487,6 +487,7 @@ test('the home page feed: every current alert at every festival that is on, the 
   ];
   await pollFestival(q.festival('feed-test-2026'));
   const feed = (await api('GET', '/alerts')).json;
+  assert.ok(feed.codes && typeof feed.codes === 'object' && !Array.isArray(feed.codes), 'the lightning code of every festival that is on rides along, by id');
   assert.ok(feed.on >= 1 && typeof feed.at === 'string');
   const mine = feed.items.find(i => i.festival.id === 'feed-test-2026');
   assert.deepEqual(mine.alerts.map(a => a.event), ['Severe Thunderstorm Warning', 'Heat Advisory'], 'the worst first');

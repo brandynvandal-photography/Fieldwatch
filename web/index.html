@@ -247,7 +247,8 @@ button.row:active{background:rgba(255,255,255,.35)}
 .code .main{flex:1;min-width:0} .code .t{font-weight:600;font-size:15px;line-height:1.3} .code .s{color:var(--muted);font-size:14px;margin-top:2px;line-height:1.35}
 .code.now{background:rgba(26,21,51,.05)}
 .code .you{color:var(--ink-2);margin-top:5px}
-.pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)}
+.pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)} .pill.green{background:var(--ok);color:#fff}
+.codebadge{font-family:var(--font-body);font-variation-settings:normal;font-size:13px;line-height:1;letter-spacing:.04em;vertical-align:middle;position:relative;top:-6px;margin-left:2px;white-space:nowrap}
 .feedfest .fh{display:flex;align-items:center;gap:10px;width:100%} .feedfest .fh .main{flex:1;min-width:0} .feedfest .fh .fav{color:var(--accent);display:inline-flex;flex:none} .feedfest .fh .fav svg{width:16px;height:16px} .feedfest button.fh>svg:last-child{flex:none;color:var(--muted)}
 /* Alerts */
 .alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative;align-items:center}
@@ -997,6 +998,8 @@ function lightningState(l, alerts){
   return { ...(l || { within: null, source: 'GOES GLM', at: al.issuedAt }), code: al.code, nearestMi: red ? null : mi, nearestAt: red ? null : al.onset, lastNearMi: red ? mi : (l && l.lastNearMi) || null, lastNearAt: red ? al.onset : (l && l.lastNearAt) || null, allClearAt: red ? al.expiresAt : null, orangeUntil: red ? null : al.expiresAt, standing: true };
 }
 const liveLightning = f => lightningState(data(f).lightning, data(f).alerts);
+/** The code beside the festival's name, whenever there is one. */
+const codeBadge = f => { const l = f && f.id !== 'here' ? liveLightning(f) : null, c = l && CODE[l.code]; return c ? `&nbsp;<span class="pill ${esc(l.code)} codebadge">${esc(c.label)}</span>` : ''; };
 /** The tile under the sky: the nearest flash, the code, and the all-clear countdown when it is red. */
 function lightningTile(f){
   const l = liveLightning(f), c = l && CODE[l.code]; if (!c) return '';
@@ -1427,7 +1430,7 @@ async function loadFeed(){
   try{
     const b = backend();
     let feed;
-    if (b) { const r = await getJSON(`${b}/alerts`); feed = { at: r.at || new Date().toISOString(), on: r.on, items: r.items || [] }; }
+    if (b) { const r = await getJSON(`${b}/alerts`); feed = { at: r.at || new Date().toISOString(), on: r.on, items: r.items || [], codes: r.codes || {} }; }
     else {
       const on = live().sort((a, b) => (S.here ? away(a) - away(b) : 0) || Date.parse(a.startDate) - Date.parse(b.startDate)).slice(0, 12);
       const got = await Promise.allSettled(on.map(f => loadAlerts(f).then(alerts => ({ festival: f, alerts }))));
@@ -1453,13 +1456,17 @@ const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin'
 /** How loud a festival's card is: its worst alert, or a red or orange lightning code. */
 const feedRank = i => { const l = lightningState(i.lightning, i.alerts); return Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, l && l.code === 'red' ? 3 : l && l.code === 'orange' ? 2 : 0); };
 /** One festival's card on the home page: name and place, the lightning code, then each alert as a row. A favorite's header opens it, and says Clear, Checking or when gates open when there is nothing louder to say. */
-function feedCard(i, fav){
-  const f = i.festival, l = lightningState(i.lightning, i.alerts), on = isLive(f), fd = S.feed;
-  const codePill = l && CODE[l.code] && l.code !== 'green' ? `<span class="pill ${esc(l.code)}">${esc(CODE[l.code].label)}</span>` : '';
-  const pill = codePill || (!fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>');
+function feedCard(i, opts){
+  const { fav = false, open = fav } = opts || {};
+  const f = i.festival, here = f.id === 'here', fd = S.feed, on = here || isLive(f);
+  // The code beside the name whenever there is one, green included: the card's own grade, else the feed's for that festival.
+  const own = i.lightning && CODE[i.lightning.code] ? i.lightning : null;
+  const l = lightningState(own || (fd && fd.codes && fd.codes[f.id]) || i.lightning || null, i.alerts), c = l && CODE[l.code];
+  const pill = c ? `<span class="pill ${esc(l.code)}">${esc(c.label)}</span>` : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
   const boltRow = l && (l.code === 'orange' || l.code === 'yellow') ? `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','')"><span class="bar watch"></span><div class="main"><div class="t">Lightning ${l.nearestMi != null ? esc(l.nearestMi) + ' mi' : 'near'}</div><div class="s">${esc(CODE[l.code].label)} · ${esc(CODE[l.code].text)}</div></div>${I.chev}</button>` : '';
-  const main = `<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}${S.here && away(f) != null ? ' · ' + esc(fmtDist(away(f))) : ''}</div></div>${pill}`;
-  const header = fav && on ? `<button class="fh" onclick="pick('${esc(f.id)}')"><span class="fav">${I.heartFull}</span>${main}${I.chev}</button>` : `<div class="fh">${fav ? `<span class="fav">${I.heartFull}</span>` : ''}${main}</div>`;
+  const main = `<div class="main"><div class="t">${esc(here ? 'Right where you are' : f.name)}</div><div class="s">${esc(here ? (f.location || 'Your spot') : f.location)}${!here && S.here && away(f) != null ? ' · ' + esc(fmtDist(away(f))) : ''}</div></div>${pill}`;
+  const heart = fav ? `<span class="fav">${I.heartFull}</span>` : '';
+  const header = open && on ? `<button class="fh" onclick="${here ? 'goHere()' : `pick('${esc(f.id)}')`}">${heart}${main}${I.chev}</button>` : `<div class="fh">${heart}${main}</div>`;
   return `<div class="group glass feedfest${fav ? ' fav' : ''}">${header}${boltRow}${i.alerts.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
 }
 const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'here');
@@ -1468,7 +1475,7 @@ function favoritesSection(items){
   const favs = favoriteIds().map(id => FESTS.find(x => x.id === id)).filter(Boolean);
   if (!favs.length) return '';
   const cards = favs.map(f => items.find(x => x.festival.id === f.id) || { festival: f, alerts: [], lightning: null }).sort((a, b) => feedRank(b) - feedRank(a) || (isLive(b.festival) - isLive(a.festival)));
-  return `<p class="h">Favorites</p>${cards.map(i => feedCard(i, true)).join('')}`;
+  return `<p class="h">Favorites</p>${cards.map(i => feedCard(i, { fav: true })).join('')}`;
 }
 screens.feed = () => {
   const fd = S.feed, f = fest();
@@ -1477,8 +1484,7 @@ screens.feed = () => {
   const head = !fd ? (S.feedBusy ? 'Checking' : 'No signal') : warns ? `${warns} warning${warns > 1 ? 's' : ''}` : items.length ? `${items.length} advisor${items.length > 1 ? 'ies' : 'y'}` : 'All clear';
   const sub = fd ? `${items.length ? `${items.length} of ${on}` : on} festival${on === 1 ? '' : 's'} on now${items.length ? ' with alerts' : ', no alerts'}${fd.partial ? ', nearest dozen checked' : ''}`
     : S.feedErr ? staffFail(S.feedErr) : 'Every warning and advisory at every festival that is on';
-  const lv = f && data(f).alerts ? level(f) : null;
-  const mine = f && !isFav(f.id) ? `<div class="group glass"><button class="row" onclick="later(function(){ go('home', null, { reset: true }); refresh(fest()) })"><span class="lead">${I.pin}</span><div class="main"><div class="t">${esc(f.id === 'here' ? 'Right where you are' : f.name)}</div><div class="s">${esc(lv === 'warn' ? skyAlerts(f).find(isWarning).event : lv === 'watch' ? `${skyAlerts(f).length} advisor${skyAlerts(f).length > 1 ? 'ies' : 'y'}` : lv === 'ok' ? 'All clear' : (f.id === 'here' ? 'Your spot' : f.location))}</div></div><span class="pill ${lv === 'warn' ? 'warn' : lv === 'ok' ? 'on' : ''}">${lv === 'warn' ? 'Warning' : lv === 'watch' ? 'Advisory' : lv === 'ok' ? 'Clear' : 'Yours'}</span></button></div>` : '';
+  const mine = f && !isFav(f.id) ? feedCard({ festival: f, alerts: data(f).alerts ? skyAlerts(f) : [], lightning: data(f).lightning || null }, { open: true }) : '';
   // Favorites have their own section; everything else follows under its own heading.
   const hasFavs = favoriteIds().length > 0, others = items.filter(i => !isFav(i.festival.id));
   return topbar('', '', feedRefreshBtn() + gearBtn()) + `
@@ -1488,7 +1494,7 @@ screens.feed = () => {
     ${favoritesSection(items)}
     ${hasFavs && (others.length || mine) ? '<p class="h">Everywhere else</p>' : ''}
     ${mine}
-    ${others.map(i => feedCard(i, false)).join('')}
+    ${others.map(i => feedCard(i)).join('')}
     ${fd && !others.length && !hasFavs ? `<div class="empty"><b>Nothing to worry about</b>No warnings or advisories at any festival that is on.</div>` : ''}
     ${hasFavs ? '' : `<p class="h">Favorites</p><div class="empty"><b>None yet</b>Tap the heart on a festival to get its warnings on this phone and see it here.</div>`}
     <div class="group glass">
@@ -1563,7 +1569,7 @@ screens.home = () => {
   const here = f.id === 'here';
   return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', (here ? '' : favBtn() + shareBtn()) + refreshBtn() + gearBtn()) + `
     <span class="eyebrow num">${here ? `Your location${f.at ? ' · ' + esc(ago(new Date(f.at).toISOString())) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
-    <h1 class="title">${esc(f.name)}</h1>
+    <h1 class="title">${esc(f.name)}${codeBadge(f)}</h1>
     <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
     ${sky}
     ${lightningTile(f)}
