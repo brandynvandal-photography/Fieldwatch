@@ -104,6 +104,13 @@ h1.title{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WON
 .sub{text-align:center;color:var(--muted);font-size:15px;line-height:1.4;margin:0 auto 20px;max-width:34ch;text-wrap:balance}
 .h{text-align:center;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
 .note{text-align:center;font-size:12px;color:var(--muted);margin:-4px auto 22px;line-height:1.5;max-width:36ch}
+.h .hlink{background:none;border:0;padding:0 0 0 8px;margin:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--accent);cursor:pointer}
+details.correct{margin:0 0 18px}
+details.correct summary{display:flex;align-items:center;justify-content:center;gap:2px;list-style:none;cursor:pointer;padding:12px 0;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+details.correct summary::-webkit-details-marker{display:none}
+details.correct summary .chev{width:16px;height:16px;transition:transform .2s}
+details.correct[open] summary .chev{transform:rotate(90deg)}
+details.correct .inner .h{margin-top:12px}
 .group{border-radius:var(--radius);overflow:hidden;margin-bottom:18px}
 .row{display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;min-height:62px;position:relative}
 .row+.row::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
@@ -708,6 +715,7 @@ function go(name, param, opts){
   S.screen = name; S.param = param || null;
   if (name === 'ground') startGroundEdit();   // the chips open on what the lookups found now, not on a visit from before they landed
   if (name === 'picker') S.query = '';        // the list opens whole, not filtered by what was typed last time
+  S.setupOpen = false;                        // the setup choice opens on its own link, never on arrival
   render(false); window.scrollTo(0, 0);
   if (name === 'radar' && fest()) { startRadar(fest()); locate(); }
   feedShown();
@@ -896,11 +904,20 @@ function setupFor(f){
   if (chosen && !(chosen === 'camping' && camping === false)) return chosen;
   return camping === true ? 'camping' : 'day';
 }
-function setSetup(v){ const f = fest(); if (!f) return; S.setups = { ...(S.setups || {}), [f.id]: v }; save(); render(); }
+function setSetup(v){ const f = fest(); if (!f) return; S.setups = { ...(S.setups || {}), [f.id]: v }; S.setupOpen = false; save(); render(); }
+function openSetup(){ S.setupOpen = true; render(); }
+const insideOf = f => Boolean(data(f).ground && data(f).ground.indoor === true);
+/** The list's heading, with one small way to say it is not you. Nobody is handed a form: the setup is read from the record (people camp here, or not) and the choice opens only on that tap. */
+function setupHead(f){
+  const on = setupFor(f), title = on === 'camping' ? 'Solidify camp, in order' : on === 'crew' ? 'Secure the booth, in order' : 'Before it comes, in order';
+  if (S.setupOpen || insideOf(f)) return `<p class="h">${title}</p>`;   // inside, the list is the same for everyone
+  const alt = on === 'camping' ? 'Not camping?' : on === 'crew' ? 'Not crew?' : campingAt(f) === false ? 'Crew?' : 'Camping or crew?';
+  return `<p class="h">${title} <button class="hlink" onclick="openSetup()">${alt}</button></p>`;
+}
 function setupRow(f){
-  if (data(f).ground && data(f).ground.indoor === true) return '';   // inside, the list is the same for everyone
+  if (!S.setupOpen || insideOf(f)) return '';
   const camping = campingAt(f), on = setupFor(f), opts = Object.entries(SETUP_LABEL).filter(([v]) => v !== 'camping' || camping !== false);
-  return `<div class="chips setup">${opts.map(([v, l]) => `<button class="chip ${on === v ? 'on' : ''}" onclick="setSetup('${v}')">${esc(l)}</button>`).join('')}</div>${camping === false ? '<p class="note">No camping at this festival.</p>' : ''}`;
+  return `<div class="chips setup">${opts.map(([v, l]) => `<button class="chip ${on === v ? 'on' : ''}" onclick="setSetup('${v}')">${esc(l)}</button>`).join('')}</div>`;
 }
 /** One tap from the field: what the ground is doing right now. The venue learns how much rain it takes from these. */
 async function reportGround(state){
@@ -916,8 +933,9 @@ async function reportGround(state){
   }catch(e){ toast(staffFail(e)); }
   S.groundReporting = false; render();
 }
-function groundReportRow(f){
+function groundReportRow(f, inc){
   if (f.id === 'here' || (data(f).ground && data(f).ground.indoor === true)) return '';
+  if (inc && !(inc.mud || ['rain', 'storms', 'flood', 'runoff'].includes(inc.hazard))) return '';   // the ground matters when rain is in the picture, not in heat or wind
   const g = data(f).ground || {}, last = g.reports && g.reports.last, fresh = last && Date.now() - Date.parse(last.at) < 6 * 3600000;
   return `<p class="h">How is the ground?</p>
     <div class="chips">${Object.entries(GROUND_STATE_LABEL).map(([v, l]) => `<button class="chip ${fresh && last.state === v ? 'on' : ''}" onclick="reportGround('${v}')" ${S.groundReporting ? 'disabled' : ''}>${l}</button>`).join('')}</div>
@@ -1767,8 +1785,8 @@ screens.prep = () => {
     <p class="sub">${esc(incomingLine(inc))}</p>
     <div class="countdown glass"><span class="eyebrow">${now ? 'Started' : 'Arrives in'}</span><b class="num" data-countdown="${esc(inc.startsAt)}" data-bare="1">${esc(countdownText(inc.startsAt, true))}</b><span class="s">${esc(mudLine || timing(inc.hazard, m))}</span></div>
     <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${esc(shelterFor(inc.hazard, inc.indoor))}</p></div></div>
-    ${groundReportRow(f)}
-    <p class="h">${setupFor(f) === 'camping' ? 'Solidify camp, in order' : setupFor(f) === 'crew' ? 'Secure the booth, in order' : 'Before it comes, in order'}</p>
+    ${groundReportRow(f, inc)}
+    ${setupHead(f)}
     ${setupRow(f)}
     <div class="group glass steps">${plan.map(d => `<div class="step"><span class="n"></span><span class="task">${esc(d.task)}</span><b class="by num">${d.late ? 'now' : 'by ' + esc(fmtTime(d.startBy))}</b></div>`).join('')}</div>
     <p class="h">Timeline</p>
@@ -1804,13 +1822,16 @@ screens.ground = () => {
   return topbar(backBtn(), '', '') + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Ground</h1>
-    <p class="sub">What the rain and wind advice assumes about the grounds. Change what you know better.</p>
+    <p class="sub">What the rain and wind advice assumes about the grounds.</p>
     <div class="group glass">
       ${kv('Setting', `${g.indoor === true ? 'Indoors' : g.indoor === false ? 'Outdoors' : 'Outdoors, assumed'}<br><span class="dim">${esc(g.indoorSource === 'unknown' || !g.indoorSource ? 'nothing says' : g.indoorSource)}</span>`)}
       ${kv('Surface', `${esc(SURFACE_LABEL[g.surface] || 'Grass')}<br><span class="dim">${esc(g.surfaceSource === 'assumed' ? 'assumed, nothing found' : g.surfaceSource || 'assumed')}</span>`)}
-      ${kv('Soil', `${esc(g.soilName || SOIL_LABEL[g.soil] || 'Average')}${g.soil ? ` · ${esc(SOIL_LABEL[g.soil])} (${esc(g.soil)})` : ''}<br><span class="dim">${esc(g.soilSource === 'assumed' ? 'assumed, nothing found' : g.soilSource || 'assumed')}${g.drainage ? ' · ' + esc(g.drainage.toLowerCase()) : ''}</span>`)}
+      ${kv('Soil', `${esc(g.soilName || SOIL_LABEL[g.soil] || 'Average')}${g.soil ? ` · ${esc(SOIL_LABEL[g.soil])} (${esc(g.soil)})` : ''}${g.low ? ' · low ground' : ''}<br><span class="dim">${esc(g.soilSource === 'assumed' ? 'assumed, nothing found' : g.soilSource || 'assumed')}${g.drainage ? ' · ' + esc(g.drainage.toLowerCase()) : ''}</span>`)}
+      ${kv('Camping', `${g.camping === true ? 'Yes, people camp' : g.camping === false ? 'No camping' : 'Unknown'}<br><span class="dim">${esc(g.campingSource === 'unknown' || !g.campingSource ? 'nothing says' : g.campingSource)}</span>`)}
+      ${kv('Standing', esc((g.structures && g.structures.length ? g.structures : ['canopies']).map(s => STRUCTURE_LABEL[s] || s).join(', ')))}
       ${kv('Rain, 48 h', g.past && g.past.in48 != null ? `${esc(g.past.in48.toFixed(2))} in<br><span class="dim">${esc(g.past.source)}</span>` : `<span class="dim">${esc(g.pastError ? 'analysis out of reach' : 'not read yet')}</span>`)}
     </div>
+    ${S.admin ? `<details class="correct"><summary>Correct it${I.chev}</summary><div class="inner">
     <p class="h">Setting</p>${chips('indoor', [[false, 'Outdoors'], [true, 'Indoors']], v => e.indoor === v)}
     <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_CHIP), v => e.surface === v)}
     <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_CHIP), v => e.soil === v)}
@@ -1819,6 +1840,7 @@ screens.ground = () => {
     <p class="h">What is standing</p>${chips('structures', Object.entries(STRUCTURE_CHIP), v => e.structures.includes(v))}
     <button class="btn" onclick="saveGround()" ${S.groundBusy ? 'disabled' : ''}>Save</button>
     <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}</div>
+    </div></details>` : ''}
     <p class="note">The lookups run once per festival: the surface from OpenStreetMap under the coordinate, the soil from the USDA soil survey, the rain from the Iowa Mesonet's daily analysis. Staff settings win over all three.</p>`;
 };
 

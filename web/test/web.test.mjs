@@ -435,6 +435,9 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     // Staff say what the ground is and what is standing; the lookups can be run again from here.
     await page.click('button.row:has-text("Ground and what is standing")'); await page.waitForSelector('h1.title:has-text("Ground")');
     assert.match(await page.textContent('.kv:has-text("Surface")'), /Grass.*assumed, nothing found/s);
+    assert.match(await page.textContent('.kv:has-text("Camping")'), /No camping|Yes, people camp|Unknown/); assert.match(await page.textContent('.kv:has-text("Standing")'), /Pop-up canopies/);
+    assert.equal(await page.$eval('details.correct', d => d.open), false, 'the readout is the screen; the corrections wait behind one fold');
+    assert.equal(await page.$eval('details.correct .chips', el => el.checkVisibility()), false, 'no chips on screen until the fold is opened'); await page.click('details.correct summary');
     assert.ok(await page.$('button.chip.on:has-text("Grass")') && await page.$('button.chip.on:has-text("Average")'), 'nothing found yet: the chips show what is assumed');
     await page.click('button:has-text("Look it up again")'); await page.waitForSelector('.toast.show:has-text("Looked up again")');
     assert.match(await page.textContent('.kv:has-text("Soil")'), /Blanton fine sand.*Drains fast \(A\).*USDA soil survey/s);
@@ -814,12 +817,13 @@ test('storms on the way: a countdown on the festival page with the first things 
   assert.match(await page.textContent('.todo'), /Where to shelter.*hard-topped vehicle/s);
   const camp = await page.$$eval('.steps .step .task', els => els.map(e => e.textContent));
   assert.match(await page.textContent('.steps .step:first-child .by'), /^by \d+:\d\d [AP]M$/, 'start-by times on the camp list');
-  // Hulaween is a camping festival, so the list is a camper's; a day visitor gets their own, with no tent in it.
-  assert.ok(await page.$('button.chip.on:has-text("I\'m camping")'));
-  await page.click('button.chip:has-text("Day visitor")');
+  // Hulaween is a camping festival, so the list is a camper's and nobody is asked; one small link says if that is not you, and a day visitor gets their own list, with no tent in it.
+  assert.equal(await page.$('.chips.setup'), null, 'no chips to pick from until asked for');
+  await page.click('.h .hlink:has-text("Not camping?")'); await page.click('button.chip:has-text("Day visitor")');
   const dayList = await page.$$eval('.steps .step .task', els => els.map(e => e.textContent));
   assert.equal(dayList[0], 'Charge the phone, fill water'); assert.ok(!dayList.some(t => /canop|tent/i.test(t)), `no tents for a day visitor: ${dayList}`);
-  await page.click('button.chip:has-text("I\'m camping")');
+  assert.equal(await page.$('.chips.setup'), null, 'the choice closes the chips again');
+  await page.click('.h .hlink:has-text("Camping or crew?")'); await page.click('button.chip:has-text("I\'m camping")');
   assert.ok(camp.includes('Drop pop-up canopies and flags') && camp.includes('Unplug and bag electronics'), 'the camp list');
   assert.ok(camp.includes('Phone and a battery pack'), 'and what to pack for shelter');
   assert.deepEqual(await page.$$eval('.tl .k', els => els.map(e => e.textContent)), ['Earlier', 'Three hours out', 'One hour out', 'Twenty minutes out', 'While it is here', 'After']);
