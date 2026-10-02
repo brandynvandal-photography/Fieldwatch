@@ -170,12 +170,12 @@ const SHELTER = 'Shelter is a hard-topped vehicle or a building with wiring and 
 export const PROTOCOL = {
   red: { event: 'Code Red: lightning within 8 miles', severity: 'severe', line: 'Rapid evacuation required. Full work stoppage.',
     text: 'Lightning has been detected in less than an 8 mile radius. Rapid evacuation required. Non-essential personnel should prioritize exit and do not need to maintain posts. Full work stoppage.',
-    instruction: 'Get to shelter now. Non-essential personnel: exit first, posts can wait. Stay until the all-clear, thirty minutes after the last flash within 8 miles.',
-    ends: 'The all-clear is thirty minutes after the last flash within 8 miles; this alert ends with it.' },
-  orange: { event: 'Code Orange: lightning within 12 miles', severity: 'moderate', line: 'Execute evacuation procedures; staff maintain posts to assist attendees.',
+    instruction: 'Get to shelter now. Non-essential personnel exit first. Stay until the all-clear thirty minutes after the last flash within 8 miles.',
+    ends: 'This alert ends with the all-clear thirty minutes after the last flash within 8 miles.' },
+  orange: { event: 'Code Orange: lightning within 12 miles', severity: 'moderate', line: 'Execute evacuation procedures. Staff hold posts to assist attendees.',
     text: 'Lightning within 8 to 12 miles. Execute evacuation procedures while maintaining assigned posts to assist attendees.',
-    instruction: 'Head for shelter or the exits as staff direct. Staff: evacuation procedures, hold your post to assist attendees.',
-    ends: 'This alert ends fifteen minutes after the last flash within 12 miles, or when the code changes.' },
+    instruction: 'Head for shelter or the exits as staff direct. Staff run evacuation procedures and hold their posts.',
+    ends: 'This alert ends fifteen minutes after the last flash within 12 miles or when the code changes.' },
   yellow: { text: 'Weather 12 to 20 miles from site. Pay attention and get things prepared for orange and a potential work stoppage.' },
   green: { text: 'No lightning within 20 miles in the last 15 minutes.' },
 };
@@ -183,7 +183,7 @@ const until = a => a.code === 'red' ? a.allClearAt : a.code === 'orange' ? a.ora
 function codeAlert(f, a, tz, now) {
   const p = PROTOCOL[a.code], mi = a.code === 'red' ? a.lastNearMi : a.nearestMi, at = a.code === 'red' ? a.lastNearAt : a.nearestAt;
   return { id: `lightning-${f.id}-${a.code}-${Math.floor(now / MIN)}`, event: p.event, headline: `Lightning ${mi} mi away at ${clock(at, tz)}. ${p.line}`,
-    body: `${p.text} ${SHELTER} ${p.ends}`, instruction: p.instruction, severity: p.severity, area: f.location, source: 'GOES lightning mapper, via Fieldwatch',
+    body: `${p.text} ${SHELTER} ${p.ends}`, instruction: p.instruction, severity: p.severity, area: f.location, source: 'GOES lightning mapper via Fieldwatch',
     issuedAt: iso(now), onset: at, expiresAt: until(a), channel: 'lightning', relayCount: 0, code: a.code, nearestMi: mi };
 }
 /** Orange and red are alerts: pushed when the code changes to them, ended when it changes away, their end kept in step with the flashes. */

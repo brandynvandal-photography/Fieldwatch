@@ -117,7 +117,7 @@ test('a lookup lands on the record, the override sits on top, and the effective 
   const dark = await lookupGround(fest, { fetchImpl: async url => String(url).includes('overpass') ? overpass([]) : String(url).includes('mrlc') ? new Response('down', { status: 502 }) : sda([['1', 'Blanton fine sand', 'Blanton', 'A', 'Well drained', '90']]) });
   assert.equal(dark.surface, undefined); assert.match(dark.lookupError, /^cover: Land cover 502$/, 'nothing mapped and the cover service down: no guess, the error on the record');
   // groundFor: the effective ground plus the recent rain, the rain kept from the cache when the analysis is down.
-  const gf = await groundFor(withOverride, { fetchImpl: async () => json({ data: [{ date: '2026-09-30', daily_precip_in: 0.3 }] }) });
+  const gf = await groundFor(withOverride, { fetchImpl: async () => json({ data: [{ date: new Date().toISOString().slice(0, 10), daily_precip_in: 0.3 }] }) });
   assert.equal(gf.surface, 'grass'); assert.equal(gf.past.in24, 0.3);
   const again = await groundFor(withOverride, { fetchImpl: async () => { throw new Error('offline'); } });
   assert.equal(again.past.in24, 0.3, 'a fetch that fails keeps the last analysis');

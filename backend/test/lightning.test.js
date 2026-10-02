@@ -132,7 +132,7 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   await lightningTick({ now: t2 + 3 * MIN, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'orange'); assert.equal(sent.length, 2);
   assert.equal(sent[1].payload.title, 'Code Orange: lightning within 12 miles'); assert.equal(sent[1].opts.urgency, 'normal');
-  assert.match(sent[1].payload.body, /^Bolt Test Fest\. Lightning 10 mi away at .*Execute evacuation procedures; staff maintain posts to assist attendees\.$/);
+  assert.match(sent[1].payload.body, /^Bolt Test Fest\. Lightning 10 mi away at .*Execute evacuation procedures\. Staff hold posts to assist attendees\.$/);
   const orange = q.activeAlerts(fest.id, t2 + 3 * MIN).filter(x => x.channel === 'lightning');
   assert.equal(orange.length, 1); assert.equal(orange[0].code, 'orange'); assert.equal(orange[0].severity, 'moderate'); assert.equal(orange[0].expiresAt, new Date(t2 + 17 * MIN).toISOString().replace('.000Z', 'Z'));
   await lightningTick({ now: t2 + 4 * MIN, fetchImpl, festivals: [fest] });

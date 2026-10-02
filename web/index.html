@@ -876,7 +876,7 @@ function outlook(f){
   const thunder = peak(f, 'thunder', hr), heat = peak(f, 'heat', hr), gust = peak(f, 'gust', hr);
   if (thunder && thunder.v >= 50) return `Thunder likely around ${fmtHour(thunder.t)}. Know your shelter.`;
   if (storm) return `Thunderstorms possible around ${fmtHour(storm.startTime)}.`;
-  if (heat && heat.v >= 100) return `Heat index ${Math.round(heat.v)}° by ${fmtHour(heat.t)}. Water and shade, now.`;
+  if (heat && heat.v >= 100) return `Heat index ${Math.round(heat.v)}° by ${fmtHour(heat.t)}. Water and shade now.`;
   if (gust && gust.v >= 40) return `Gusts to ${Math.round(gust.v)} mph around ${fmtHour(gust.t)}. Tie everything down.`;
   const wet = hr.find(h => (h.precipChance || 0) >= 50);
   if (wet) return `Rain likely around ${fmtHour(wet.startTime)}.`;
@@ -939,7 +939,7 @@ function groundReportRow(f, inc){
   const g = data(f).ground || {}, last = g.reports && g.reports.last, fresh = last && Date.now() - Date.parse(last.at) < 6 * 3600000;
   return `<p class="h">How is the ground?</p>
     <div class="chips">${Object.entries(GROUND_STATE_LABEL).map(([v, l]) => `<button class="chip ${fresh && last.state === v ? 'on' : ''}" onclick="reportGround('${v}')" ${S.groundReporting ? 'disabled' : ''}>${l}</button>`).join('')}</div>
-    <p class="note">${fresh ? `Last reported ${esc(GROUND_STATE_LABEL[last.state].toLowerCase())} ${esc(ago(last.at))}${g.reports.recent > 1 ? `, ${g.reports.recent} reports in six hours` : ''}.` : 'One tap tells everyone here, and teaches the app how much rain this ground takes.'}${g.learned ? ` This ground goes soft at about ${esc(g.learned.threshold.toFixed(2))} in, from ${g.learned.samples} report${g.learned.samples === 1 ? '' : 's'}.` : ''}</p>`;
+    <p class="note">${fresh ? `Last reported ${esc(GROUND_STATE_LABEL[last.state].toLowerCase())} ${esc(ago(last.at))}${g.reports.recent > 1 ? `, ${g.reports.recent} reports in six hours` : ''}.` : 'One tap tells everyone here and teaches the app how much rain this ground takes.'}${g.learned ? ` This ground goes soft at about ${esc(g.learned.threshold.toFixed(2))} in, from ${g.learned.samples} report${g.learned.samples === 1 ? '' : 's'}.` : ''}</p>`;
 }
 /** One line about the ground for the prep screen: "Grass, drains fast · 1.2 in of rain in the last two days". */
 function groundLine(g){
@@ -992,9 +992,9 @@ function onLive(d){
 // ---- warnings, asked once: right after a festival opens, one card offers the push for it ----
 function askPush(f){
   if (!f || f.id === 'here' || !backend() || isFav(f.id) || (S.asked || {})[f.id]) return '';
-  if (!PUSH_OK) return IOS && !STANDALONE && !IN_PREVIEW ? `<div class="ask glass"><div class="t">Favorite ${esc(f.name)}?</div><p>Add Fieldwatch to your Home Screen first: Share, then "Add to Home Screen". Then favorite it here and its warnings reach this phone.</p><div class="acts"><button class="btn small quiet" onclick="askedPush()">Got it</button></div></div>` : '';
+  if (!PUSH_OK) return IOS && !STANDALONE && !IN_PREVIEW ? `<div class="ask glass"><div class="t">Favorite ${esc(f.name)}?</div><p>Add Fieldwatch to your Home Screen first: Share, then "Add to Home Screen". Then favorite it here.</p><div class="acts"><button class="btn small quiet" onclick="askedPush()">Got it</button></div></div>` : '';
   if (Notification.permission === 'denied') return '';
-  return `<div class="ask glass"><div class="t">Favorite ${esc(f.name)}?</div><p>Its warnings, heads-ups and lightning codes reach this phone, even with the app closed.</p><div class="acts"><button class="btn small" onclick="toggleFavorite('${esc(f.id)}')">${I.heart}Favorite</button><button class="btn small quiet" onclick="askedPush()">Not now</button></div></div>`;
+  return `<div class="ask glass"><div class="t">Favorite ${esc(f.name)}?</div><p>Warnings, heads-ups and lightning codes reach this phone even when the app is closed.</p><div class="acts"><button class="btn small" onclick="toggleFavorite('${esc(f.id)}')">${I.heart}Favorite</button><button class="btn small quiet" onclick="askedPush()">Not now</button></div></div>`;
 }
 function askedPush(){ const f = fest(); if (f) { S.asked = { ...(S.asked || {}), [f.id]: true }; save(); } render(); }
 // ---- staff mode: the backend address, its check and the admin key stay out of sight until someone who runs it asks ----
@@ -1012,10 +1012,10 @@ const CODE = {
             you: 'Head for shelter or the exits as staff direct. Pack what you will carry.' },
   yellow: { label: 'Code Yellow', ring: '12 to 20 miles', text: 'Pay attention, prepare for orange', within: 20,
             protocol: 'Weather 12 to 20 miles from site. Pay attention and get things prepared for orange and a potential work stoppage.',
-            you: 'Decide where you will shelter, and secure camp now.' },
+            you: 'Pick your shelter and secure camp now.' },
   green:  { label: 'Code Green', ring: 'None within 20 miles', text: 'Normal operations', within: 20,
             protocol: 'No lightning within 20 miles in the last 15 minutes.',
-            you: 'Not an all-clear from your safety team; they call it.' },
+            you: 'Not an all-clear. Your safety team calls that.' },
 };
 /** Lightning moves faster than the five-minute refresh: the grade is read every minute while a festival is open. A turn to red pulls the alerts too, and the new warning buzzes. */
 async function loadLightning(f){
@@ -1105,8 +1105,8 @@ const spreadGrid = (g, hourly = []) => ({ heat: spread(g?.heatIndex, cToF), gust
 // Heat by exertion: the heat index is a shade number for someone at rest. An estimated wet-bulb globe temperature (Stull's wet
 // bulb, a globe warmed by the sun less cloud and wind, the standard 0.7/0.2/0.1 blend) is what work-rest guidance uses, and it
 // earns a flag. Red or black is a heat hazard on its own, whatever the heat index says.
-const HEAT_FLAGS = [['black', 88, 'Black flag: stop heavy work. Work 20, rest 40 in shade, water every 15 minutes.'], ['red', 85, 'Red flag: work 30, rest 30 in shade, water every 15 minutes.'],
-  ['yellow', 82, 'Yellow flag: work 40, rest 20, water every 20 minutes.'], ['green', 0, 'Green flag: work 50, rest 10, water every 20 minutes.']];
+const HEAT_FLAGS = [['black', 88, 'Black flag: stop heavy work. Work 20, rest 40 in shade. Water every 15 minutes.'], ['red', 85, 'Red flag: work 30, rest 30 in shade. Water every 15 minutes.'],
+  ['yellow', 82, 'Yellow flag: work 40, rest 20. Water every 20 minutes.'], ['green', 0, 'Green flag: work 50, rest 10. Water every 20 minutes.']];
 function wbgtF(tempF, rh, windMph = 0, sky = 0) {
   if (tempF == null || rh == null) return null;
   const t = (tempF - 32) * 5 / 9, h = Math.max(1, Math.min(100, rh));
@@ -1177,14 +1177,14 @@ const rainWords = p => p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.ra
 const MUD_IN = { A: 1.5, B: 0.75, C: 0.5, D: 0.3 };
 const SURFACE_X = { grass: 1, dirt: 0.6, gravel: 2.5, mixed: 1.2 };
 const TIER = {
-  wet:    { label: 'Rain', line: 'Wet, not muddy', camping: ['Rain shell and a tarp over the tent', 'Bins and bags off the floor', 'Seal a dry set of clothes in a bag'], day: ['Rain shell, and a bag for the phone', 'Boots if you have them'] },
-  soft:   { label: 'Mud', line: 'Paths will be soft and muddy', camping: ['If the car can still move to hard ground, move it now; if not, plan to leave after the ground dries', 'Bins and bags off the floor', 'Boots, and a dry route to the stages', 'Tarp over, not under, so water sheds'],
-            day: ['Boots and a rain shell', 'The lot will be slow: leave before it starts, or wait it out', 'Keep the phone and cash dry', 'Plan the walk around the low end'] },
-  deep:   { label: 'Deep mud', line: 'Fields will not hold vehicles', camping: ['Anything that must leave, leaves before it starts', 'If you stay, plan to wait for the ground to dry, not to drive out', 'Tarp over the tent floor, gear in bins', 'Expect fields closed to vehicles after'],
-            day: ['If you must be somewhere, leave before it starts', 'If you stay, plan to wait it out; the lot will not clear', 'Boots; the walk out will be mud', 'Keep the phone and cash dry'] },
-  water:  { label: 'Standing water', line: 'Low ground will flood', camping: ['Move the tent off low ground', 'Bins and bags off the floor', 'Know the route to high ground', 'If the car sits low and can still move, move it'], day: ['Know the route to high ground', 'Keep off the low end', 'Keep the phone and cash dry'] },
-  slick:  { label: 'Rain', line: 'Slick ground and puddles', camping: ['Keep gear off the ground', 'Rain shell', 'Watch your footing on painted lines and metal plates'], day: ['Rain shell, and a bag for the phone', 'Watch your footing on painted lines and metal plates'] },
-  runoff: { label: 'Heavy rain', line: 'Runoff into the low end', camping: ['Keep gear off the ground', 'Weigh down anything light; runoff moves it', 'Plan the walk around the low end', 'Stay out of underpasses and drains'], day: ['Plan the walk around the low end', 'Stay out of underpasses and drains', 'Keep the phone and cash dry'] },
+  wet:    { label: 'Rain', line: 'Wet but not muddy', camping: ['Rain shell and a tarp over the tent', 'Bins and bags off the floor', 'Seal a dry set of clothes in a bag'], day: ['Rain shell and a bag for the phone', 'Boots if you have them'] },
+  soft:   { label: 'Mud', line: 'Paths will be soft and muddy', camping: ['Move the car to hard ground while it still can. A stuck car waits for the ground to dry', 'Bins and bags off the floor', 'Boots and a dry route to the stages', 'Tarp over the tent rather than under it'],
+            day: ['Boots and a rain shell', 'Leave before it starts or wait it out', 'Keep the phone and cash dry', 'Plan the walk around the low end'] },
+  deep:   { label: 'Deep mud', line: 'Fields will not hold vehicles', camping: ['Whatever must leave goes before it starts', 'Staying means waiting for the ground to dry', 'Tarp the tent floor and bin the gear', 'Expect fields closed to vehicles after'],
+            day: ['Leave before it starts if you need to be anywhere', 'Staying means waiting it out', 'Boots for the walk out', 'Keep the phone and cash dry'] },
+  water:  { label: 'Standing water', line: 'Low ground will flood', camping: ['Move the tent off low ground', 'Bins and bags off the floor', 'Know the route to high ground', 'Move the car off low ground while it can'], day: ['Know the route to high ground', 'Keep off the low end', 'Keep the phone and cash dry'] },
+  slick:  { label: 'Rain', line: 'Slick ground and puddles', camping: ['Keep gear off the ground', 'Rain shell', 'Watch your footing on painted lines and metal plates'], day: ['Rain shell and a bag for the phone', 'Watch your footing on painted lines and metal plates'] },
+  runoff: { label: 'Heavy rain', line: 'Runoff into the low end', camping: ['Keep gear off the ground', 'Weigh down anything light', 'Plan the walk around the low end', 'Stay out of underpasses and drains'], day: ['Plan the walk around the low end', 'Stay out of underpasses and drains', 'Keep the phone and cash dry'] },
 };
 /** What this rain does to this ground: { tier, effective, threshold, past }. Effective rain is what is ahead plus a share of what already fell. */
 function mudTier(ground = {}, aheadIn = 0, rateInHr = 0) {
@@ -1205,11 +1205,11 @@ function groundWords(ground = {}) {
   return `${s}${soil}${ground.low ? ', low ground' : ''}`;
 }
 // How long each task takes, so a start-by time can be worked back from the arrival. Anything not listed takes ten minutes.
-const TASK_MIN = [['If you must be somewhere', 90], ['Anything that must leave', 90], ['If the car can still move', 60], ['Move the tent', 45], ['If the car sits low', 30], ['Deflate and tie down', 30], ['Stage: clear the deck', 20],
-  ['Park a vehicle upwind', 20], ['Guy lines and sandbags', 20], ['Shade over', 20], ['Tarp over the tent floor', 20], ['Tarp over the stock', 20], ['Pack what you can carry', 20], ['Stake every loop', 15], ['Tarp over, not under', 15],
+const TASK_MIN = [['Leave before it starts if', 90], ['Whatever must leave', 90], ['Move the car to hard ground', 60], ['Move the tent', 45], ['Move the car off low ground', 30], ['Deflate and tie down', 30], ['Clear the stage deck', 20],
+  ['Park a vehicle upwind', 20], ['Guy lines and sandbags', 20], ['A tarp over the tent', 20], ['A shade cloth', 20], ['Tarp the tent floor', 20], ['Stock under a tarp', 20], ['Pack what you can carry', 20], ['Stake every loop', 15], ['Tarp over the tent', 15],
   ['Secure stock', 15], ['Close the booth', 15], ['Drop vendor canopies', 10], ['Find shade', 10], ['Drop pop-up canopies', 5], ['Seal a dry set', 5], ['Leave the camp', 5], ['Get to the shelter', 5], ['Know where the shelter is', 5],
-  ['Bag the phone', 5], ['Rain shell, and a bag', 5], ['Boots', 5], ['Hats and light things', 5], ['Get under a solid roof', 5], ['Keep the phone and cash dry', 5],
-  ['If you stay', 0], ['The lot will be slow', 0], ['When it starts', 0], ['Head down', 0], ['Freeze water bottles', 0], ['Rest between', 0], ['Rest before', 0], ['Check on', 0], ['Expect fields', 0], ['Know the route', 0], ['Know the way', 0],
+  ['Bag the phone', 5], ['Rain shell and a bag', 5], ['Boots', 5], ['Tie down or bag', 5], ['Get under a solid roof', 5], ['Keep the phone and cash dry', 5],
+  ['Staying means', 0], ['Leave before it starts or', 0], ['Head for a building', 0], ['Head down', 0], ['Freeze water bottles', 0], ['Rest between', 0], ['Rest before', 0], ['Check on', 0], ['Expect fields', 0], ['Know the route', 0], ['Know the way', 0],
   ['Rain shell', 0], ['Plan the walk', 0], ['Stay out of', 0], ['Stay clear', 0], ['Watch your footing', 0], ['Leave the car', 0], ['Water every', 0], ['Rotate the crew', 0], ['Keep out from under', 0], ['Keep off the low end', 0], ['Not the car', 0]];
 const taskMinutes = t => (TASK_MIN.find(([k]) => t.startsWith(k)) || [null, 10])[1];
 /**
@@ -1221,9 +1221,9 @@ function campFor(inc, setup = 'day') {
   if (inc.indoor) return ((PREP[inc.hazard] || PREP.storms).indoor || PREP.storms.indoor).slice();   // inside, the list is the same for everyone
   const s = setup === 'camping' || setup === 'crew' ? setup : 'day', tierList = t => TIER[t][s === 'day' ? 'day' : 'camping'];
   const own = inc.hazard === 'rain' && inc.mud ? tierList(inc.mud.tier) : (PREP[inc.hazard] || PREP.storms)[s];
-  const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? tierList(inc.mud.tier).filter(t => /^(Anything that must leave|If the car|If you must be somewhere|The lot will be slow|Move the tent off)/.test(t)) : [];
+  const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? tierList(inc.mud.tier).filter(t => /^(Whatever must leave|Move the car|Leave before it starts|Move the tent off)/.test(t)) : [];
   const crossed = (inc.wind && inc.wind.crossed) || [], standing = [];
-  if (s === 'crew' && crossed.includes('stage')) standing.push('Stage: clear the deck, drop the scrim and the banners');
+  if (s === 'crew' && crossed.includes('stage')) standing.push('Clear the stage deck and drop the scrim and banners');
   if (s === 'crew' && crossed.includes('inflatables')) standing.push('Deflate and tie down the inflatables');
   return [...standing, ...ground, ...own.filter(t => !ground.includes(t))];
 }
@@ -1237,41 +1237,41 @@ function deadlines(startsAt, tasks, now = Date.now()) {
 // and vendors with things standing; what it is like while it is here, and after. The push says the first two, shorter.
 const PREP = {
   storms:  { label: 'Storms', shelter: 'Shelter is a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter.',
-             indoorShelter: 'Inside is shelter: a building with wiring and plumbing. The line outside and the lot are not; a car is.', indoor: ['Stay inside until it passes', 'Keep the line and the lot clear while it is overhead', 'Charge the phone'],
+             indoorShelter: 'Inside is shelter. The line and the lot outside are not. A car is.', indoor: ['Stay inside until it passes', 'Keep the line and the lot clear while it is overhead', 'Charge the phone'],
              camping: ['Drop pop-up canopies and flags', 'Stake every loop, tie guy lines, weigh the legs', 'Unplug and bag electronics', 'Move poles and chairs away from where people sit'],
-             day: ['Know where the shelter is and how long the walk takes', 'Charge the phone, fill water', 'Bag the phone and anything that must stay dry', 'When it starts, head for a building or the car, not a tree or a pop-up'],
-             crew: ['Drop vendor canopies and banners, weigh the legs', 'Unplug and bag electronics', 'Secure stock, signage and anything that flies', 'Know where the shelter is and how long the walk takes'],
+             day: ['Know where the shelter is and how long the walk takes', 'Charge the phone, fill water', 'Bag the phone and anything that must stay dry', 'Head for a building or the car. Not a tree or a pop-up'],
+             crew: ['Drop vendor canopies and banners. Weigh the legs', 'Unplug and bag electronics', 'Secure stock, signage and anything that flies', 'Know where the shelter is and how long the walk takes'],
              during: 'Stay in shelter until it passes. Do not go back for anything.', after: 'Wait thirty minutes after the last thunder before going back out. Lightning reaches ten miles ahead of the rain.' },
   wind:    { label: 'Strong wind', shelter: 'Get into a vehicle or a building if it turns dangerous. Stay clear of stages, towers and anything tall that is tied down.',
-             camping: ['Drop pop-up canopies now, they fly', 'Guy lines and sandbags or water jugs on every leg', 'Take down banners and flags', 'Close and weigh coolers and bins', 'Park a vehicle upwind as a windbreak'],
-             day: ['Stay clear of stages, towers and banners', 'Hats and light things get tied down or bagged', 'Know where the shelter is if it turns dangerous'],
-             crew: ['Drop vendor canopies now, they fly', 'Take down banners and flags', 'Close and weigh coolers, bins and stock', 'Stay clear of stages and towers'],
+             camping: ['Drop pop-up canopies now', 'Guy lines and sandbags or water jugs on every leg', 'Take down banners and flags', 'Close and weigh coolers and bins', 'Park a vehicle upwind as a windbreak'],
+             day: ['Stay clear of stages, towers and banners', 'Tie down or bag hats and light things', 'Know where the shelter is'],
+             crew: ['Drop vendor canopies now', 'Take down banners and flags', 'Close and weigh coolers, bins and stock', 'Stay clear of stages and towers'],
              during: 'Stay away from tents, stages and trees until the gusts ease.', after: 'Check every stake and line before you trust the tent again.' },
   rain:    { label: 'Heavy rain', shelter: 'A vehicle or a building keeps you dry. A tent on high ground is fine while there is no thunder.',
-             camping: ['Move the tent off low ground', 'Bins and bags off the floor', 'Tarp over, not under, so water sheds', 'Seal a dry set of clothes in a bag'],
-             day: ['Rain shell, and a bag for the phone', 'Boots if you have them', 'Know the way to cover'],
-             crew: ['Tarp over the stock, off the floor', 'Unplug and bag electronics', 'Rain shell and boots'],
+             camping: ['Move the tent off low ground', 'Bins and bags off the floor', 'Tarp over the tent rather than under it', 'Seal a dry set of clothes in a bag'],
+             day: ['Rain shell and a bag for the phone', 'Boots if you have them', 'Know the way to cover'],
+             crew: ['Stock under a tarp and off the floor', 'Unplug and bag electronics', 'Rain shell and boots'],
              during: 'Stay dry and off low ground. Watch the paths for standing water.', after: 'Dry the sleeping gear first. Wet nights are how people get cold.' },
-  flood:   { label: 'Flooding', shelter: 'Move to high ground now, away from creeks and low fields. Never drive or walk through moving water.',
+  flood:   { label: 'Flooding', shelter: 'Move to high ground away from creeks and low fields. Never drive or walk through moving water.',
              indoorShelter: 'Upstairs is shelter from water. Never drive or walk through moving water.', indoor: ['Know the way to high ground', 'Keep off the low end and out of underpasses', 'Pack what you can carry'],
              camping: ['Pack what you can carry', 'Know the route to high ground', 'Leave the car if water is rising around it'],
              day: ['Know the route to high ground', 'Pack what you can carry', 'Leave the car if water is rising around it'],
              crew: ['Close the booth and get to high ground', 'Know the route to high ground', 'Leave the car if water is rising around it'],
              during: 'Stay on high ground. Water rises faster than it looks.', after: 'Stay off flooded paths until staff open them. The water hides what it took.' },
-  heat:    { label: 'Dangerous heat', shelter: 'Water every twenty minutes, shade at midday, and the medical tent at the first sign of confusion or no sweat.',
-             camping: ['Shade over the tent, not only inside it', 'Freeze water bottles overnight', 'Rest between noon and four', 'Check on neighbors'],
+  heat:    { label: 'Dangerous heat', shelter: 'Water every twenty minutes and shade at midday. Medical tent at the first sign of confusion or no sweat.',
+             camping: ['A tarp over the tent for shade', 'Freeze water bottles overnight', 'Rest between noon and four', 'Check on neighbors'],
              day: ['Water every twenty minutes', 'Find shade for the afternoon', 'Rest before it peaks', 'Check on the people around you'],
-             crew: ['Water every fifteen minutes', 'Shade over the booth, not only inside it', 'Rotate the crew: work and rest by the flag', 'Check on each other'],
-             during: 'Shade, water, rest. Watch each other for confusion, cramps, or skin that stops sweating.', after: 'Keep drinking after sundown. The heat you took in stays with you.' },
+             crew: ['Water every fifteen minutes', 'A shade cloth over the booth', 'Rotate the crew by the flag', 'Check on each other'],
+             during: 'Shade, water, rest. Watch each other for confusion, cramps or dry skin.', after: 'Keep drinking after sundown. The heat you took in stays with you.' },
   hail:    { label: 'Hail', shelter: 'Get under a solid roof or into a vehicle. Tents, canopies and stages are not shelter.',
-             camping: ['Lay canopies flat so hail does not shred them', 'Cover windshields with mats or blankets', 'Get under a solid roof'],
+             camping: ['Lay canopies flat', 'Cover windshields with mats or blankets', 'Get under a solid roof'],
              day: ['Get under a solid roof or into the car', 'Keep out from under trees'],
-             crew: ['Lay canopies flat so hail does not shred them', 'Cover windshields with mats or blankets', 'Get under a solid roof'],
+             crew: ['Lay canopies flat', 'Cover windshields with mats or blankets', 'Get under a solid roof'],
              during: 'Stay under the roof until it stops.', after: 'Check the tent and the car for damage before the next rain.' },
   tornado: { label: 'Tornado', shelter: 'Get to the shelter the festival named or the lowest floor of a solid building. Vehicles and tents are not safe from a tornado.',
-             camping: ['Leave the camp', 'Get to the shelter the festival named', 'Head down, cover your head'],
-             day: ['Get to the shelter the festival named', 'Not the car, not a tent', 'Head down, cover your head'],
-             crew: ['Get to the shelter the festival named', 'Not the car, not a tent', 'Head down, cover your head'],
+             camping: ['Leave the camp', 'Get to the shelter the festival named', 'Head down and covered'],
+             day: ['Get to the shelter the festival named', 'Not the car or a tent', 'Head down and covered'],
+             crew: ['Get to the shelter the festival named', 'Not the car or a tent', 'Head down and covered'],
              during: 'Stay down in the shelter until the warning ends.', after: 'Watch for downed lines and broken glass on the way back.' },
 };
 /** Where to shelter for a hazard: the building itself when the event is indoors. */
@@ -1279,10 +1279,10 @@ const shelterFor = (hazard, indoor) => { const P = PREP[hazard] || PREP.storms; 
 const SHELTER_PACK = ['Phone and a battery pack', 'Water and a snack', 'Rain shell and a warm layer', 'ID, cash, keys, medication', 'A light'];
 /** What to do with the time there is, the same line the push carries. */
 function timing(hazard, m) {
-  if (hazard === 'rain') return m <= 20 ? 'Last things under cover, then stay dry.' : m <= 60 ? 'Finish the camp list now: the ground goes first, then the paths.' : m <= 180 ? 'Work the list in order, the car first if it must move.' : 'Secure what you would hate to lose, and check back in an hour.';
-  if (hazard === 'heat') return m <= 20 ? 'Get into shade now, and drink.' : m <= 60 ? 'Find your shade for the afternoon and fill every bottle.' : m <= 180 ? 'Fill water, find shade for the afternoon, and rest before it peaks.' : 'Freeze bottles, plan the afternoon in shade, and check back in an hour.';
-  return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes, then head for shelter with fifteen to spare.'
-    : m <= 180 ? 'Secure camp now, charge phones, fill water, and decide where you will shelter.' : 'Secure what you would hate to lose, and check back in an hour.';
+  if (hazard === 'rain') return m <= 20 ? 'Get the last things under cover and stay dry.' : m <= 60 ? 'Finish the camp list now. The ground goes first.' : m <= 180 ? 'Work the list in order. The car goes first if it must move.' : 'Secure what you would hate to lose. Check back in an hour.';
+  if (hazard === 'heat') return m <= 20 ? 'Get into shade now and drink.' : m <= 60 ? 'Find your shade for the afternoon and fill every bottle.' : m <= 180 ? 'Fill water and find shade. Rest before it peaks.' : 'Freeze bottles and plan the afternoon in shade. Check back in an hour.';
+  return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes. Head for shelter with fifteen to spare.'
+    : m <= 180 ? 'Secure camp now. Charge phones, fill water and pick your shelter.' : 'Secure what you would hate to lose. Check back in an hour.';
 }
 // ==== shared: end ====
 /** What is on the way at this festival: read from the forecast on the phone, or the backend's own heads-up when there is no forecast yet. */
@@ -1304,9 +1304,9 @@ function tickCountdowns(){
 }
 function incomingLine(inc){
   const now = inc.minutes <= 0, span = `${now ? 'Since' : 'Around'} ${fmtTime(inc.startsAt)}${inc.endsAt ? ` until ${fmtTime(inc.endsAt)}` : ''}`;
-  if (inc.source === 'alert') return `${inc.event}, ${now ? 'in effect' : `from ${fmtTime(inc.startsAt)}`}${inc.endsAt ? ` until ${fmtTime(inc.endsAt)}` : ''}`;
+  if (inc.source === 'alert') return `${inc.event} ${now ? 'in effect' : `from ${fmtTime(inc.startsAt)}`}${inc.endsAt ? ` until ${fmtTime(inc.endsAt)}` : ''}`;
   const p = inc.peak || {}, bits = [];
-  if (inc.nowcast && inc.nowcast.minutes != null) bits.push(`on the radar${inc.nowcast.heading ? `, moving ${inc.nowcast.heading} at ${Math.round((inc.nowcast.speedKmh || 0) / 1.609)} mph` : ''}`);
+  if (inc.nowcast && inc.nowcast.minutes != null) bits.push(`on the radar${inc.nowcast.heading ? ` moving ${inc.nowcast.heading} at ${Math.round((inc.nowcast.speedKmh || 0) / 1.609)} mph` : ''}`);
   if (inc.hazard === 'storms' && p.thunder != null) bits.push(`thunder ${Math.round(p.thunder)}%`);
   const crossed = (inc.wind && inc.wind.crossed) || [];
   if (crossed.length) bits.push(`gusts to ${Math.round(p.gust)} mph past ${lineWords(crossed)}`); else if (p.gust >= THRESHOLDS.gustMph) bits.push(`gusts to ${Math.round(p.gust)} mph`);
@@ -1445,7 +1445,7 @@ const orb = (label, icon, h, onclick, badge) => `<button class="orb" style="--hu
 function statusLine(f){
   const d = data(f);
   if (S.busy && !d.at) return 'Checking the sky';
-  if (d.error && d.at) return `Last checked ${ago(d.at)}, before signal dropped`;
+  if (d.error && d.at) return `Last checked ${ago(d.at)}. No signal since`;
   if (d.error) return IN_PREVIEW ? 'This preview cannot reach the weather service' : 'No signal';
   if (d.at) return `Checked ${ago(d.at)}`;
   return 'Not checked yet';
@@ -1465,7 +1465,7 @@ screens.welcome = () => topbar('', '', '') + `
     </div>
     <button class="btn" onclick="start(true)">Use my location</button>
     <button class="btn quiet" onclick="start(false)" style="margin-top:10px">Not now</button>
-    <p class="note">With your location, Fieldwatch opens on the festival you're at. Without it, you get every alert at every festival that's on. No account. Nothing tracked.</p>
+    <p class="note">Your location opens the festival you are at. Without it you get every alert at every festival that is on. No account. Nothing tracked.</p>
   </div>`;
 function start(useLocation){ later(() => { S.welcomed = true; if (!useLocation) S.geoDenied = true; save(); go('feed', null, { reset: true }); if (useLocation) locate(); }); }
 
@@ -1748,10 +1748,10 @@ screens.alert = id => {
 // ---- the one line to act on. A person in a panic reads the first line and nothing else, so every alert opens with one ----
 // imperative under eight words and one line of what not to do; the long text folds away under it.
 const ACTION = {
-  tornado: { warn: ['Get to the shelter now', 'Lowest floor of a solid building. Not a tent, not a car.'], watch: ['Know where the shelter is', 'Keep the phone on and charged.'] },
+  tornado: { warn: ['Get to the shelter now', 'Lowest floor of a solid building. Not a tent or a car.'], watch: ['Know where the shelter is', 'Keep the phone on and charged.'] },
   storms:  { warn: ['Get into a vehicle or building', 'Not a tent, canopy or stage.'], watch: ['Know your shelter', 'A hard-topped vehicle or a building. Not a tent.'] },
   hail:    { warn: ['Get under a solid roof', 'Not a tent or canopy.'], watch: ['Know your shelter', 'Lay canopies flat before it comes.'] },
-  wind:    { warn: ['Stay clear of tents and stages', 'Get into a vehicle or building if it turns dangerous.'], watch: ['Tie everything down', 'Drop pop-up canopies; they fly.'] },
+  wind:    { warn: ['Stay clear of tents and stages', 'Get into a vehicle or building if it turns dangerous.'], watch: ['Tie everything down', 'Drop pop-up canopies.'] },
   flood:   { warn: ['Move to high ground now', 'Never walk or drive through moving water.'], watch: ['Know the route to high ground', 'Move the tent off low ground.'] },
   heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbors.'] },
   rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
@@ -1773,7 +1773,7 @@ screens.prep = () => {
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Nothing on the way</h1>
     <p class="sub">${esc(outlook(f) || statusLine(f))}</p>
-    <div class="empty"><b>The next twelve hours look calm</b>The forecast is read again every time you open the app, and every five minutes while it is open.</div>`;
+    <div class="empty"><b>The next twelve hours look calm</b>The forecast is read every time you open the app and every five minutes while it is open.</div>`;
   const P = PREP[inc.hazard] || PREP.storms, m = inc.minutes, now = m <= 0, label = incomingLabel(inc);
   const plan = deadlines(inc.startsAt, campFor(inc, setupFor(f))), mudLine = inc.mud && inc.mud.tier !== 'wet' ? `${TIER[inc.mud.tier].line}: ${groundWords(inc.ground || {})}${inc.mud.past >= 0.1 ? `, ${inc.mud.past.toFixed(1)} in already down` : ''}.` : inc.hazard === 'heat' && (inc.flag === 'red' || inc.flag === 'black') ? flagText(inc.flag) : '';
   const stage = now ? 'during' : m <= 20 ? '20' : m <= 60 ? '60' : m <= 180 ? '180' : 'early';
@@ -1793,26 +1793,26 @@ screens.prep = () => {
     <div class="group glass">${rows.map(([k, l, t]) => `<div class="tl ${k === stage ? 'now' : ''}"><span class="k">${esc(l)}</span><span class="v">${esc(t)}</span></div>`).join('')}</div>
     <p class="h">Pack for shelter</p>
     <div class="group glass steps">${SHELTER_PACK.map(s => `<div class="step"><span class="n"></span><span class="task">${esc(s)}</span></div>`).join('')}</div>
-    <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : inc.source === 'radar' ? 'From the rain on the radar, tracked frame to frame' : 'Read from the National Weather Service forecast'}${d.at ? `, checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
+    <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : inc.source === 'radar' ? 'From the rain on the radar' : 'Read from the National Weather Service forecast'}${d.at ? ` · checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
 };
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
   const l = liveLightning(f), c = l && CODE[l.code], live = Boolean(c), indoor = (l && l.code === 'indoor') || Boolean(data(f).ground && data(f).ground.indoor === true);
   const head = indoor ? 'Indoors' : live ? c.label : backend() ? 'No lightning data' : 'Needs the Fieldwatch backend';
-  const line = indoor ? 'The lightning protocol is for outdoor grounds. Inside a building with wiring and plumbing, you are in shelter; the line outside and the lot are not.'
-    : live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi, ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
-    : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'The mapper has not been read yet, or nothing is on') : 'Lightning codes come from the backend, which reads the GOES lightning mapper every minute';
+  const line = indoor ? 'The lightning protocol is for outdoor grounds. Inside a building with wiring and plumbing you are in shelter. The line and the lot outside are not.'
+    : live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi at ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
+    : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'Nothing read from the mapper yet') : 'Lightning codes come from the backend';
   const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Lightning</h1>
     <p class="sub">${indoor ? 'No codes for this event' : live ? esc(c.text) : esc(statusLine(f))}</p>
     <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>
-      ${live && l.code === 'red' && l.allClearAt ? `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">until the all-clear, unless it strikes again</span>` : ''}</div>
+      ${live && l.code === 'red' && l.allClearAt ? `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">to the all-clear unless it strikes again</span>` : ''}</div>
     ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}${kv('Last within 8 mi', l.lastNearAt ? esc(fmtTime(l.lastNearAt)) : 'none in 30 min')}${kv('Data', l.dataAt ? esc(ago(l.dataAt)) : 'none')}</div>` : ''}
     <p class="h">The codes</p>
     <div class="group glass">${Object.keys(CODE).map(k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(CODE[k].ring)}</div><div class="s">${esc(CODE[k].protocol)}</div><div class="s you">${esc(CODE[k].you)}</div></div></div>`).join('')}</div>
-    <p class="note">Read every minute from the GOES satellites' lightning mapper (NOAA, public), which sees cloud tops at about 8 km and can miss flashes under a thick anvil. The festival's own lightning detection and its safety staff are the authority. Carrier emergency alerts still arrive on their own.</p>`;
+    <p class="note">Read every 20 seconds from the GOES lightning mapper. It sees cloud tops and can miss flashes under a thick anvil. The festival's own detection and its safety staff are the authority. Carrier emergency alerts still arrive on their own.</p>`;
 };
 screens.ground = () => {
   const f = fest(); if (!f || f.id === 'here') return screens.picker();
@@ -1841,7 +1841,7 @@ screens.ground = () => {
     <button class="btn" onclick="saveGround()" ${S.groundBusy ? 'disabled' : ''}>Save</button>
     <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}</div>
     </div></details>` : ''}
-    <p class="note">The lookups run once per festival: the surface from OpenStreetMap under the coordinate, the soil from the USDA soil survey, the rain from the Iowa Mesonet's daily analysis. Staff settings win over all three.</p>`;
+    <p class="note">Looked up once per festival: the surface from OpenStreetMap, the soil from the USDA soil survey, the rain from the Iowa Mesonet. Staff settings win.</p>`;
 };
 
 
@@ -2052,7 +2052,7 @@ screens.share = () => {
   return topbar(backBtn(), '', '') + `
     <span class="eyebrow">Share</span>
     <h1 class="title">${esc(f.name)}</h1>
-    <p class="sub">Scan it, or send the link. It opens right here.</p>
+    <p class="sub">Scan it or send the link. It opens right here.</p>
     <div class="qr glass">${b ? `<img src="${esc(b)}/festivals/${encodeURIComponent(f.id)}/qr.svg" alt="QR code that opens Fieldwatch on ${esc(f.name)}" width="240" height="240">` : `<div class="empty"><b>No QR code</b>It needs the backend.</div>`}</div>
     <p class="share-link num">${esc(url.replace(/^https?:\/\//, ''))}</p>
     <button class="btn" onclick="shareFestival()">${navigator.share ? 'Share' : 'Copy link'}</button>
@@ -2073,11 +2073,11 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   ${staffMode() ? `<p class="h" style="margin-top:22px">Backend</p>
   <div class="group glass"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="${esc(DEFAULT_BACKEND.replace(/^https:\/\//, ''))}" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
   <p class="note">Empty uses the default. Type none to go without.</p>
-  ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up, and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
-  <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at, and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
+  ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
+  <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
   ${staffMode() ? `<p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported; hide what is not a festival</div></div>${I.chev}</button>` : ''}</div>` : ''}
-  ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen, with an icon, works with no signal.</p></div>` : ''}
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>` : ''}</div>` : ''}
+  ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen with an icon. Works with no signal.</p></div>` : ''}
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
   <p class="note credits" onclick="creditsTap()">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. Listings: Ticketmaster, SeatGeek, Edmtrain and people here. No account, no login.</p>`;
 

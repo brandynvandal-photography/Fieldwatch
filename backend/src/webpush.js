@@ -39,8 +39,8 @@ export async function pushWelcome(subscription, festival) {
   if (!enabled || !festival) return { sent: 0 };
   const here = festival.id === 'here';
   const payload = JSON.stringify({
-    title: 'Warnings are on', body: here ? 'For wherever this phone is. Warnings and watches will show up here, even with the app closed.'
-      : `${festival.name}. Warnings, watches and staff posts will show up here, even with the app closed.`,
+    title: 'Warnings are on', body: here ? 'For wherever this phone is. Warnings and watches show up here even with the app closed.'
+      : `${festival.name}. Warnings, watches and staff posts show up here even with the app closed.`,
     tag: 'welcome', urgent: false, url: here ? `${SITE}?here=1` : `${SITE}?f=${encodeURIComponent(festival.id)}`,
   });
   try { await transport(subscription, payload, { TTL: 600, urgency: 'normal' }); return { sent: 1 }; }

@@ -259,7 +259,7 @@ test('losing the weather service keeps the last good data and says so', async ()
   await pickHulaween(page);
   live.nws = false;
   await page.click('button[aria-label="Refresh"]');
-  await page.waitForFunction(() => /before signal dropped/.test(document.querySelector('.sky .foot')?.textContent || ''));
+  await page.waitForFunction(() => /No signal since/.test(document.querySelector('.sky .foot')?.textContent || ''));
   assert.equal(await page.textContent('.sky h2'), 'Severe Thunderstorm Warning', 'the cached alert is still shown');
   await shot(page, '6-offline');
 
@@ -843,7 +843,7 @@ test('storms on the way: a countdown on the festival page with the first things 
   store.nowcast = { 'hulaween-2026': { at: new Date().toISOString(), tracked: true, minutes: 35, speedKmh: 40, headingDeg: 45, heading: 'NE', raining: false, ageMinutes: 0 } };
   await page.click('button[aria-label="Refresh"]'); await page.waitForSelector('.hu-when:has-text("min")');
   assert.match(await page.textContent('.hu-when'), /^in 3[3-5] min$/);
-  assert.match(await page.textContent('.headsup p'), /on the radar, moving NE at 25 mph/);
+  assert.match(await page.textContent('.headsup p'), /on the radar moving NE at 25 mph/);
   assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
@@ -870,7 +870,7 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     await page.click('.bolt');
     await page.waitForSelector('h1.title:has-text("Lightning")');
     assert.equal(await page.textContent('.codehead h2'), 'Code Red');
-    assert.match(await page.textContent('.codehead p'), /^Nearest flash 3\.6 mi, \d+:\d\d [AP]M$/);
+    assert.match(await page.textContent('.codehead p'), /^Nearest flash 3\.6 mi at \d+:\d\d [AP]M$/);
     assert.match(await page.textContent('.codehead b'), /^2[67] min$/);
     assert.match(await page.textContent('.code.now .t'), /Code Red · Under 8 miles/);
     assert.match(await page.textContent('.code.red'), /Non-essential personnel should prioritize exit and do not need to maintain posts\. Full work stoppage\./, 'the protocol in its own words');
