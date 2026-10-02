@@ -4,7 +4,7 @@ Written 2026-09-30 from a three-angle design panel (attendee, crew, feasibility)
 
 ## What it is for
 
-Fieldwatch tells anyone standing in a field what the sky is about to do and what the festival's safety staff want them to do. It opens on the festival you are at, or on the spot you are standing, and gives NWS warnings, a forecast built for the day (heat, gusts, thunder), a radar loop, and official holds and updates, on a phone that may have no signal. No accounts, no tracking, no paid data, every source free and licensed for this use, run by one operator from a phone. For first-timers, seasoned goers, crews and vendors, and the safety staff who post to them.
+Fieldwatch tells anyone standing in a field what the sky is about to do and what the festival's safety staff want them to do. It opens on the festival you are at, or on the weather where you stand, with every other festival a tap away by lightning code, red first, and gives NWS warnings, a forecast built for the day (heat, gusts, thunder), a radar loop, and official holds and updates, on a phone that may have no signal. No accounts, no tracking, no paid data, every source free and licensed for this use, run by one operator from a phone. For first-timers, seasoned goers, crews and vendors, and the safety staff who post to them.
 
 ## Live today
 
@@ -21,7 +21,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - 12-hour radar loop with your position.
 - Live: an open page moves the second the backend does. A server-sent stream (`/events`) announces every alert that lands or ends, heads-up, lightning code, staff post and ground report, and the page refreshes just that festival or the feed; the backend asks the weather service every 30 seconds and the lightning buckets every 20.
 - Alerts for the whole grounds: NWS alerts are pulled by the festival's county and forecast zone and kept when their polygon reaches within about a mile of the grounds, so a warning drawn across the edge of a large site is not missed the way a single-point query misses it.
-- Favorites: the heart on a festival page follows its warnings on this phone, several festivals at once, one row per phone per festival on the backend; the home page has a Favorites section with a card for each (its alerts and lightning code, or Clear, or when gates open) and the rest under Everywhere else, the festival list groups favorites at the top, and a favorite of a festival that is over drops away. Right after a festival is picked, one card offers the favorite (Favorite, Not now; on an iPhone in Safari, Add to Home Screen first), and never again for that festival.
+- Favorites: the heart on a festival page follows its warnings on this phone, several festivals at once, one row per phone per festival on the backend; on the festivals list a favorite wears its heart, and one not on yet stays listed with when it opens; the picker groups favorites at the top, and a favorite of a festival that is over drops away. Right after a festival is picked, one card offers the favorite (Favorite, Not now; on an iPhone in Safari, Add to Home Screen first), and never again for that festival.
 - Web push warnings (VAPID, keys made on first boot) for a festival or for a spot, with a test notification the moment you switch on; deep links; share with a QR and a plain link.
 - Hazard reports into a moderated queue.
 - Incidents from the on-site receiver node (Pi, county public-safety radio only).

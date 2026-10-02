@@ -75,8 +75,8 @@ async function newPage(opts = {}) {
   await page.route(/tile\.openstreetmap\.org/, r => { seen.tiles++; r.fulfill({ status: 200, contentType: 'image/png', body: PNG }); });
   return { page, context, seen, live };
 }
-// The home page is the alerts feed; the picker is one tap away on it.
-const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
+// Without a location the festivals list is the home page; the picker is one tap away on it.
+const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 /** Icons that grew past their box: an SVG outside a chart or the radar wider than 70 px is a button swallowed by its icon (Safari does this to an unsized SVG in a flex row). */
 const oversizedIcons = page => page.$$eval('svg', els => els.filter(e => !e.closest('.chart, .rmap, #crew') && e.getBoundingClientRect().width > 70).map(e => `${e.parentElement.className || e.parentElement.tagName} ${Math.round(e.getBoundingClientRect().width)}px`));
@@ -90,13 +90,14 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   await shot(page, '0-welcome');
   await page.click('button:has-text("Use my location")');
   await page.waitForSelector('span.eyebrow:has-text("Right now")');
-  assert.match(await page.textContent('h1.title'), /warning|advisor|All clear|Checking|No signal/, 'the home page is what is happening, not a list');
-  await page.click('button.row:has-text("All festivals")');
+  assert.equal(await page.textContent('h1.title'), 'Festivals', 'without a location the festivals list is the home page');
+  assert.match(await page.textContent('.sub'), /warning|advisor|All clear|Checking|No signal/, 'and its line says what is happening');
+  await page.click('button.row:has-text("Search festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   // The list has a way back to the home page.
   await page.click('button[aria-label="Back"]');
   await page.waitForSelector('span.eyebrow:has-text("Right now")');
-  await page.click('button.row:has-text("All festivals")');
+  await page.click('button.row:has-text("Search festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   const on = FESTS.filter(f => isLive(f)), off = FESTS.filter(f => !isLive(f));
   assert.ok(on.length >= 2 && off.length >= 2, 'the fixture has festivals on and festivals not on');
@@ -385,7 +386,7 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
-    await page.click('button.row:has-text("All festivals")');
+    await page.click('button.row:has-text("Search festivals")');
     await page.waitForSelector('h1.title:has-text("Which festival?")');
     await page.waitForSelector('button.row:has-text("Blackwater Gathering")');
     assert.ok(store.calls.includes('GET /festivals'), 'the list came from the backend');
@@ -583,10 +584,10 @@ test('with location on, the app opens the festival you are standing at, sorts th
   await shot(page, '12-radar-me');
   await page.click('button[aria-label="Back"]');
   await page.waitForSelector('.sky');
-  await page.click('button:has-text("Change")');
+  await page.click('button:has-text("Festivals")');
   await page.waitForSelector('span.eyebrow:has-text("Right now")');
   assert.match(await page.textContent('.feedfest .fh .t'), /Suwannee Hulaween/, 'its warning puts it first on the home page');
-  await page.click('button.row:has-text("All festivals")');
+  await page.click('button.row:has-text("Search festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   assert.equal((await page.$$eval('p.h', els => els.map(e => e.textContent)))[0], 'Right here');
   assert.equal(await page.textContent('.bubble .t'), 'Suwannee Hulaween');
@@ -595,17 +596,19 @@ test('with location on, the app opens the festival you are standing at, sorts th
   assert.ok(others.length >= 1, 'the others say how far');
   assert.equal(await page.$('.sky'), null, 'after Change, the picker stays put');
 
-  // From far away, nothing opens by itself, and the nearest comes first.
+  // From far away, the home page is the weather where you stand; the festivals wait behind their button, the nearest first.
   await context.setGeolocation({ latitude: 39.74, longitude: -104.99 });   // Denver
+  await page.route(/nominatim\.openstreetmap\.org\/reverse/, r => r.fulfill(json({ name: 'Denver', address: { city: 'Denver', county: 'Denver County', state: 'Colorado' } })));
   await page.goto(`${base}/index.html`);
-  await page.waitForSelector('span.eyebrow:has-text("Right now")');
-  assert.equal(await page.$('.sky'), null, 'from far away nothing opens by itself');
-  await page.click('button.row:has-text("All festivals")');
+  await page.waitForSelector('h1.title:has-text("Right here")', { timeout: 10000 });
+  assert.ok(await page.$('.sky'), 'the weather for the spot, with no festival near');
+  await page.click('button:has-text("Festivals")'); await page.waitForSelector('h1.title:has-text("Festivals")');
+  assert.equal(await page.$('button.row:has-text("Right where you are")'), null, 'already on your spot');
+  await page.click('button.row:has-text("Search festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
   await page.waitForFunction(() => /\d mi/.test(document.querySelector('.bubble .ph')?.textContent || ''));
   const dist = await page.$$eval('.bubble .ph', els => els.map(e => Number(e.textContent.match(/([\d,.]+) mi/)?.[1].replace(',', ''))));
   assert.ok(dist.every((d, i) => i === 0 || d >= dist[i - 1]), 'nearest first');
-  assert.equal(await page.$('.sky'), null);
   await page.click('button[aria-label="Settings"]');
   await page.waitForSelector('button.row:has-text("Use my location") .pill.on');
   assert.deepEqual(seen.errors, []);
@@ -678,10 +681,8 @@ test('right where you are: alerts, forecast, radar and warnings for the phone\'s
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
-    await page.waitForSelector('button.row:has-text("Right where you are")');
-    await page.click('button.row:has-text("Right where you are")');
-    await page.waitForSelector('.sky.warn');
-    assert.equal(await page.textContent('h1.title'), 'Right here');
+    await page.waitForSelector('.sky.warn', { timeout: 10000 });
+    assert.equal(await page.textContent('h1.title'), 'Right here', 'nothing on nearby: the home page is the weather where you stand');
     await page.waitForFunction(() => /Denver, Colorado/.test(document.querySelector('.sub')?.textContent || ''));
     assert.match(await page.textContent('.eyebrow'), /Your location · (just now|\d+ (min|hr) ago)/);
     assert.ok(seen.alertUrls.some(u => /point=39\.739\d?,-104\.990\d?/.test(u)), 'the weather service is asked about your spot');
@@ -742,41 +743,41 @@ test('warnings stay on across a backend redeploy: on open the phone registers ag
 });
 
 
-test('the home page is every current alert at every festival that is on: the worst first, a tap opens it on its festival, and a quiet day says so', async () => {
+test('the festivals list is every festival that is on, organized by code with the worst first; a tap opens one, and a quiet day says so', async () => {
   const { page, context, seen } = await newPage();
   const { server, store, base: api } = await fakeBackend([...FESTS]);
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
-    await page.waitForSelector('h1.title:has-text("1 warning")');
-    assert.match(await page.textContent('.sub'), /2 of \d+ festivals on now with alerts/);
+    await page.waitForSelector('h1.title:has-text("Festivals")');
+    assert.match(await page.textContent('.sub'), /^\d+ festivals on now · 1 warning$/);
     const cards = await page.$$eval('.feedfest .fh .t', els => els.map(e => e.textContent));
     assert.equal(cards[0], 'Suwannee Hulaween', 'the warning comes before the advisory');
-    assert.equal(cards.length, 2);
+    assert.equal(cards.length, FESTS.filter(f => isLive(f)).length, 'every festival that is on is a card');
     assert.deepEqual(await page.$$eval('.feedfest .alert .t', els => els.map(e => e.textContent)), ['Severe Thunderstorm Warning', 'Heat Advisory']);
-    assert.ok(await page.$('button.row:has-text("All festivals")'), 'the list is one tap away, not the page');
-    assert.match(await page.textContent('.empty'), /None yet.*Tap the heart/, 'no favorites: the section says how to get one, under the alerts');
+    assert.ok(await page.$('button.row:has-text("Search festivals")'), 'the list is one tap away, not the page');
     await shot(page, '20-feed');
     // The card itself opens its festival, favorite or not; the alert under it opens on the alert.
     await page.click('.feedfest:has-text("Suwannee Hulaween") button.fh'); await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'the card header opens the festival');
-    await page.click('button:has-text("Change")'); await page.waitForSelector('h1.title:has-text("1 warning")');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('h1.title:has-text("Festivals")');
     await page.click('.feedfest .alert:has-text("Severe Thunderstorm Warning")');
     await page.waitForSelector('.alerthead h2:has-text("Severe Thunderstorm Warning")');
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'behind the alert is its festival');
     store.lightning['hulaween-2026'] = { code: 'green', nearestMi: null, nearestAt: null, within: { 8: 0, 12: 0, 20: 0 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: null, at: new Date().toISOString(), dataAt: new Date().toISOString(), source: 'GOES GLM' };
-    await page.click('button:has-text("Change")');
-    await page.waitForSelector('h1.title:has-text("1 warning")');
+    await page.click('button:has-text("Festivals")');
+    await page.waitForSelector('h1.title:has-text("Festivals")');
     assert.match(await page.textContent('.feedfest .fh .t'), /Suwannee Hulaween/, 'the warning still comes first');
-    assert.equal(await page.$$eval('.feedfest', els => els.length), 2, 'the festival you looked at is not added to the page: only what is on, with something going on');
+    assert.equal(await page.$$eval('.feedfest', els => els.length), FESTS.filter(f => isLive(f)).length, 'every festival that is on, nothing added for having been looked at');
     assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Green', 'with its code beside its name, green included');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Code Green', 'No lightning data'], 'headed by code, the graded festival above the rest');
 
     store.feed = [];
     await page.click('button[aria-label="Refresh"]');
-    await page.waitForSelector('h1.title:has-text("All clear")');
-    assert.match(await page.textContent('.empty'), /Nothing to worry about/);
+    await page.waitForFunction(() => /All clear/.test(document.querySelector('.sub')?.textContent || ''));
+    assert.equal(await page.$('.feedfest .alert'), null, 'a quiet day: cards with no alert rows');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
@@ -796,7 +797,7 @@ test('storms on the way: a countdown on the festival page with the first things 
   // Like pickHulaween, but on the fake backend (enter() would reload without it).
   await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
   await page.click('button:has-text("Use my location")');
-  await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+  await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
   await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
   await page.waitForSelector('.headsup');
   assert.equal(await page.textContent('.headsup h3'), 'Storms');
@@ -856,7 +857,7 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
-    await page.waitForSelector('h1.title:has-text("1 warning")');
+    await page.waitForSelector('h1.title:has-text("Festivals")');
     assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Code Red', 'the code sits on the festival\'s card on the home page');
     await page.click('.feedfest .alert:has-text("Severe Thunderstorm Warning")');
     await page.waitForSelector('.alerthead');
@@ -899,8 +900,8 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     assert.equal(await page.textContent('.codehead h2'), 'Code Red'); assert.match(await page.textContent('.codehead p'), /^Last flash within 8 mi at/);
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.red');
     store.feed = [{ festivalId: 'hulaween-2026', alerts: [redAlert] }];   // the home page's grade for it still says green
-    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
-    await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy); await page.waitForSelector('h1.title:has-text("1 warning")');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy); await page.waitForSelector('h1.title:has-text("Festivals")');
     assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Red', 'on the home page too');
     assert.deepEqual(await page.$$eval('.feedfest:has-text("Suwannee Hulaween") .alert .t', els => els.map(e => e.textContent)), ['Lightning 3.6 mi'], 'the grade and the alert it stands on are one row, not two');
     assert.match(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .alert .s'), /^Code Red · Rapid evacuation, full work stoppage · all clear \w{3} \d+:\d\d [AP]M$/);
@@ -915,8 +916,8 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     assert.equal(await page.textContent('.codehead h2'), 'Indoors'); assert.match(await page.textContent('.codehead p'), /^The lightning protocol is for outdoor grounds/);
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.indoor');
     store.feed = [{ festivalId: 'hulaween-2026', alerts: [alertFeature().properties].map(p => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: '', instruction: null, severity: 'severe', area: '', source: 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0 })) }];
-    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
-    await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy); await page.waitForSelector('h1.title:has-text("1 warning")');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy); await page.waitForSelector('h1.title:has-text("Festivals")');
     assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Indoors');
     await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
     delete store.ground['hulaween-2026'];
@@ -932,13 +933,16 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     const other = FESTS.find(f => isLive(f) && f.id !== 'hulaween-2026');
     store.feed = [{ festivalId: other.id, alerts: [] }];
     store.lightning = { [other.id]: { code: 'orange', nearestMi: 11.2, nearestAt: minutesAgo(2), within: { 8: 0, 12: 1, 20: 3 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: new Date(Date.now() + 13 * 60000).toISOString(), at: minutesAgo(0), dataAt: minutesAgo(0), source: 'GOES GLM' } };
-    await page.click('button:has-text("Change")');
-    await page.waitForSelector('h1.title:has-text("1 advisory")');
+    await page.click('button:has-text("Festivals")');
+    await page.waitForSelector('h1.title:has-text("Festivals")');
+    await page.waitForFunction(() => !S.feedBusy).catch(e => { throw new Error(`${e.message}; page errors: ${seen.errors.join(' | ')}`); });
+    assert.match(await page.textContent('.sub'), /1 advisory/, 'an orange with no alert is still something going on');
     const card = `.feedfest:has-text("${other.name}")`;
     assert.equal(await page.textContent(`${card} .alert .t`), 'Lightning 11.2 mi');
     assert.match(await page.textContent(`${card} .alert .s`), /^Code Orange · Evacuation procedures, staff hold posts · until \w{3} \d+:\d\d [AP]M$/, 'with the end of the orange');
     assert.equal(await page.textContent(`${card} .fh .pill`), 'Code Orange');
-    assert.equal(await page.$('.feedfest:has-text("Suwannee Hulaween")'), null, 'the festival you looked at is not on the page: nothing is going on there');
+    assert.equal(await page.$$eval('.feedfest .fh .t', els => els[0].textContent), other.name, 'the orange comes first');
+    assert.equal(await page.$('.feedfest:has-text("Suwannee Hulaween") .alert'), null, 'the festival you looked at is listed with the rest, with nothing going on');
     await page.click(`${card} .alert`);
     await page.waitForSelector('.codehead.orange');
     assert.equal(await page.textContent('h1.title'), 'Lightning');
@@ -992,7 +996,7 @@ test('the screen rises once, on a move: data landing later swaps in place with n
     await page.evaluate(() => render()); await page.waitForTimeout(500);
     assert.equal(await rises(), 0, 'no entrance animation for data');
     // Each move is one rise: to the picker, then to the festival page, with none for the forecast that lands after it.
-    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); await page.waitForTimeout(400);
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); await page.waitForTimeout(400);
     assert.equal(await rises(), 1, 'the picker');
     await page.fill('#q', 'hula'); await page.waitForTimeout(300);
     assert.equal(await rises(), 1, 'typing in the search box re-renders the list in place');
@@ -1032,8 +1036,8 @@ test('the search box is left alone while you type: the list under it redraws, th
     await page.waitForSelector('.sky');
     assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween');
     // Coming back to the list starts with an empty box.
-    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
-    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('#q');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('#q');
     assert.equal(await page.inputValue('#q'), ''); assert.ok(await page.$('.bubble'));
     assert.deepEqual(seen.errors, []);
   } finally { await context.close(); }
@@ -1054,7 +1058,7 @@ test('favorites: a heart on the festival page follows its warnings on this phone
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
-    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
     await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('button.row:has-text("Favorite") .pill'), 'Off');
     await page.click('button.tb.fav'); await page.waitForSelector('button.tb.fav.on');
@@ -1062,11 +1066,11 @@ test('favorites: a heart on the festival page follows its warnings on this phone
     assert.equal(await page.textContent('button.row:has-text("Favorite") .pill'), 'On');
     assert.deepEqual(store.subs.map(s => s.festivalId), ['hulaween-2026']);
     // A second favorite: the same phone, one more follow.
-    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Favorites', 'Everywhere else'], 'favorites have their own section on the home page, the rest follows');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    assert.ok(await page.$('.feedfest.fav:has-text("Suwannee Hulaween") .fh .fav'), 'the favorite wears its heart on the list');
     assert.equal(await page.textContent('.feedfest.fav:has-text("Suwannee Hulaween") .alert .t'), 'Severe Thunderstorm Warning', 'each favorite card carries its alerts');
     assert.equal(await page.$$eval('.feedfest:not(.fav) .fh .t', els => els.map(e => e.textContent)).then(n => n.includes('Suwannee Hulaween')), false, 'and is not listed again below');
-    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
     assert.ok(await page.$('.bubble:has-text("Suwannee Hulaween") .favmark'), 'the list shows it as a bubble under Favorites, with the heart in the corner');
     assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)).then(h => h[0]), 'Favorites');
     await page.fill('#q', 'hula');
@@ -1077,11 +1081,11 @@ test('favorites: a heart on the festival page follows its warnings on this phone
     await page.waitForFunction(() => /^Favorited /.test(document.querySelector('.toast.show')?.textContent || ''));
     assert.deepEqual(store.subs.map(s => s.festivalId).sort(), ['hulaween-2026', other.id].sort());
     assert.ok(store.subs.every(s => s.subscription.endpoint === 'https://push.example.test/fav'), 'one phone, two follows');
-    await page.click('button:has-text("Change")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
     await page.waitForFunction(() => !S.feedBusy);
-    assert.deepEqual(await page.$$eval('.feedfest.fav .fh .t', els => els.map(e => e.textContent)).then(n => n.sort()), ['Suwannee Hulaween', other.name].sort(), 'both cards in the Favorites section');
+    assert.deepEqual(await page.$$eval('.feedfest.fav .fh .t', els => els.map(e => e.textContent)).then(n => n.sort()), ['Suwannee Hulaween', other.name].sort(), 'both cards wear the heart');
     assert.equal(await page.textContent(`.feedfest.fav:has-text("${other.name}") .alert .t`), 'Heat Advisory', 'its advisory rides on its card');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Favorites'], 'nothing left for Everywhere else');
+    assert.deepEqual(await page.$$eval('.feedfest .fh .t', els => els.slice(0, 2).map(e => e.textContent)), ['Suwannee Hulaween', other.name], 'one code for all: the worst alert first, then the next');
     await shot(page, '27-favorites');
     // Its advisory ends: the card says Clear.
     store.feed = store.feed.filter(x => x.festivalId === 'hulaween-2026');
@@ -1115,7 +1119,7 @@ test('the radar loop comes from the backend when its cache is current, and from 
     store.radar['hulaween-2026'] = manifest(Date.now() - 5 * 3600000);
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
-    await page.click('button.row:has-text("All festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
     await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky');
     await page.click('button.orb:has-text("Radar")');
     await page.waitForFunction(() => document.querySelectorAll('.frame').length === 48 && document.getElementById('radar-loaded')?.textContent === '');

@@ -737,7 +737,7 @@ function back(){
 /** The Right now page loads itself whenever it is shown with nothing, or with a feed older than a minute. */
 function feedShown(){ if (S.screen === 'feed' && !S.feedBusy && (!S.feed || !S.feed.at || Date.now() - Date.parse(S.feed.at) > 60000)) loadFeed(); }
 function pick(id){ later(() => { S.fest = id; save(); go('home', null, { reset: true }); refresh(fest()); }); }
-function changeFestival(){ S.autoPicked = true; go('feed', null, { reset: true }); locate(); }
+function changeFestival(){ S.autoPicked = true; go('feed'); locate(); }
 
 // ---- icons: one stroke family, 1.9px, rounded ------------------------------------------------------------
 // width and height on the element: without them Safari sizes an SVG in a flex row at 300x150, so the icon swallows the button.
@@ -750,6 +750,7 @@ const I = {
   gear: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'),
   refresh: svg('<path d="M20 12a8 8 0 1 1-2.3-5.7"/><path d="M20 4v5h-5"/>'),
   search: svg('<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>'),
+  list: svg('<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3 6h.01M3 12h.01M3 18h.01"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   flag: svg('<path d="M5 21V4"/><path d="M5 4h11l-1.5 4L16 12H5"/>'),
   check: svg('<path d="M5 12l5 5L20 7"/>'),
@@ -1465,11 +1466,11 @@ screens.welcome = () => topbar('', '', '') + `
     </div>
     <button class="btn" onclick="start(true)">Use my location</button>
     <button class="btn quiet" onclick="start(false)" style="margin-top:10px">Not now</button>
-    <p class="note">Your location opens the festival you are at. Without it you get every alert at every festival that is on. No account. Nothing tracked.</p>
+    <p class="note">Your location opens the festival you are at or the weather where you stand. Without it you get every festival that is on. No account. Nothing tracked.</p>
   </div>`;
 function start(useLocation){ later(() => { S.welcomed = true; if (!useLocation) S.geoDenied = true; save(); go('feed', null, { reset: true }); if (useLocation) locate(); }); }
 
-// ---- the home page: every current alert at every festival that is on -----------------------------------------
+// ---- the festivals list: every festival that is on, organized by lightning code ----------------------------------
 const SEV_RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
 const sevRank = a => SEV_RANK[a.severity] || 0;
 /** The backend keeps every festival that is on polled; without one, the weather service is asked for the nearest dozen. */
@@ -1513,7 +1514,7 @@ function openFeedAlert(fid, aid){
 const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin' : ''}" onclick="loadFeed()" aria-label="Refresh" ${S.feedBusy ? 'disabled' : ''}>${I.refresh}</button>`;
 /** How loud a festival's card is: its worst alert, or a red or orange lightning code. */
 const feedRank = i => { const l = lightningState(i.lightning, i.alerts); return Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, l && l.code === 'red' ? 3 : l && l.code === 'orange' ? 2 : 0); };
-/** One festival's card on the home page: name and place, the lightning code, then each alert as a row. The header opens the festival; a favorite's says Clear, Checking or when gates open when there is nothing louder to say. */
+/** One festival's card on the festivals list: name and place, the lightning code, then each alert as a row. The header opens the festival; a favorite's says Clear, Checking or when gates open when there is nothing louder to say. */
 function feedCard(i, opts){
   const { fav = false } = opts || {};
   const f = i.festival, fd = S.feed, on = isLive(f);
@@ -1537,34 +1538,33 @@ function feedCard(i, opts){
   return `<div class="group glass feedfest${fav ? ' fav' : ''}">${header}${boltRow}${others.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
 }
 const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'here');
-/** Favorites on the home page: every favorite as its own card, the loudest first, with its alerts under it. */
-function favoritesSection(items){
-  const favs = favoriteIds().map(id => FESTS.find(x => x.id === id)).filter(Boolean);
-  if (!favs.length) return '';
-  const cards = favs.map(f => items.find(x => x.festival.id === f.id) || { festival: f, alerts: [], lightning: null }).sort((a, b) => feedRank(b) - feedRank(a) || (isLive(b.festival) - isLive(a.festival)));
-  return `<p class="h">Favorites</p>${cards.map(i => feedCard(i, { fav: true })).join('')}`;
-}
+/** A card's code, as the card shows it: the feed's grade for the festival or its own, lifted by a standing lightning alert. */
+const feedCode = i => { const fd = S.feed, l = lightningState((fd && fd.codes && fd.codes[i.festival.id]) || i.lightning || null, i.alerts); return l ? l.code : 'none'; };
+const CODE_ORDER = { red: 5, orange: 4, yellow: 3, green: 2, indoor: 1, none: 0 };
+const CODE_GROUP = { red: 'Code Red', orange: 'Code Orange', yellow: 'Code Yellow', green: 'Code Green', indoor: 'Indoors', none: 'No lightning data', later: 'Favorites not on yet' };
+/** The festivals list: every festival that is on, organized by lightning code, red at the top; within a code the worst alert, then the nearest. A favorite not on yet comes last, with when it opens. */
 screens.feed = () => {
-  const fd = S.feed, f = fest();
-  const items = (fd && fd.items || []).slice().sort((a, b) => (feedRank(b) - feedRank(a)) || (S.here ? away(a.festival) - away(b.festival) : 0));
-  const warns = items.filter(i => i.alerts[0] && isWarning(i.alerts[0])).length, on = fd && fd.on != null ? fd.on : live().length;
-  const head = !fd ? (S.feedBusy ? 'Checking' : 'No signal') : warns ? `${warns} warning${warns > 1 ? 's' : ''}` : items.length ? `${items.length} advisor${items.length > 1 ? 'ies' : 'y'}` : 'All clear';
-  const sub = fd ? `${items.length ? `${items.length} of ${on}` : on} festival${on === 1 ? '' : 's'} on now${items.length ? ' with alerts' : ', no alerts'}${fd.partial ? ', nearest dozen checked' : ''}`
-    : S.feedErr ? staffFail(S.feedErr) : 'Every warning and advisory at every festival that is on';
-  // Favorites have their own section; everything else that is on follows under its own heading. The festival you last looked at is not a card: this page is what is happening now.
-  const hasFavs = favoriteIds().length > 0, others = items.filter(i => !isFav(i.festival.id));
-  return topbar('', '', feedRefreshBtn() + gearBtn()) + `
+  const fd = S.feed, f = fest(), items = fd && fd.items || [];
+  const cards = live().map(x => items.find(i => i.festival.id === x.id) || { festival: x, alerts: [], lightning: null });
+  for (const i of items) if (!cards.some(c => c.festival.id === i.festival.id)) cards.push(i);
+  for (const id of favoriteIds()) { const x = FESTS.find(y => y.id === id); if (x && !isLive(x)) cards.push({ festival: x, alerts: [], lightning: null }); }
+  const key = i => isLive(i.festival) ? feedCode(i) : 'later', rank = i => key(i) === 'later' ? -1 : CODE_ORDER[key(i)] || 0;
+  cards.sort((a, b) => rank(b) - rank(a) || feedRank(b) - feedRank(a) || (S.here ? away(a.festival) - away(b.festival) : 0) || a.festival.name.localeCompare(b.festival.name));
+  const on = live().length, warns = items.filter(i => i.alerts[0] && isWarning(i.alerts[0])).length;   // an item is a festival with something going on: an alert, or an orange or red
+  const head = !fd ? (S.feedBusy ? 'Checking' : S.feedErr ? staffFail(S.feedErr) : 'No signal') : warns ? `${warns} warning${warns > 1 ? 's' : ''}` : items.length ? `${items.length} advisor${items.length > 1 ? 'ies' : 'y'}` : 'All clear';
+  const sub = `${on} festival${on === 1 ? '' : 's'} on now · ${head}${fd && fd.partial ? ' · nearest dozen checked' : ''}`;
+  // Headed by code once there is more than one code on the list.
+  const groups = [];
+  for (const i of cards) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
+  const list = groups.map(g => `${groups.length > 1 ? `<p class="h">${esc(CODE_GROUP[g.k] || 'No lightning data')}</p>` : ''}${g.items.map(i => feedCard(i, { fav: isFav(i.festival.id) })).join('')}`).join('');
+  return topbar(S.stack.length ? backBtn() : '', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
-    <h1 class="title">${esc(head)}</h1>
+    <h1 class="title">Festivals</h1>
     <p class="sub">${esc(sub)}</p>
-    ${favoritesSection(items)}
-    ${hasFavs && others.length ? '<p class="h">Everywhere else</p>' : ''}
-    ${others.map(i => feedCard(i)).join('')}
-    ${fd && !others.length && !hasFavs ? `<div class="empty"><b>Nothing to worry about</b>No warnings or advisories at any festival that is on.</div>` : ''}
-    ${hasFavs ? '' : `<p class="h">Favorites</p><div class="empty"><b>None yet</b>Tap the heart on a festival to get its warnings on this phone and see it here.</div>`}
+    ${cards.length ? list : `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>`}
     <div class="group glass">
       ${f && f.id === 'here' ? '' : `<button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button>`}
-      <button class="row" onclick="later(function(){ go('picker') })"><span class="lead">${I.search}</span><div class="main"><div class="t">All festivals</div><div class="s">${on} on now, a week before gates to the day after</div></div>${I.chev}</button>
+      <button class="row" onclick="later(function(){ go('picker') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Search festivals</div><div class="s">By name or place</div></div>${I.chev}</button>
     </div>
     ${fd ? `<p class="note">Checked ${esc(ago(fd.at))}. Alerts come from the National Weather Service and festival staff.</p>` : ''}`;
 };
@@ -1632,7 +1632,7 @@ screens.home = () => {
         <span class="foot">${esc(statusLine(f))}</span>
       </span></button>`;
   const here = f.id === 'here';
-  return topbar(`<button class="tb glass" onclick="changeFestival()">${I.back}<span>Change</span></button>`, '', (here ? '' : favBtn() + shareBtn()) + refreshBtn() + gearBtn()) + `
+  return topbar(`<button class="tb glass" onclick="changeFestival()">${I.list}<span>Festivals</span></button>`, '', (here ? '' : favBtn() + shareBtn()) + refreshBtn() + gearBtn()) + `
     <span class="eyebrow num">${here ? `Your location${f.at ? ' · ' + esc(ago(new Date(f.at).toISOString())) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
     <h1 class="title">${esc(f.name)}</h1>
     <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
@@ -2162,13 +2162,13 @@ function locate(){
     S.locating = false; S.here = { latitude: p.coords.latitude, longitude: p.coords.longitude, at: Date.now() };
     if (S.wantHere) { goHere(); return; }
     if (S.fest === 'here' && S.hereFest && distKm(S.here, S.hereFest) > 2) { S.hereFest = { ...S.hereFest, latitude: S.here.latitude, longitude: S.here.longitude, at: S.here.at, location: '', county: '' }; save(); refresh(fest()); refollowHere(); placeHere(); }
-    if ((S.screen === 'picker' || S.screen === 'feed') && !S.autoPicked) {
+    // The home page: the festival you are standing at, else the weather where you stand. Every other festival waits behind the Festivals button.
+    if (S.screen === 'feed' && !S.autoPicked) {
+      S.autoPicked = true;
       const near = live().map(f => ({ f, km: away(f) })).sort((a, b) => a.km - b.km)[0];
-      if (near && near.km <= NEAR_KM && (!S.fest || S.fest === near.f.id || S.screen === 'picker' && !S.fest)) {
-        S.autoPicked = true; S.fest = near.f.id; save();
-        go('home', null, { reset: true }); refresh(fest()); toast(`You're at ${near.f.name}`, 3500);
-        return;
-      }
+      if (near && near.km <= NEAR_KM) { S.fest = near.f.id; save(); go('home', null, { reset: true }); refresh(fest()); toast(`You're at ${near.f.name}`, 3500); }
+      else goHere();
+      return;
     }
     if ((S.screen === 'picker' || S.screen === 'feed') && document.activeElement !== document.getElementById('q')) render();
     if ((S.screen === 'report' || S.screen === 'settings') && !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName || '')) render();
