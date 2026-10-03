@@ -128,6 +128,8 @@ const s = {
 
   setting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
   setSetting: db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`),
+  deleteSetting: db.prepare(`DELETE FROM settings WHERE key = ?`),
+  partnerKeys: db.prepare(`SELECT key, value FROM settings WHERE key LIKE 'partner:%'`),
   insertGroundReport: db.prepare(`INSERT INTO ground_reports (festival_id, state, effective, tier, created_at) VALUES (?, ?, ?, ?, ?)`),
   groundReports: db.prepare(`SELECT state, effective, tier, created_at FROM ground_reports WHERE festival_id = ? AND created_at >= ? ORDER BY created_at DESC`),
   count: db.prepare(`INSERT INTO stats (day, festival_id, key, n) VALUES (?, ?, ?, ?) ON CONFLICT(day, festival_id, key) DO UPDATE SET n = n + excluded.n`),
@@ -173,6 +175,9 @@ export const q = {
 
   setting: key => s.setting.get(key)?.value ?? null,
   setSetting: (key, value) => s.setSetting.run(key, value),
+  deleteSetting: key => s.deleteSetting.run(key),
+  // A festival's own staff key, kept as a hash: the festival id and the hash of the key its staff hold.
+  partnerKeys: () => s.partnerKeys.all().map(r => ({ festivalId: r.key.slice('partner:'.length), hash: r.value })),
   insertGroundReport: (festivalId, state, effective, tier) => s.insertGroundReport.run(festivalId, state, effective, tier, iso()),
   groundReports: (festivalId, since) => s.groundReports.all(festivalId, iso(since)).map(r => ({ state: r.state, effective: r.effective, tier: r.tier, at: r.created_at })),
   // Counters with no one in them: how much each festival's pack, alerts and pushes are used, by day. Nothing names a phone.

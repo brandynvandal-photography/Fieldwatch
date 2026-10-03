@@ -620,3 +620,25 @@ test('the shakedown script reads a whole backend in one pass', async () => {
     assert.ok(r.admin.stats.totals && r.admin.imports, 'with the key, the counters and the last import');
   } finally { q.deleteFestival('shakedown-2026'); }
 });
+
+test('a festival\'s own staff key posts, moderates and sets the ground for that festival and nothing else; the admin issues and revokes it', async () => {
+  const other = festivals.find(f => f.id !== FEST).id;
+  assert.equal((await api('POST', `/festivals/${FEST}/partner-key`)).status, 401, 'only the admin issues keys');
+  const issued = (await api('POST', `/festivals/${FEST}/partner-key`, { headers: admin })).json;
+  assert.match(issued.key, /^[A-Za-z0-9_-]{20,}$/); assert.match(issued.link, new RegExp(`\\?f=${FEST}&staff=1$`));
+  assert.equal(q.festival(FEST).isPartner, true, 'a festival with a staff key is a partner');
+  const staff = { 'x-admin-key': issued.key };
+  assert.deepEqual((await api('GET', '/staff/me', { headers: staff })).json, { scope: 'partner', festivalId: FEST, name: q.festival(FEST).name });
+  assert.deepEqual((await api('GET', '/staff/me', { headers: admin })).json, { scope: 'admin' });
+  assert.equal((await api('GET', '/staff/me', { headers: { 'x-admin-key': 'nope' } })).status, 401);
+  assert.equal((await api('POST', `/festivals/${FEST}/posts`, { body: { title: 'Gates open late', body: 'Noon, not eleven.' }, headers: staff })).status, 201, 'its own festival: a post goes out');
+  assert.equal((await api('POST', `/festivals/${other}/posts`, { body: { title: 'x', body: 'y' }, headers: staff })).status, 401, 'another festival: no');
+  assert.equal((await api('GET', `/festivals/${FEST}/incidents/pending`, { headers: staff })).status, 200);
+  assert.equal((await api('PUT', `/festivals/${FEST}/ground`, { body: { surface: 'gravel' }, headers: staff })).status, 200);
+  assert.equal((await api('GET', '/admin/stats', { headers: staff })).status, 401, 'nothing admin-wide');
+  assert.equal((await api('POST', `/festivals/${other}/hide`, { headers: staff })).status, 401);
+  assert.equal((await api('GET', `/festivals/${FEST}/partner-key`, { headers: admin })).json.issued, true);
+  assert.equal((await api('DELETE', `/festivals/${FEST}/partner-key`, { headers: admin })).json.issued, false);
+  assert.equal((await api('POST', `/festivals/${FEST}/posts`, { body: { title: 'x', body: 'y' }, headers: staff })).status, 401, 'revoked: the key is dead');
+  assert.ok(!JSON.stringify(q.partnerKeys()).includes(issued.key), 'the key itself is never stored');
+});

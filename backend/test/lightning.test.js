@@ -13,7 +13,7 @@ const { default: webpushLib } = await import('web-push');
 const vapid = webpushLib.generateVAPIDKeys();
 process.env.VAPID_PUBLIC_KEY = vapid.publicKey; process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
 
-const { ALL_CLEAR_MS, assess, hourPrefix, keyTime, lightningFor, lightningStatus, lightningTick, milesBetween, parseListing, readFlashes, resetLightning } = await import('../src/lightning.js');
+const { ALL_CLEAR_MS, assess, flashesFor, hourPrefix, keyTime, lightningFor, lightningStatus, lightningTick, milesBetween, parseListing, readFlashes, resetLightning } = await import('../src/lightning.js');
 const { q } = await import('../src/db.js');
 const { setWebPushTransport } = await import('../src/webpush.js');
 const { default: h5wasm } = await import('h5wasm/node');
@@ -164,6 +164,18 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   assert.deepEqual(await lightningTick({ now: t2 + 8 * MIN, fetchImpl, festivals: [] }), { skipped: 'nothing is on' });
   assert.equal(lightningFor(fest.id), null);
   q.deleteFestival(fest.id);
+});
+
+test('the flashes behind a code are there for a map: within twenty miles, newest first, with distance and age', async () => {
+  resetLightning();
+  const now = Date.UTC(2026, 8, 30, 15, 10);
+  const files = new Map([[key('G19', now - 2 * MIN), lcfa(now - 2 * MIN, [north(3), north(15), north(30)])]]);
+  const listing = keys => `<ListBucketResult>${keys.map(k => `<Contents><Key>${k}</Key></Contents>`).join('')}</ListBucketResult>`;
+  const fetchImpl = async url => { const u = new URL(String(url)); if (u.hostname.startsWith('noaa-goes18')) return new Response('<Error><Code>AccessDenied</Code></Error>', { status: 403 }); if (u.searchParams.get('prefix')) return new Response(listing([...files.keys()].filter(k => k.startsWith(u.searchParams.get('prefix'))))); const k = u.pathname.slice(1); return files.has(k) ? new Response(files.get(k)) : new Response('no', { status: 404 }); };
+  await lightningTick({ now, fetchImpl, festivals: [fest] });
+  const fl = flashesFor(fest, now);
+  assert.deepEqual(fl.map(x => x.mi), [3, 15], 'three and fifteen miles out; the one thirty miles out is past the yellow ring');
+  assert.ok(fl.every(x => x.ageSeconds >= 110 && x.ageSeconds <= 130 && Number.isFinite(x.latitude) && Number.isFinite(x.longitude) && /^\d{4}-/.test(x.at)), JSON.stringify(fl));
 });
 
 test('an indoor event gets no code and no alert, whatever the sky does: the building is the shelter', async () => {

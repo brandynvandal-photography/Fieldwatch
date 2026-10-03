@@ -3,6 +3,7 @@
 // without stepping on another source's record.
 import { db, q } from '../db.js';
 import { normalizeFestival, sameFestival, sameNamedNearby, slug } from '../festivals.js';
+import { snapToGrounds } from '../grounds.js';
 import { ADD_ON, CANCELED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival } from '../names.js';
 import { iso } from '../util.js';
 export { ADD_ON, CANCELED, FESTIVAL_WORD, NOT_A_FESTIVAL, cleanName, looksLikeFestival, normalizeName, plainlyNotFestival };
@@ -59,6 +60,7 @@ export function groupListings(listings, { origin, prefix, today = iso().slice(0,
       { origin, status: 'published', id: `${prefix}-${slug(name)}-${first.start.slice(0, 4)}` });
     if (!festival) continue;
     if (campingAt.has(first.key.split('|')[1])) festival.camping = true;   // a camping pass was on sale for these grounds
+    Object.assign(festival, snapToGrounds(festival));   // a box-office pin within a walk of known grounds becomes the grounds
     // "Country In The Park" and "Country In The Park 2", same weekend, same grounds: one festival, the longer stay.
     const twin = out.find(f => sameNamedNearby(f, festival));
     if (twin) { twin.startDate = Date.parse(festival.startDate) < Date.parse(twin.startDate) ? festival.startDate : twin.startDate; twin.endDate = Date.parse(festival.endDate) > Date.parse(twin.endDate) ? festival.endDate : twin.endDate; }

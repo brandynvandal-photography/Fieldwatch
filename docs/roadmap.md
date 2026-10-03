@@ -1,5 +1,20 @@
 # Roadmap
 
+## In order
+
+The app is built; it has not met real data. Everything below the line is a human's to do, and this is the order of payoff:
+
+1. **The first live weekend** (items 2, 3, 4, 5, 15, 16; `docs/shakedown.md`): set a real contact in `NWS_USER_AGENT`, VAPID keys and
+   `ADMIN_KEY` on Railway, run `backend/scripts/shakedown.mjs`, point a monitor at `/health?strict=1`, and watch one festival through a weekend.
+2. **Pins** (item 17): check every pin in `backend/data/grounds.json` and `festivals.json` on a map and set `verifiedOn`; at the grounds, Pin it here.
+3. **One partner festival** (items 9, 10, `docs/partner.md`): issue a staff key from Settings, hand over the link, have their team post during their event.
+4. **The importers** (item 14): set the three keys, read the first import report on the Sources screen, hide what is not a festival.
+5. **A phone in a field** (items 5, 6; the Diagnostics screen): warnings with the app closed, the radar loop with no signal, battery over a day.
+6. **Native when a partner needs it** (items 1, 13; `docs/decisions.md`): compile only once Safari cannot do what a partner asks for.
+7. **The receiver node** (items 7, 8): hardware, a county, a legal read, the hazard rules on real traffic.
+
+## Items
+
 Priority order. Each item is sized for one Claude Code session.
 
 1. **Compile the iOS app.** `xcodegen generate`, build, fix errors. A no-Xcode session already fixed what it could find by reading: `SWIFT_VERSION` was `5.9` (not a language mode; now `5.0`), `RelayService`'s `lazy var`s and off-main bookkeeping are `@ObservationIgnored`, `NodeDiscovery`'s browser and probe likewise, `AppDelegate` registers for push on the main actor, and `NSAllowsLocalNetworking` is set so `http://localhost:3000` and a node's `http://` API are reachable at all. Still worth a look if the compiler complains: switch expressions in `Models.swift` and the views (valid Swift 5.9+, need Xcode 15), `@Observable` on the `NSObject` subclass `RelayService`, and Sendable warnings around `AppDelegate`.
@@ -21,3 +36,6 @@ Priority order. Each item is sized for one Claude Code session.
 16. **The live stream and zone alerts through Railway.** `GET /events` (server-sent events, `backend/src/live.js`) and the county-and-zone alert query (`nws.js` `alertsFor`) are proven against the test client and fixtures only. On Railway: `curl -N .../events` should stay open with a `: ping` every 25 s and print a `change` line when a staff post goes out; an open web page should show the post without a reload; and the poller's first `alerts/active?zone=` answers should keep a polygon warning near a festival and drop a far one.
 
 Explicitly out of scope: any attempt to receive RF on the phone, Broadcastify integration, recording festival ops radio without consent, accounts.
+
+17. **Pins on the grounds.** Every coordinate in `backend/data/festivals.json` and `backend/data/grounds.json` was typed from memory; `verifiedOn` is null on every grounds record until someone has dropped the pin on a map. The first wrong pin found was Wakaan's, on a building, which marked a camping festival indoors. Fix: check each on a map, or stand on the grounds and tap Pin it here on the Ground screen (staff key); the lookups run again for the new spot. Imports within a kilometer of known grounds, or three when they name them, already snap to the grounds' pin (`backend/src/grounds.js`).
+18. **Operate it.** `/health?strict=1` answers 503 while a feed is stale (point a monitor at it); `/admin/stats` counts use with nobody in it; a daily backup lands on the volume and `GET /admin/backup` downloads it. None of it has run on Railway yet: confirm the backups folder is on the volume (`/health` → `backups.dir`) and that one file appears a day.

@@ -8,7 +8,7 @@ import { q } from './db.js';
 
 let PUBLIC = process.env.VAPID_PUBLIC_KEY || '', PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
 const SUBJECT = process.env.VAPID_SUBJECT || 'https://brandynvandal-photography.github.io/Fieldwatch/';
-const SITE = (process.env.SITE_URL || 'https://brandynvandal-photography.github.io/Fieldwatch/').replace(/\/?$/, '/');
+export const SITE = (process.env.SITE_URL || 'https://brandynvandal-photography.github.io/Fieldwatch/').replace(/\/?$/, '/');
 let enabled = false, source = 'environment';
 if (!(PUBLIC && PRIVATE)) {
   const stored = q.setting('vapid');

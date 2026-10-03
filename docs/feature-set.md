@@ -26,6 +26,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - Hazard reports into a moderated queue.
 - Incidents from the on-site receiver node (Pi, county public-safety radio only).
 - Staff settings out of sight: the backend address, its check and the admin key show in Settings after five taps on the credits line, `?staff=1`, or once a key is saved; the public sees location, forget, and the credits.
+- A festival's own staff key, issued by the admin from Settings and shown once with a staff link: its safety team posts updates, reviews reports, corrects the ground and moves the pin for their festival, and nothing admin-wide (`docs/partner.md`).
 - Staff screens behind the admin key: post an update (alert plus push), review reports before they go out, a sources screen with the last import and a run-now button, and an All festivals screen to search the whole list and hide a listing that is not a festival (an import keeps it hidden).
 - Works from the cached pack when signal drops.
 - iOS app with a Bluetooth relay: written, never compiled.

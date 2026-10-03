@@ -204,6 +204,13 @@ test('normalizeFestival is the one gate: defaults, ranges, urls, and what a base
   assert.ok(!sameFestival(base, { ...base, latitude: 1.01, startDate: '2026-11-01T12:00:00Z', endDate: '2026-11-02T08:00:00Z' }), 'the same grounds a month later is not');
 });
 
+test('an import pinned at the box office lands on its known grounds, with the grounds\' county and camping', () => {
+  const listing = tmEvent({ name: 'Zilker Jazz Fest', dates: { start: { localDate: '2026-10-24', dateTime: '2026-10-24T17:00:00Z' } },
+    _embedded: { venues: [tmVenue({ id: 'v-zilker-box', name: 'Zilker Park Box Office', city: { name: 'Austin' }, state: { stateCode: 'TX' }, location: { latitude: '30.2669', longitude: '-97.7667' } })], attractions: [{}, {}, {}, {}] } });
+  const [f] = festivalsFrom([listing], '2026-09-28');
+  assert.deepEqual([f.latitude, f.longitude, f.location, f.county, f.camping, f.grounds], [30.2669, -97.7729, 'Zilker Park, Austin, TX', 'Travis County', false, 'zilker-park'], 'six hundred meters from the park: the park');
+});
+
 test('runImports reports every source and joins a run already in progress', async () => {
   const [a, b] = await Promise.all([runImports(), runImports()]);
   assert.equal(a, b);

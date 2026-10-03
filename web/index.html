@@ -324,6 +324,7 @@ details.more .inner{padding:0 16px 6px}
 .rmap .frame.on{opacity:.82}
 @media (prefers-reduced-motion:reduce){.rmap .frame{transition:none}}
 .rmap .pin{position:absolute;left:256px;top:256px;width:12px;height:12px;margin:-6px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px #FF5FA8,0 0 0 10px rgba(255,95,168,.28)}
+.rmap .flash{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#ffd166;box-shadow:0 0 8px 2px rgba(255,209,102,.7);pointer-events:none}
 .rmap .me{position:absolute;width:14px;height:14px;margin:-7px;border-radius:50%;background:#2F7BFF;border:3px solid #fff;box-shadow:0 0 0 7px rgba(47,123,255,.28)}
 .rmap .pinlabel{position:absolute;left:256px;top:272px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#1A1533;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
 .rmap .stamp{position:absolute;left:12px;top:12px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:16px;padding:8px 12px 7px;line-height:1.1;text-align:left}
@@ -444,16 +445,16 @@ const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || na
 
 const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false,
   fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
-  hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
+  staffScope: null, hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
   post: { title: '', body: '', severity: 'minor', error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -720,7 +721,7 @@ function go(name, param, opts){
   if (name === 'picker') S.query = '';        // the list opens whole, not filtered by what was typed last time
   S.setupOpen = false;                        // the setup choice opens on its own link, never on arrival
   render(false); window.scrollTo(0, 0);
-  if (name === 'radar' && fest()) { startRadar(fest()); locate(); }
+  if (name === 'radar' && fest()) { startRadar(fest()); locate(); loadFlashes(fest()); }
   feedShown();
   if (name === 'report') locate();
   if (name === 'moderate') loadQueue();
@@ -728,6 +729,7 @@ function go(name, param, opts){
   if (name === 'catalog') loadCatalog();
   if (name === 'feed') loadFeed();
   if (name === 'ground') startGroundEdit();
+  if (name === 'diagnostics') loadDiagnostics();
 }
 function back(){
   stopRadar();
@@ -958,6 +960,23 @@ function startGroundEdit(){
   S.groundDirty = false;
   S.groundEdit = { indoor: o.indoor ?? g.indoor ?? null, surface: o.surface || g.surface || 'grass', soil: o.soil || g.soil || 'B', low: o.low ?? g.low ?? false, structures: (o.structures || g.structures || ['canopies']).slice(), camping: o.camping ?? g.camping ?? (f && (f.camping === true || f.camping === false) ? f.camping : null) };
 }
+/** Staff standing on the grounds move the pin to where they stand; the lookups then run again for the new spot. */
+async function pinHere(){
+  const f = fest(), b = backend(); if (!f || f.id === 'here' || !b || !canStaff(f) || S.groundBusy || !S.here) return;
+  S.groundBusy = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}`, { method: 'PUT', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ latitude: S.here.latitude, longitude: S.here.longitude }) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const moved = await r.json(), at = { latitude: moved.latitude, longitude: moved.longitude };
+    for (const list of [FESTS, S.fests || []]) { const i = list.findIndex(x => x.id === f.id); if (i >= 0) list[i] = { ...list[i], ...at }; }
+    save();
+    const l = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}/ground/lookup`, { method: 'POST', headers: adminHeaders() });
+    if (l.ok) { S.cache[f.id] = { ...data(f), ground: await l.json() }; save(); startGroundEdit(); }
+    toast('Pinned here. The ground was looked up again.');
+    refresh(fest());
+  }catch(e){ toast(staffFail(e)); }
+  S.groundBusy = false; render();
+}
 function setGround(k, v){
   const e = S.groundEdit; if (!e) return;
   S.groundDirty = true;
@@ -966,7 +985,7 @@ function setGround(k, v){
   render();
 }
 async function groundCall(method, path, body){
-  const f = fest(), b = backend(); if (!f || !b || !S.admin || S.groundBusy) return;
+  const f = fest(), b = backend(); if (!f || !b || !canStaff(f) || S.groundBusy) return;
   S.groundBusy = true; render();
   try{
     const r = await fetch(`${b}/festivals/${f.id}/ground${path || ''}`, { method, headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -986,7 +1005,7 @@ function connectLive(){
   if (liveSrc && liveFor === b) return;
   if (liveSrc) liveSrc.close();
   liveFor = b; liveSrc = new EventSource(`${b}/events`);
-  liveSrc.addEventListener('change', e => { let d = null; try{ d = JSON.parse(e.data); }catch(err){} if (d) onLive(d); });
+  liveSrc.addEventListener('change', e => { let d = null; try{ d = JSON.parse(e.data); }catch(err){} if (d) { liveAt = Date.now(); onLive(d); } });
 }
 function onLive(d){
   const f = fest();
@@ -1003,6 +1022,14 @@ function askPush(f){
 function askedPush(){ const f = fest(); if (f) { S.asked = { ...(S.asked || {}), [f.id]: true }; save(); } render(); }
 // ---- staff mode: the backend address, its check and the admin key stay out of sight until someone who runs it asks ----
 const staffMode = () => Boolean(S.staff || S.admin || new URLSearchParams(location.search).get('staff') || new URLSearchParams(location.search).get('backend'));
+// A key is the admin's (everything) or one festival's staff key (that festival's posts, reports, ground and pin). Until the backend has said which, it is taken for the admin's.
+const adminScope = () => Boolean(S.admin) && !(S.staffScope && S.staffScope.scope === 'partner');
+const canStaff = f => Boolean(S.admin && f && f.id !== 'here' && (adminScope() || (S.staffScope && S.staffScope.festivalId === f.id)));
+async function whoAmI(){
+  const b = backend(); if (!b || !S.admin) { S.staffScope = null; save(); return; }
+  try{ S.staffScope = await getJSON(`${b}/staff/me`, adminHeaders()); }catch(e){ S.staffScope = e.message === 'HTTP 401' ? { scope: 'none' } : null; }
+  save(); render();
+}
 let creditsTaps = 0;
 function creditsTap(){ if (staffMode()) return; if (++creditsTaps >= 5) { S.staff = true; save(); toast('Staff settings shown'); render(); } }
 // ---- lightning codes (the backend grades them from the GOES lightning mapper, lightning.js; the phone only reads) ----
@@ -1655,7 +1682,7 @@ screens.home = () => {
       ${here ? '' : `${f.isPartner || (f.site || []).length ? `<button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">Updates from the festival</div></div>${I.chev}</button>` : ''}
       ${backend() ? `<button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">County dispatch and reports</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>` : ''}
-      ${S.admin && backend() ? `<button class="row" onclick="later(function(){ go('ground') })"><span class="lead">${I.ground}</span><div class="main"><div class="t">Ground and what is standing</div><div class="s">${esc(groundLine(d.ground) || 'What the rain and wind advice assumes')}</div></div>${I.chev}</button>` : ''}`}
+      ${canStaff(f) && backend() ? `<button class="row" onclick="later(function(){ go('ground') })"><span class="lead">${I.ground}</span><div class="main"><div class="t">Ground and what is standing</div><div class="s">${esc(groundLine(d.ground) || 'What the rain and wind advice assumes')}</div></div>${I.chev}</button>` : ''}`}
       ${pushRow()}
     </div>
     ${listingNote(f)}`;
@@ -1705,7 +1732,7 @@ screens.radar = () => {
     : `<div class="rmap" id="rmap"><div class="stage" id="stage">
         ${tiles(bbox).map(t => `<img class="tile" alt="" src="${t.url}" style="left:${t.left}px;top:${t.top}px;width:${t.size}px;height:${t.size}px" onerror="this.remove()">`).join('')}
         ${loop.frames.map((fr, i) => `<img class="frame" id="fr${i}" alt="">`).join('')}
-        <div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}
+        <div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}${flashDots(f, bbox)}
       </div>
       <div class="stamp"><span id="radar-now" class="nowtag">Now</span><b id="radar-time" class="num">Loading</b><span id="radar-ago">&nbsp;</span></div>
       <div class="legend"><i></i>light to heavy</div>
@@ -1833,7 +1860,7 @@ screens.ground = () => {
       ${kv('Standing', esc((g.structures && g.structures.length ? g.structures : ['canopies']).map(s => STRUCTURE_LABEL[s] || s).join(', ')))}
       ${kv('Rain, 48 h', g.past && g.past.in48 != null ? `${esc(g.past.in48.toFixed(2))} in<br><span class="dim">${esc(g.past.source)}</span>` : `<span class="dim">${esc(g.pastError ? 'analysis out of reach' : 'not read yet')}</span>`)}
     </div>
-    ${S.admin ? `<details class="correct"><summary>Correct it${I.chev}</summary><div class="inner">
+    ${canStaff(f) ? `<details class="correct"><summary>Correct it${I.chev}</summary><div class="inner">
     <p class="h">Setting</p>${chips('indoor', [[false, 'Outdoors'], [true, 'Indoors']], v => e.indoor === v)}
     <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_CHIP), v => e.surface === v)}
     <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_CHIP), v => e.soil === v)}
@@ -1841,7 +1868,8 @@ screens.ground = () => {
     <p class="h">Camping</p>${chips('camping', [[true, 'Yes, people camp'], [false, 'No camping']], v => e.camping === v)}
     <p class="h">What is standing</p>${chips('structures', Object.entries(STRUCTURE_CHIP), v => e.structures.includes(v))}
     <button class="btn" onclick="saveGround()" ${S.groundBusy ? 'disabled' : ''}>Save</button>
-    <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}</div>
+    <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}<button class="btn quiet small" onclick="pinHere()" ${S.groundBusy || !S.here ? 'disabled' : ''}>Pin it here</button></div>
+    <p class="note">${S.here ? `The pin is ${esc(fmtDist(away(f)))} from you. Pin it here moves it to where you stand and looks the ground up again.` : 'Pin it here needs your location on.'}</p>
     </div></details>` : ''}
     <p class="note">Looked up once per festival: the surface from OpenStreetMap, the soil from the USDA soil survey, the rain from the Iowa Mesonet. Staff settings win.</p>`;
 };
@@ -1959,7 +1987,7 @@ screens.moderate = () => {
 const staffFail = e => !e ? 'Cannot reach the backend' : e.message === 'HTTP 401' ? 'Wrong admin key' : /HTTP 5/.test(e.message) ? 'The backend is restarting or down' : /timed out/.test(e.message) ? 'The backend is not answering in time' : 'Cannot reach the backend';
 const staffHint = e => !e ? '' : e.message === 'HTTP 401' ? 'The key in Settings must match ADMIN_KEY in the backend\'s variables.' : /HTTP 5/.test(e.message) ? `${e.message}. Check its deploy log, then try again in a minute.` : /timed out/.test(e.message) ? 'It may be busy with an import. Try again in a minute.' : `${e.message} from ${backend()}. Check the address in Settings and whether the backend is up.`;
 async function loadQueue(){
-  const f = fest(), b = backend(); if (!f || f.id === 'here' || !b || !S.admin) { S.queue = null; return; }
+  const f = fest(), b = backend(); if (!f || f.id === 'here' || !b || !canStaff(f)) { S.queue = null; return; }
   S.queueBusy = true; render();
   try{ S.queue = await getJSON(`${b}/festivals/${encodeURIComponent(f.id)}/incidents/pending`, adminHeaders()); S.queueErr = null; }catch(e){ S.queue = null; S.queueErr = e; }
   S.queueBusy = false; render();
@@ -2073,6 +2101,48 @@ async function shareFestival(){
   }catch(e){ if (!e || e.name !== 'AbortError') toast("Couldn't share on this device"); }
 }
 
+/** For the phone-in-a-field test: what this phone holds, what it hears, what it can do. Nothing here leaves the phone. */
+async function loadDiagnostics(){
+  const d = { at: Date.now() };
+  try{ const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null; d.sw = !('serviceWorker' in navigator) ? 'Not in this browser' : reg ? (reg.active ? `Active${navigator.serviceWorker.controller ? ', controlling this page' : ''}` : reg.installing ? 'Installing' : 'Registered') : 'Not registered'; }catch(e){ d.sw = `Error: ${e.message}`; }
+  try{ const names = 'caches' in window ? await caches.keys() : []; let n = 0; for (const name of names) n += (await (await caches.open(name)).keys()).length; d.shell = names.length ? `${n} files in ${names.join(', ')}` : 'Nothing cached'; }catch(e){ d.shell = `Error: ${e.message}`; }
+  try{ const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; d.storage = est ? `${(est.usage / 1048576).toFixed(1)} MB of ${Math.round((est.quota || 0) / 1048576)} MB` : 'Unknown'; }catch(e){ d.storage = `Error: ${e.message}`; }
+  S.diag = d; if (S.screen === 'diagnostics') render();
+}
+let liveAt = null;
+screens.diagnostics = () => {
+  const f = fest(), d = f ? data(f) : {}, g = S.diag || {}, kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const pushLine = !PUSH_OK ? 'Not possible in this browser' : S.push && S.push.endpoint ? `On · ${esc((() => { try{ return new URL(S.push.endpoint).hostname; }catch(e){ return 'subscribed'; } })())}${S.push.checked ? ` · checked ${esc(ago(new Date(S.push.checked).toISOString()))}` : ''}` : 'Off';
+  const live = liveSrc ? (liveSrc.readyState === 1 ? 'Open' : liveSrc.readyState === 0 ? 'Connecting' : 'Closed') : 'Off';
+  return topbar(backBtn(), '', `<button class="tb glass icon" onclick="loadDiagnostics()" aria-label="Refresh">${I.refresh}</button>`) + `
+    <span class="eyebrow">This phone</span>
+    <h1 class="title">Diagnostics</h1>
+    <p class="sub">What it holds, what it hears, what it can do. Nothing here leaves the phone.</p>
+    <p class="h">Offline</p>
+    <div class="group glass">
+      ${kv('Service worker', esc(g.sw || 'Checking'))}
+      ${kv('App shell', esc(g.shell || 'Checking'))}
+      ${kv('Storage', esc(g.storage || 'Checking'))}
+      ${kv('Installed', STANDALONE ? 'Yes, from the Home Screen' : IOS ? 'No. Add to Home Screen for warnings' : 'No')}
+    </div>
+    <p class="h">${f ? esc(f.name) : 'No festival'}</p>
+    <div class="group glass">
+      ${kv('Weather', d.at ? `${esc(ago(d.at))}${d.error ? ' · last fetch failed' : ''}` : 'Not fetched')}
+      ${kv('Hourly', `${(d.hourly || []).length} hours`)}
+      ${kv('Alerts', `${(d.alerts || []).length} held`)}
+      ${kv('Lightning', d.lightning ? `${esc(d.lightning.code || 'none')}${d.lightning.dataAt ? ` · data ${esc(ago(d.lightning.dataAt))}` : ''}` : 'None')}
+      ${kv('Ground', d.ground && d.ground.lookedUpAt ? `looked up ${esc(ago(d.ground.lookedUpAt))}` : 'Not looked up')}
+      ${kv('Radar', radar.frames && radar.frames.length ? `${radar.frames.length} frames${radar.loop && radar.loop.newestAt ? `, newest ${esc(ago(radar.loop.newestAt))}` : ''}` : 'Not loaded')}
+    </div>
+    <p class="h">Hearing</p>
+    <div class="group glass">
+      ${kv('Backend', backend() ? esc(backend().replace(/^https?:\/\//, '')) : 'None')}
+      ${kv('Live stream', `${live}${liveAt ? ` · last change ${esc(ago(new Date(liveAt).toISOString()))}` : ''}`)}
+      ${kv('Warnings', pushLine)}
+      ${kv('Location', S.here ? `On · ${esc(ago(new Date(S.here.at).toISOString()))}` : S.geoDenied ? 'Blocked' : 'Off')}
+      ${kv('Online', navigator.onLine ? 'Yes' : 'No')}
+    </div>`;
+};
 screens.settings = () => topbar(backBtn(), '', '') + `
   <h1 class="title">Settings</h1>
   ${staffMode() ? `<p class="h" style="margin-top:22px">Backend</p>
@@ -2081,7 +2151,9 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
   ${staffMode() ? `<p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>` : ''}</div>` : ''}
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
+  ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
+  ${S.issued ? `<div class="card glass"><h3>Staff key for ${esc(S.issued.name)}</h3><p>Shown once. Send it and the link to the safety team; they put the key in Settings here.</p><p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.key)}</p><p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.link)}</p><div class="acts"><button class="btn small" onclick="copyText('${esc(S.issued.key)}\\n${esc(S.issued.link)}')">Copy</button><button class="btn small quiet" onclick="S.issued = null; render()">Done</button></div></div>` : ''}` : ''}
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen with an icon. Works with no signal.</p></div>` : ''}
   <p class="note">Carrier emergency alerts still arrive on their own.</p>
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
@@ -2107,14 +2179,14 @@ async function checkBackend(){
   for (const w of (h.warnings || []).filter(w => !/NWS_USER_AGENT/.test(w))) lines.push(w);
   if (h.imports) lines.push(h.imports.running ? 'An import is running' : h.imports.lastFinishedAt ? `Last import ${fmtFull(h.imports.lastFinishedAt)}` : 'No import has finished since boot');
   if (S.admin) {
-    try{ await getJSON(`${b}/admin/import`, adminHeaders()); lines.push('Admin key matches'); }
-    catch(e){ ok = false; lines.push(e.message === 'HTTP 401' ? (h.adminKey ? 'The admin key here does not match ADMIN_KEY on the backend' : 'ADMIN_KEY is not set on the backend') : `Admin check failed: ${why(e)}`); }
+    try{ const me = await getJSON(`${b}/staff/me`, adminHeaders()); S.staffScope = me; save(); lines.push(me.scope === 'admin' ? 'Admin key matches' : `Staff key for ${me.name || me.festivalId}`); }
+    catch(e){ ok = false; if (e.message === 'HTTP 401') { S.staffScope = { scope: 'none' }; save(); } lines.push(e.message === 'HTTP 401' ? (h.adminKey ? 'The key here is not the admin key or a staff key the backend knows' : 'ADMIN_KEY is not set on the backend') : `Key check failed: ${why(e)}`); }
   }
   S.check = { ok, summary: ok ? lines[0] : lines[lines.length - 1], detail: lines.join('. ') + '.' };
   S.checkBusy = false; render();
 }
 function setBackend(v){ S.backend = cleanURL(v); S.fests = null; save(); toast(S.backend === 'none' ? 'Using NWS directly' : S.backend ? 'Backend saved' : 'Using the default backend'); if (fest()) refresh(fest()); syncFestivals(); connectLive(); }
-function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.hereFest = null; S.push = null; S.favorites = {}; S.asked = {}; S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
+function forget(){ try{ localStorage.removeItem(STORE); }catch(e){} S.fest = null; S.cache = {}; S.backend = ''; S.fests = null; S.admin = ''; S.staffScope = null; S.hereFest = null; S.push = null; S.favorites = {}; S.asked = {}; S.stack = []; go('picker', null, { replace: true }); toast('Forgotten'); }
 
 // ---- the festival list: the bundled copy first, the backend's live list when one is set -------------------
 function mergeLists(a, b){ const m = new Map(); for (const f of [...(a || []), ...(b || [])]) m.set(f.id, f); return [...m.values()]; }
@@ -2135,7 +2207,19 @@ async function syncFestivals(){
 }
 
 // ---- staff: the admin key unlocks posting, moderation and the sources screen --------------------------------
-function setAdmin(v){ S.admin = v.trim(); save(); toast(S.admin ? 'Admin key saved' : 'Admin key cleared'); render(); }
+function setAdmin(v){ S.admin = v.trim(); S.staffScope = null; save(); toast(S.admin ? 'Key saved' : 'Key cleared'); render(); whoAmI(); }
+/** The admin issues a festival its staff key: shown once, with the link that opens the app on that festival in staff mode. */
+async function issueKey(){
+  const f = fest(), b = backend(); if (!f || f.id === 'here' || !b || !adminScope() || S.keyBusy) return;
+  S.keyBusy = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}/partner-key`, { method: 'POST', headers: adminHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    S.issued = { ...(await r.json()), name: f.name };
+  }catch(e){ toast(staffFail(e)); }
+  S.keyBusy = false; render();
+}
+async function copyText(t){ try{ await navigator.clipboard.writeText(t); toast('Copied'); }catch(e){ toast('Select it and copy'); } }
 const adminHeaders = () => ({ 'x-admin-key': S.admin });
 
 // ---- where you are ------------------------------------------------------------------------------------------
@@ -2185,6 +2269,21 @@ function locate(){
 }
 function retryLocate(){ S.geoDenied = false; save(); locate(); toast('Asking for your location'); }
 /** A blue dot on the radar square, if you are inside it. */
+/** The flashes behind the code, on the radar square: a dot per flash of the last half hour, fading with age. */
+function flashDots(f, bbox){
+  const fl = (data(f).flashes && data(f).flashes.flashes) || []; if (!fl.length) return '';
+  const [x0, y0, x1, y1] = bbox;
+  return fl.map(x => { const c = mercator(x.latitude, x.longitude); if (c.x < x0 || c.x > x1 || c.y < y0 || c.y > y1) return '';
+    return `<div class="flash" style="left:${((c.x - x0) / (x1 - x0) * SIZE).toFixed(1)}px;top:${((y1 - c.y) / (y1 - y0) * SIZE).toFixed(1)}px;opacity:${Math.max(0.25, 1 - (x.ageSeconds || 0) / 1800).toFixed(2)}" title="${esc(x.mi)} mi"></div>`; }).join('');
+}
+async function loadFlashes(f){
+  const b = backend(); if (!b || !f || f.id === 'here') return;
+  try{
+    const r = await getJSON(`${b}/festivals/${encodeURIComponent(f.id)}/lightning/flashes`);
+    S.cache[f.id] = { ...data(f), flashes: r }; save();
+    const st = document.getElementById('stage'); if (st && S.screen === 'radar') { st.querySelectorAll('.flash').forEach(e => e.remove()); st.insertAdjacentHTML('beforeend', flashDots(f, coverage(f))); }
+  }catch(e){}
+}
 function meDot(bbox){
   if (!S.here) return '';
   const c = mercator(S.here.latitude, S.here.longitude), [x0, y0, x1, y1] = bbox;

@@ -108,6 +108,10 @@ function carried(f, now) {
   return { code: al.code, t: Date.parse(al.expiresAt) - (al.code === 'red' ? ALL_CLEAR_MS : RECENT_MS), mi: Number(al.nearestMi) };
 }
 export const lightningFor = id => state.per.get(id) || null;
+/** The flashes of the last half hour within twenty miles of a festival, newest first, for a map: where, how far, how old. */
+export const flashesFor = (f, now = Date.now(), limit = 300) => state.flashes
+  .map(x => ({ latitude: x.lat, longitude: x.lon, at: iso(x.t), ageSeconds: Math.max(0, Math.round((now - x.t) / 1000)), mi: Math.round(milesBetween(f.latitude, f.longitude, x.lat, x.lon) * 10) / 10 }))
+  .filter(x => x.mi <= RINGS.yellow).sort((a, b) => a.ageSeconds - b.ageSeconds).slice(0, limit);
 export const lightningStatus = () => ({ on: lightningOn(), lastTickAt: state.lastTickAt ? iso(state.lastTickAt) : null, lastFileAt: state.lastFileAt ? iso(state.lastFileAt) : null,
   files: state.files, flashes: state.flashes.length, buckets: buckets().map(b => ({ bucket: b, files: 0, lastFileAt: null, lastError: null, ...state.buckets[b] })) });
 /** Tests start from nothing. */

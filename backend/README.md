@@ -33,10 +33,13 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | GET | `/festivals/:id/alerts` | Active NWS alerts, polled on demand if stale |
 | GET | `/events` | The live stream (server-sent events): a `change` event `{ festivalId, kind, at }` the moment an alert lands or ends, a heads-up is stored, a lightning code changes, a post goes out or the ground is reported; `?f=<id>` for one festival. The web build holds one open and refreshes just what changed. `/health` has `live`, how many are open |
 | GET | `/festivals/:id/radar` | Radar loop manifest: bounds, and one immutable URL per frame (see Radar) |
+| GET | `/festivals/:id/lightning/flashes` | The flashes behind the code: within twenty miles, the last half hour, newest first, each with where, how far and how old, for the radar map |
 | GET | `/radar/:festivalId/:frame.png` | One radar frame, cached for a week |
 | GET | `/festivals/:id/posts` | Staff updates |
-| POST | `/festivals/:id/posts` | Staff update (admin key); pushes to subscribers |
-| PUT | `/festivals/:id` | Add or edit a festival (admin key) |
+| POST | `/festivals/:id/posts` | Staff update (admin key, or the festival's staff key); pushes to subscribers |
+| PUT | `/festivals/:id` | Add or edit a festival (admin key; the festival's staff key edits its own) |
+| GET | `/staff/me` | What the key sent is: `{ scope: 'admin' }` or `{ scope: 'partner', festivalId, name }`, else 401 |
+| POST | `/festivals/:id/partner-key` | Issue the festival its staff key, shown once with the staff link; the festival becomes a partner. `GET` says whether one stands, `DELETE` takes it back (admin key) |
 | GET | `/festivals/:id/qr.svg` | A QR code that opens the web build on this festival (print it at the gate) |
 | GET | `/push/vapid` | The public VAPID key the web build subscribes with; 404 until keys are set |
 | POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings, or `{ subscription, point: { latitude, longitude } }` for wherever it is; either way one test notification comes straight back |
@@ -48,7 +51,7 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | POST | `/devices` | `{ token, festivalId }` subscribe a phone |
 | DELETE | `/devices/:token` | Unsubscribe |
 
-Admin calls send `x-admin-key: <ADMIN_KEY>`. Errors are always JSON (`{ error }`), including malformed bodies and unknown paths. Staff posts take an optional `severity` (`unknown`, `minor`, `moderate`, `severe`, `extreme`; default `minor`) that maps onto the same scale as NWS alerts.
+Admin calls send `x-admin-key: <ADMIN_KEY>`. A festival's safety team sends its own staff key in the same header: it works for that festival's posts, report moderation, ground and record (`PUT /festivals/:id`), and for nothing admin-wide. Keys are kept as hashes and shown once. Errors are always JSON (`{ error }`), including malformed bodies and unknown paths. Staff posts take an optional `severity` (`unknown`, `minor`, `moderate`, `severe`, `extreme`; default `minor`) that maps onto the same scale as NWS alerts.
 
 Post a staff update:
 
@@ -71,6 +74,8 @@ The phone also polls `/alerts` when it's open, and falls back to NWS directly if
 Everything that changes is announced on the **live stream** (`live.js`): `changed(festivalId, kind)` is called when an alert lands or ends (`alerts`), a heads-up is stored (`headsup`), a lightning code or nearest flash changes (`lightning`), a staff post goes out (`posts`) or the ground is reported (`ground`), and every open `GET /events` connection gets the event (a comment ping every 25 s keeps proxies from closing it; the browser reconnects on its own after 5 s). The web build opens one on load and refreshes just the festival or the feed named, so an open page moves within a second of the backend instead of waiting for its own poll. The stream has run only against the test client so far, not through Railway's proxy.
 
 ## Festival data
+
+Known grounds live in `data/grounds.json`: the places festivals happen, each with the pin on the grounds, the county, whether people camp, whether it is a building, a source, and `verifiedOn` (null until someone has dropped the pin on a map). An import or a suggestion within a kilometer of known grounds, or within three kilometers when its venue names them, takes the grounds' pin, name, county, camping and roof (`src/grounds.js`), so a ticket site's box-office pin lands on the field. Staff move a pin from the Ground screen (Pin it here) with `PUT /festivals/:id`.
 
 Several sources feed one table, and every record passes through `normalizeFestival` in `src/festivals.js` on the way in:
 

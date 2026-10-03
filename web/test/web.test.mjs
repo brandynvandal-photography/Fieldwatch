@@ -299,7 +299,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {} };
+  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {}, partnerKeys: {} };
   store.groundReports = {}; store.alerts = {}; store.radar = {};
   // The live stream: open responses, and a way for a test to push a change to every page on it (backend/src/live.js).
   store.live = [];
@@ -343,6 +343,8 @@ function fakeBackend(list) {
       if (m === 'POST' && grr) { const b = JSON.parse(raw); if (!['fine', 'soft', 'mud', 'water'].includes(b.state)) return send(400, { error: 'state' }); store.groundReports[grr[1]] = [{ state: b.state, at: new Date().toISOString() }, ...(store.groundReports[grr[1]] || [])]; return send(200, { ok: true, state: b.state, effective: 0.9, learned: b.state === 'fine' ? null : { threshold: 0.9, samples: store.groundReports[grr[1]].length, at: new Date().toISOString() }, reports: groundOf(grr[1]).reports }); }
       const ncm = path.match(/^\/festivals\/([^/]+)\/nowcast$/);
       if (m === 'GET' && ncm) return send(200, (store.nowcast || {})[ncm[1]] || { at: null, tracked: false, minutes: null });
+      const fla = path.match(/^\/festivals\/([^/]+)\/lightning\/flashes$/);
+      if (m === 'GET' && fla) return send(200, { festivalId: fla[1], at: new Date().toISOString(), on: true, flashes: (store.flashes || {})[fla[1]] || [] });
       const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
       if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
@@ -350,7 +352,14 @@ function fakeBackend(list) {
       const sameFollow = (s, b) => s.subscription.endpoint === b.endpoint && (b.festivalId ? s.festivalId === b.festivalId : !s.festivalId);
       if (m === 'POST' && path === '/push/subscribe') { const b = JSON.parse(raw); store.subs = store.subs.filter(s => !sameFollow(s, { endpoint: b.subscription.endpoint, festivalId: b.festivalId })); store.subs.push(b); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => b.festivalId || b.here ? !sameFollow(s, b) : s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
-      if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' });
+      // The admin key does everything; a festival's staff key does that festival's staff routes.
+      const partnerOf = store.partnerKeys[key] || null, keyedFest = (path.match(/^\/festivals\/([^/]+)(?:\/|$)/) || [])[1];
+      if (m === 'GET' && path === '/staff/me') return key === 'k-admin' ? send(200, { scope: 'admin' }) : partnerOf ? send(200, { scope: 'partner', festivalId: partnerOf, name: store.list.find(f => f.id === partnerOf)?.name }) : send(401, { error: 'x-admin-key required' });
+      const pk = path.match(/^\/festivals\/([^/]+)\/partner-key$/);
+      if (m === 'POST' && pk) { if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' }); const issued = `k-${pk[1]}`; store.partnerKeys[issued] = pk[1]; return send(200, { festivalId: pk[1], key: issued, link: `https://example.test/?f=${pk[1]}&staff=1` }); }
+      if (key !== 'k-admin' && !(partnerOf && partnerOf === keyedFest)) return send(401, { error: 'x-admin-key required' });
+      const fe = path.match(/^\/festivals\/([^/]+)$/);
+      if (m === 'PUT' && fe) { const b = JSON.parse(raw), f = store.list.find(x => x.id === fe[1]); if (!f) return send(404, { error: 'no such festival' }); Object.assign(f, b); return send(200, f); }
       if (m === 'PUT' && gr) { const b = JSON.parse(raw); store.ground[gr[1]] = { ...(store.ground[gr[1]] || {}), ...b, surfaceSource: b.surface ? 'staff' : 'assumed', override: b }; return send(200, groundOf(gr[1])); }
       if (m === 'DELETE' && gr) { delete store.ground[gr[1]]; return send(200, groundOf(gr[1])); }
       const grl = path.match(/^\/festivals\/([^/]+)\/ground\/lookup$/);
@@ -511,7 +520,7 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     await page.fill('#admin', 'k-wrong'); await page.locator('#admin').blur();
     await page.click('button.row:has-text("Check the backend")');
     await page.waitForSelector('button.row:has-text("Check the backend") .pill:not(.on):has-text("Problem")');
-    assert.match(await page.textContent('#app'), /The admin key here does not match ADMIN_KEY on the backend/);
+    assert.match(await page.textContent('#app'), /The key here is not the admin key or a staff key the backend knows/);
     await page.click('button:has-text("Festival sources")');
     await page.waitForSelector('.sub:has-text("Wrong admin key")');
     assert.match(await page.textContent('#app'), /must match ADMIN_KEY/);
@@ -864,6 +873,13 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     await page.waitForSelector('.alerthead');
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.bolt.red');
+    // The flashes behind the code sit on the radar square, fading with age; one far outside the square is not drawn.
+    store.flashes = { 'hulaween-2026': [{ latitude: 30.456, longitude: -82.9395, at: minutesAgo(2), ageSeconds: 120, mi: 3.6 }, { latitude: 30.52, longitude: -82.80, at: minutesAgo(20), ageSeconds: 1200, mi: 12.1 }, { latitude: 35, longitude: -90, at: minutesAgo(1), ageSeconds: 60, mi: 400 }] };
+    await page.click('button.orb:has-text("Radar")'); await page.waitForSelector('.rmap .flash');
+    assert.equal(await page.$$eval('.rmap .flash', els => els.length), 2, 'two flashes inside the square');
+    const fade = await page.$$eval('.rmap .flash', els => els.map(e => parseFloat(e.style.opacity)));
+    assert.ok(fade[0] > fade[1], 'the newer flash is brighter');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.red');
     assert.equal(await page.$('h1.title .pill'), null, 'the code is on the tile under the sky, not beside the name');
     assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code Red');
     assert.match(await page.textContent('.bolt .s'), /^Rapid evacuation, full work stoppage · all clear in 2[67] min$/);
@@ -1133,6 +1149,63 @@ test('the radar loop comes from the backend when its cache is current, and from 
     await page.waitForFunction(() => document.querySelectorAll('.frame').length === 24 && document.getElementById('radar-loaded')?.textContent === '');
     assert.equal(seen.frames.length, 48, 'no new archive requests');
     assert.ok(store.calls.some(c => /^GET \/radar\/hulaween-2026\/.*\.png$/.test(c)), 'the frames came from the backend');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('a festival\'s staff key opens that festival\'s staff rows and nothing admin-wide; the admin issues it from Settings', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 30.4051, longitude: -82.9401 });   // on the Hulaween grounds, a hundred meters from the pin
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  const other = FESTS.find(f => isLive(f) && f.id !== 'hulaween-2026');
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&staff=1`);
+    await page.click('button:has-text("Use my location")');
+    await page.waitForSelector('.sky.warn', { timeout: 10000 });
+    assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'standing on the grounds: the festival opens by itself');
+    // The admin issues Hulaween its key.
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('#admin');
+    await page.fill('#admin', 'k-admin'); await page.locator('#admin').blur();
+    await page.waitForSelector('button.row:has-text("Staff key for Suwannee Hulaween")');
+    await page.click('button.row:has-text("Staff key for Suwannee Hulaween")');
+    await page.waitForSelector('.card:has-text("Shown once")');
+    assert.match(await page.textContent('.card:has-text("Shown once")'), /k-hulaween-2026.*f=hulaween-2026&staff=1/s, 'the key and the staff link, once');
+    assert.deepEqual(store.partnerKeys, { 'k-hulaween-2026': 'hulaween-2026' });
+    // Their safety team puts the key in: their festival's rows, not the admin's.
+    await page.fill('#admin', 'k-hulaween-2026'); await page.locator('#admin').blur();
+    await page.waitForSelector('.note:has-text("Staff key for Suwannee Hulaween")');
+    assert.ok(await page.$('button.row:has-text("Post an update")'), 'their posts');
+    assert.ok(await page.$('button.row:has-text("Review reports")'), 'their reports');
+    assert.equal(await page.$('button.row:has-text("Festival sources")'), null, 'not the sources');
+    assert.equal(await page.$('button.row:has-text("All festivals")'), null, 'not the catalog');
+    await page.click('button.row:has-text("Check the backend")'); await page.waitForSelector('button.row:has-text("Check the backend") .pill.on');
+    assert.match(await page.textContent('#app'), /Staff key for Suwannee Hulaween/);
+    await page.click('button.row:has-text("Post an update")'); await page.waitForSelector('#p-title');
+    await page.fill('#p-title', 'Gates open at noon'); await page.fill('#p-body', 'Not eleven. Sound check ran long.'); await page.click('#p-send');
+    await page.waitForSelector('.toast.show:has-text("Posted")'); await page.waitForSelector('#admin');
+    assert.equal(store.posts[0].key, 'k-hulaween-2026');
+    // Standing on the grounds, their staff move the pin to where they stand; the ground is looked up again for the new spot.
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    await page.click('button.row:has-text("Ground and what is standing")'); await page.waitForSelector('h1.title:has-text("Ground")');
+    await page.click('details.correct summary'); await page.click('button:has-text("Pin it here")');
+    await page.waitForSelector('.toast.show:has-text("Pinned here")');
+    assert.deepEqual([store.list.find(f => f.id === 'hulaween-2026').latitude, store.list.find(f => f.id === 'hulaween-2026').longitude], [30.4051, -82.9401]);
+    assert.ok(store.calls.includes('PUT /festivals/hulaween-2026') && store.calls.includes('POST /festivals/hulaween-2026/ground/lookup'), `the pin, then the lookups: ${store.calls.slice(-4)}`);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    // Diagnostics: what this phone holds and hears, for the test in the field.
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('#admin');
+    await page.click('button.row:has-text("Diagnostics")'); await page.waitForSelector('h1.title:has-text("Diagnostics")');
+    await page.waitForFunction(() => [...document.querySelectorAll('.kv')].some(k => /Service worker/.test(k.textContent) && !/Checking/.test(k.textContent)));
+    const diag = await page.textContent('#app');
+    assert.match(diag, /Service worker.*App shell.*Storage.*Suwannee Hulaween.*Weather.*Live stream.*Open.*Warnings.*Location.*On/s, 'every row the field test reads');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('#admin');
+    // At another festival the same key does nothing.
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('h1.title:has-text("Festivals")');
+    await page.click(`.feedfest:has-text("${other.name}") button.fh`); await page.waitForSelector('.sky');
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('#admin');
+    assert.equal(await page.$('button.row:has-text("Post an update")'), null, 'another festival: no staff rows');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

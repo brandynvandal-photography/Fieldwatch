@@ -56,6 +56,7 @@ export function normalizeFestival(input = {}, { base = null, origin = 'curated',
   const opens = BARE_DATE.test(f.groundsOpen) ? dayStart(f.groundsOpen) : validIso(f.groundsOpen);
   if (opens && Date.parse(opens) <= Date.parse(startDate)) out.groundsOpen = opens;
   if (f.verifiedOn) out.verifiedOn = String(f.verifiedOn).slice(0, 10);
+  if (text(f.grounds, 60)) out.grounds = text(f.grounds, 60);   // the known grounds this record sits on (grounds.js)
   const note = text(f.note, 300); if (note) out.note = note;
   if (f.submittedAt) out.submittedAt = f.submittedAt;
   if (f.ground && typeof f.ground === 'object') out.ground = f.ground;   // what the lookups found and what staff set (ground.js)

@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { randomUUID, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -8,7 +8,7 @@ import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { festivalsInWindow, pollFestival, polledRecently, pollingStatus } from './poller.js';
 import { pushAlert } from './push.js';
-import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
+import { SITE, pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
 import QRCode from 'qrcode';
 import { RADAR_DIR, noteInterest, radarLoop, radarStatus, refreshRadarSoon } from './radar.js';
 import { backupNow, backupStatus, backups } from './backup.js';
@@ -16,9 +16,10 @@ import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './i
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
-import { lightningFor, lightningOn, lightningStatus } from './lightning.js';
+import { flashesFor, lightningFor, lightningOn, lightningStatus } from './lightning.js';
 import { GROUND_STATES, groundFor, groundStatus, lookupGround, reportGround, reportSummary, validOverride } from './ground.js';
 import { nowcastFor } from './nowcast.js';
+import { snapToGrounds } from './grounds.js';
 import { changed, liveCount, sse } from './live.js';
 import { iso } from './util.js';
 
@@ -67,6 +68,11 @@ const requireAdmin = keyed('x-admin-key', 'ADMIN_KEY');
 const requireNode = keyed('x-node-key', 'NODE_KEY');
 
 const isAdmin = req => sameKey(req.get('x-admin-key'), process.env.ADMIN_KEY);
+// A festival's own staff key: issued by the admin, held by the festival's safety team, good for that festival's posts,
+// moderation, ground and record, nothing else. Kept hashed; shown once when issued. Not an account: nothing names a person.
+const hashKey = k => createHash('sha256').update(String(k)).digest('hex');
+const partnerOf = req => { const given = req.get('x-admin-key'); if (!given) return null; const h = hashKey(given); return q.partnerKeys().find(p => sameKey(h, p.hash))?.festivalId || null; };
+const requireStaff = (req, res, next) => isAdmin(req) || partnerOf(req) === req.params.id ? next() : res.status(401).json({ error: 'x-admin-key required' });
 const loadFestival = (req, res, next) => {
   const f = q.festival(req.params.id);
   if (!f || ((f.status || 'published') !== 'published' && !isAdmin(req))) return res.status(404).json({ error: 'no such festival' });
@@ -187,8 +193,9 @@ app.post('/festivals', (req, res) => {
   if (recent.length >= 3) return res.status(429).json({ error: 'too many suggestions, try again later' });
   suggestTimes.set(ip, [...recent, now]);
   const body = req.body || {};
-  const { festival, error } = normalizeFestival(body, { origin: 'community', status: 'pending', id: `sub-${slug(body.name || 'festival') || 'festival'}-${randomUUID().slice(0, 6)}` });
+  const { festival: raw, error } = normalizeFestival(body, { origin: 'community', status: 'pending', id: `sub-${slug(body.name || 'festival') || 'festival'}-${randomUUID().slice(0, 6)}` });
   if (error) return res.status(400).json({ error });
+  const festival = snapToGrounds(raw);
   Object.assign(festival, { isPartner: false, feeds: [], site: [], featured: false, submittedAt: iso() });
   q.upsertFestival(festival);
   console.log(`[festivals] suggested: ${festival.name} (${festival.location}) ${festival.startDate.slice(0, 10)}`);
@@ -234,26 +241,28 @@ app.post('/festivals/:id/ground/report', loadFestival, wrap(async (req, res) => 
 }));
 
 /** Staff set what the lookups cannot see: the surface, how it drains, low ground, and what is standing (canopies, inflatables, a stage). */
-app.put('/festivals/:id/ground', requireAdmin, loadFestival, wrap(async (req, res) => {
+app.put('/festivals/:id/ground', requireStaff, loadFestival, wrap(async (req, res) => {
   const { override, error } = validOverride(req.body || {});
   if (error) return res.status(400).json({ error });
   const f = { ...req.festival, ground: { ...(req.festival.ground || {}), override } };
   q.upsertFestival(f);
   res.json(await groundFor(f));
 }));
-app.delete('/festivals/:id/ground', requireAdmin, loadFestival, wrap(async (req, res) => {
+app.delete('/festivals/:id/ground', requireStaff, loadFestival, wrap(async (req, res) => {
   const { override, ...rest } = req.festival.ground || {};
   const f = { ...req.festival, ground: rest };
   q.upsertFestival(f);
   res.json(await groundFor(f));
 }));
 /** Run the surface and soil lookups again now (they otherwise run once, for a festival that is on). */
-app.post('/festivals/:id/ground/lookup', requireAdmin, loadFestival, wrap(async (req, res) => {
+app.post('/festivals/:id/ground/lookup', requireStaff, loadFestival, wrap(async (req, res) => {
   const ground = await lookupGround(req.festival, { save: f => q.upsertFestival(f) });
   res.json(await groundFor({ ...req.festival, ground }));
 }));
 
 /** Lightning near the festival right now (lightning.js): the code, the nearest flash, counts by ring, the all-clear time. */
+/** The flashes behind the code, for the radar map: within twenty miles, the last half hour, newest first. */
+app.get('/festivals/:id/lightning/flashes', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json({ festivalId: req.festival.id, at: iso(), on: lightningOn(), flashes: flashesFor(req.festival) }));
 app.get('/festivals/:id/lightning', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(lightningFor(req.festival.id) || { code: 'none', at: iso(), on: lightningOn(), source: 'GOES GLM' }));
 
 /** Where the rain on the radar is going and when it gets here, from the frames on disk (nowcast.js). */
@@ -273,7 +282,7 @@ app.get('/festivals/:id/alerts', loadFestival, wrap(async (req, res) => {
 
 app.get('/festivals/:id/posts', loadFestival, (req, res) => res.json(q.posts(req.festival.id)));
 
-app.post('/festivals/:id/posts', requireAdmin, loadFestival, wrap(async (req, res) => {
+app.post('/festivals/:id/posts', requireStaff, loadFestival, wrap(async (req, res) => {
   const { title, body, severity = 'minor' } = req.body || {};
   if (!title || !body) return res.status(400).json({ error: 'title and body required' });
   if (!SEVERITIES.includes(severity)) return res.status(400).json({ error: `severity must be one of ${SEVERITIES.join(', ')}` });
@@ -353,8 +362,8 @@ app.post('/festivals/:id/reports', loadFestival, (req, res) => {
   res.status(202).json({ id: incident.id, queued: true });
 });
 
-app.get('/festivals/:id/incidents/pending', requireAdmin, loadFestival, (req, res) => res.json(q.pendingIncidents(req.festival.id)));
-app.post('/festivals/:id/incidents/:iid/publish', requireAdmin, loadFestival, wrap(async (req, res) => {
+app.get('/festivals/:id/incidents/pending', requireStaff, loadFestival, (req, res) => res.json(q.pendingIncidents(req.festival.id)));
+app.post('/festivals/:id/incidents/:iid/publish', requireStaff, loadFestival, wrap(async (req, res) => {
   const i = q.incident(req.params.iid);
   if (!i || i.festivalId !== req.festival.id) return res.status(404).json({ error: 'no such incident' });
   if (req.body?.summary) {
@@ -363,11 +372,11 @@ app.post('/festivals/:id/incidents/:iid/publish', requireAdmin, loadFestival, wr
   }
   res.json({ id: i.id, push: await publishAndPush(req.festival, i) });
 }));
-app.delete('/festivals/:id/incidents/:iid', requireAdmin, loadFestival, (req, res) => { q.deleteIncident(req.params.iid); res.json({ ok: true }); });
+app.delete('/festivals/:id/incidents/:iid', requireStaff, loadFestival, (req, res) => { q.deleteIncident(req.params.iid); res.json({ ok: true }); });
 
 // ---- Admin and devices ---------------------------------------------------
 
-app.put('/festivals/:id', requireAdmin, (req, res) => {
+app.put('/festivals/:id', requireStaff, (req, res) => {
   const { festival, error } = normalizeFestival(req.body || {}, { base: q.festival(req.params.id), id: req.params.id });
   if (error) return res.status(400).json({ error });
   festival.id = req.params.id; festival.status = 'published';
@@ -403,6 +412,21 @@ app.post('/push/subscribe', wrap(async (req, res) => {
   res.json({ ok: true, welcome: quiet ? false : await pushWelcome(clean, target) });
 }));
 app.get('/admin/import', requireAdmin, (req, res) => res.json({ ...(imports.last || { never: true }), running: imports.running }));
+/** Who a key is: the admin, or one festival's staff. The web build hides what a key cannot do. */
+app.get('/staff/me', (req, res) => {
+  if (isAdmin(req)) return res.json({ scope: 'admin' });
+  const id = partnerOf(req); if (!id) return res.status(401).json({ error: 'x-admin-key required' });
+  res.json({ scope: 'partner', festivalId: id, name: q.festival(id)?.name || id });
+});
+/** Issue a festival its staff key (replacing any before), shown once; the festival becomes a partner. The admin can read whether one stands, and take it back. */
+app.post('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => {
+  const key = randomBytes(18).toString('base64url');
+  q.setSetting(`partner:${req.festival.id}`, hashKey(key));
+  if (!req.festival.isPartner) q.upsertFestival({ ...req.festival, isPartner: true });
+  res.json({ festivalId: req.festival.id, key, link: `${SITE}?f=${encodeURIComponent(req.festival.id)}&staff=1` });
+});
+app.get('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => res.json({ festivalId: req.festival.id, issued: Boolean(q.setting(`partner:${req.festival.id}`)) }));
+app.delete('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => { q.deleteSetting(`partner:${req.festival.id}`); res.json({ festivalId: req.festival.id, issued: false }); });
 /** Use, with nobody in it: packs opened, alerts listed and stored, pushes sent, heads-ups, posts, reports, follows, per festival, for the last `days` (7, up to 90). */
 app.get('/admin/stats', requireAdmin, (req, res) => {
   const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
