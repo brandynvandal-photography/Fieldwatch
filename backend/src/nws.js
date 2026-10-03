@@ -1,5 +1,5 @@
-// National Weather Service API. Free, no key, but it wants a User-Agent with a contact.
-const UA = process.env.NWS_USER_AGENT || 'Fieldwatch/0.1 (you@example.com)';
+// National Weather Service API. Free, no key, but it wants a User-Agent with a contact (site.js: the app's page unless NWS_USER_AGENT says otherwise).
+import { USER_AGENT as UA } from './site.js';
 
 async function nws(url) {
   const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/geo+json' } });

@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync, w
 import { join, resolve } from 'node:path';
 import { festivalsInWindow } from './poller.js';
 import { iso } from './util.js';
+import { USER_AGENT as UA } from './site.js';
 
 export const RADAR_DIR = resolve(process.env.RADAR_DIR || 'radar');
 export const ATTRIBUTION = 'NOAA NEXRAD via Iowa Environmental Mesonet';
@@ -17,7 +18,6 @@ const STEP_MS = Number(process.env.RADAR_STEP_MINUTES || 10) * 60_000;
 const LAG_MS = 10 * 60_000;     // a composite is available a few minutes after its timestamp
 const HALF_M = 160_000;         // meters from the grounds to the edge of the image
 export const SIZE = 512;
-const UA = process.env.NWS_USER_AGENT || 'Fieldwatch/0.1 (you@example.com)';
 
 // EPSG:3857, which MapKit and the WMS share, so the image drops straight onto the map.
 const R = 6378137;

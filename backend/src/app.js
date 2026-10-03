@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -8,7 +8,9 @@ import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { festivalsInWindow, pollFestival, polledRecently, pollingStatus } from './poller.js';
 import { pushAlert } from './push.js';
-import { SITE, pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
+import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
+import { SITE, USER_AGENT, placeholderAgent } from './site.js';
+import { adminKeyStatus, ensureAdminKey, hashKey, isAdminKey, sameKey } from './adminkey.js';
 import QRCode from 'qrcode';
 import { RADAR_DIR, noteInterest, radarLoop, radarStatus, refreshRadarSoon } from './radar.js';
 import { backupNow, backupStatus, backups } from './backup.js';
@@ -57,20 +59,15 @@ app.use('/radar', express.static(RADAR_DIR, { maxAge: '7d', immutable: true }));
 // Express 4 doesn't catch rejected promises from async handlers; this does.
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
-const sameKey = (given, expected) => {
-  if (!given || !expected) return false;
-  const a = Buffer.from(String(given)), b = Buffer.from(String(expected));
-  return a.length === b.length && timingSafeEqual(a, b);
-};
-const keyed = (header, envName) => (req, res, next) =>
-  sameKey(req.get(header), process.env[envName]) ? next() : res.status(401).json({ error: `${header} required` });
-const requireAdmin = keyed('x-admin-key', 'ADMIN_KEY');
-const requireNode = keyed('x-node-key', 'NODE_KEY');
+// The admin key: ADMIN_KEY if set, else one the server made on first boot and keeps hashed (adminkey.js); server.js prints a new one once.
+export const adminKeyBoot = ensureAdminKey();
+const isAdmin = req => isAdminKey(req.get('x-admin-key'));
+const requireAdmin = (req, res, next) => (isAdmin(req) ? next() : res.status(401).json({ error: 'x-admin-key required' }));
+// Receiver nodes share NODE_KEY. Without one there is no node, and the upload routes answer 401.
+const requireNode = (req, res, next) => (sameKey(req.get('x-node-key'), process.env.NODE_KEY) ? next() : res.status(401).json({ error: 'x-node-key required' }));
 
-const isAdmin = req => sameKey(req.get('x-admin-key'), process.env.ADMIN_KEY);
 // A festival's own staff key: issued by the admin, held by the festival's safety team, good for that festival's posts,
 // moderation, ground and record, nothing else. Kept hashed; shown once when issued. Not an account: nothing names a person.
-const hashKey = k => createHash('sha256').update(String(k)).digest('hex');
 const partnerOf = req => { const given = req.get('x-admin-key'); if (!given) return null; const h = hashKey(given); return q.partnerKeys().find(p => sameKey(h, p.hash))?.festivalId || null; };
 const requireStaff = (req, res, next) => isAdmin(req) || partnerOf(req) === req.params.id ? next() : res.status(401).json({ error: 'x-admin-key required' });
 const loadFestival = (req, res, next) => {
@@ -107,7 +104,7 @@ async function publishAndPush(festival, incident) {
 }
 
 // A page to open in a browser when the app says it cannot reach the backend: which build this is, where its data
-// lives, which sources have keys and whether an import has run. No secrets: a key is reported as set or not.
+// lives, which sources have keys and whether an import has run. No secrets: a key is reported by where it comes from, never itself.
 /** What a monitor should alert on: no successful alert poll in ten minutes, no lightning file in five, while a festival is on. The rest is a warning. */
 export function healthProblems({ on = festivalsInWindow().length } = {}) {
   const ageMin = t => t ? (Date.now() - Date.parse(t)) / 60_000 : null;
@@ -115,8 +112,8 @@ export function healthProblems({ on = festivalsInWindow().length } = {}) {
   if (on && p.lastRunAt && (!p.lastOkAt || ageMin(p.lastOkAt) > 10)) problems.push(p.lastOkAt ? `alerts: no successful poll in ${Math.round(ageMin(p.lastOkAt))} min${p.lastError ? ` (${p.lastError})` : ''}` : `alerts: no successful poll yet${p.lastError ? ` (${p.lastError})` : ''}`);
   if (on && l.on && l.lastTickAt && (!l.lastFileAt || ageMin(l.lastFileAt) > 5)) problems.push(l.lastFileAt ? `lightning: last file ${Math.round(ageMin(l.lastFileAt))} min ago` : 'lightning: no file read yet');
   if (r.lastError && (!r.lastOkAt || Date.parse(r.errorAt) > Date.parse(r.lastOkAt))) warnings.push(`radar: ${r.lastError}`);
-  if (!process.env.NWS_USER_AGENT || /example\.com/.test(process.env.NWS_USER_AGENT)) warnings.push('NWS_USER_AGENT is a placeholder; the weather service may refuse us');
-  if (!process.env.ADMIN_KEY) warnings.push('no ADMIN_KEY: staff routes are off');
+  if (process.env.NWS_USER_AGENT && placeholderAgent(process.env.NWS_USER_AGENT)) warnings.push('NWS_USER_AGENT names example.com and is ignored; the default names the site');
+  if (process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_VOLUME_MOUNT_PATH) warnings.push('no volume: the database, the admin key and the push keys are lost on every deploy');
   if (!webPushEnabled()) warnings.push('web push off: no VAPID keys');
   if (b.lastError) warnings.push(`backup: ${b.lastError}`);
   return { problems, warnings };
@@ -129,8 +126,8 @@ app.get('/health', (req, res) => { const { problems, warnings } = healthProblems
   database: { path: process.env.DB_PATH || 'fieldwatch.db', onVolume: Boolean(process.env.RAILWAY_VOLUME_MOUNT_PATH) },
   festivals: q.publishedFestivals().length,
   push: { web: webPushEnabled() },
-  adminKey: Boolean(process.env.ADMIN_KEY),
-  nwsUserAgent: !process.env.NWS_USER_AGENT || /example\.com/.test(process.env.NWS_USER_AGENT) ? 'placeholder' : 'set',
+  adminKey: adminKeyStatus().source,
+  nwsUserAgent: placeholderAgent(process.env.NWS_USER_AGENT) ? 'default' : 'set', userAgent: USER_AGENT,
   sources: { ticketmaster: Boolean(process.env.TICKETMASTER_KEY), seatgeek: Boolean(process.env.SEATGEEK_CLIENT_ID), edmtrain: Boolean(process.env.EDMTRAIN_KEY), wikidata: wikidataSkipped() || 'on', feeds: Boolean(process.env.FESTIVAL_FEEDS) },
   lightning: lightningStatus(),
   ground: groundStatus(),

@@ -5,9 +5,9 @@
 // The model in incoming.js turns it all into mud tiers and wind lines.
 import { iso } from './util.js';
 import { mudTier } from './incoming.js';
+import { USER_AGENT as UA } from './site.js';
 
 const HOUR = 3_600_000, DAY = 24 * HOUR, TTL = 3 * HOUR;
-const UA = process.env.NWS_USER_AGENT || 'Fieldwatch/0.1 (you@example.com)';
 const IEMRE = process.env.IEMRE_URL || 'https://mesonet.agron.iastate.edu/iemre';
 const errorText = e => `${e?.message || e}${e?.cause?.code ? ` (${e.cause.code})` : ''}`;
 const ymd = t => new Date(t).toISOString().slice(0, 10);

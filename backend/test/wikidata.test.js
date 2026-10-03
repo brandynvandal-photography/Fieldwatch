@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { items, hulaween, riverfests, twoEditions, sparqlResult, classResult, answerSparql, pages, robots, wdItem } from './fixtures/wikidata.js';
 
 process.env.DB_PATH = ':memory:';
-process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';   // a real-looking contact: the placeholder's example.com switches the importer off
+process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';   // the tests' own contact; every request must carry it
 delete process.env.WIKIDATA_IMPORT;
 
 const { q } = await import('../src/db.js');
@@ -144,17 +144,16 @@ test('listings take the page geo only when near the Wikidata point, fold by name
   assert.equal(festivalsFrom([l('Fest & Co', 'a|Q1', '2026-10-01T16:00:00Z'), l('Fest and Co', 'b|Q1', '2026-10-03T16:00:00Z')], '2026-09-28').length, 1);
 });
 
-test('the switch: off by false, 0 or no; on otherwise, but not until NWS_USER_AGENT is a real contact', () => {
-  const ua = 'Fieldwatch/1.0 (ops@fieldwatch.test)';
-  for (const v of ['false', 'FALSE', '0', 'no', ' No ', false]) assert.equal(skipReason({ enabled: v, userAgent: ua }), 'WIKIDATA_IMPORT=false', String(v));
-  for (const v of [undefined, '', 'true', '1', 'yes', 'on', true]) assert.equal(skipReason({ enabled: v, userAgent: ua }), null, String(v));
-  for (const bad of ['', '  ', 'Fieldwatch/0.1 (you@example.com)', 'Fieldwatch (ops@EXAMPLE.COM)']) assert.match(skipReason({ enabled: 'true', userAgent: bad }), /NWS_USER_AGENT/, JSON.stringify(bad));
-  assert.equal(skipReason({ enabled: 'false', userAgent: '' }), 'WIKIDATA_IMPORT=false', 'off is off, whatever the agent');
-  assert.equal(skipReason(), null, 'this suite runs with a contact set and the switch unset');
+test('the switch: off by false, 0 or no; on otherwise, whatever the agent, since the default agent names the site', () => {
+  for (const v of ['false', 'FALSE', '0', 'no', ' No ', false]) assert.equal(skipReason({ enabled: v }), 'WIKIDATA_IMPORT=false', String(v));
+  for (const v of [undefined, '', 'true', '1', 'yes', 'on', true]) assert.equal(skipReason({ enabled: v }), null, String(v));
+  assert.equal(skipReason(), null, 'this suite runs with the switch unset');
   assert.equal(importsConfigured(), true, 'a keyless deployment still imports');
   const saved = process.env.NWS_USER_AGENT;
-  process.env.NWS_USER_AGENT = 'Fieldwatch/0.1 (you@example.com)';
-  assert.match(skipReason(), /placeholder/); assert.equal(importsConfigured(), false, 'nothing else is configured here');
+  for (const ua of [undefined, 'Fieldwatch/0.1 (you@example.com)']) {
+    if (ua === undefined) delete process.env.NWS_USER_AGENT; else process.env.NWS_USER_AGENT = ua;
+    assert.equal(skipReason(), null, `${ua}: still on, as the default agent`); assert.equal(importsConfigured(), true);
+  }
   process.env.NWS_USER_AGENT = saved;
 });
 
@@ -240,16 +239,11 @@ test('the import: one query, polite site reads, a cache that makes the next run 
   await importWikidata({ ...opts, now: NOW + 7 * DAY });
   assert.ok(!('https://hulaween.example/' in cache()));
 
-  // Off by the switch, every way of saying so; off with a placeholder contact, with a reason that says which.
+  // Off by the switch, every way of saying so. No agent switches it off: unset, the default names the site.
   fetched.length = 0;
   assert.deepEqual(await importWikidata({ ...opts, enabled: false }), { skipped: 'WIKIDATA_IMPORT=false' });
   for (const v of ['false', '0', 'no']) { process.env.WIKIDATA_IMPORT = v; assert.deepEqual(await importWikidata(opts), { skipped: 'WIKIDATA_IMPORT=false' }, v); }
   delete process.env.WIKIDATA_IMPORT;
-  assert.match((await importWikidata({ ...opts, userAgent: 'Fieldwatch/0.1 (you@example.com)' })).skipped, /NWS_USER_AGENT is unset or still the example\.com placeholder/);
-  assert.match((await importWikidata({ ...opts, userAgent: '' })).skipped, /NWS_USER_AGENT/);
-  const saved = process.env.NWS_USER_AGENT; delete process.env.NWS_USER_AGENT;
-  assert.match((await importWikidata(opts)).skipped, /NWS_USER_AGENT/);
-  process.env.NWS_USER_AGENT = saved;
   assert.deepEqual(fetched, [], 'nothing was asked of anyone');
 
   // The endpoint is down or refuses: one error, nothing read, nothing pruned, the cache untouched.

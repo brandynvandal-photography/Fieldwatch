@@ -3,6 +3,7 @@
 // same schedule as the other imports. Rows are trusted (it is your sheet) but still validated.
 import { q } from '../db.js';
 import { normalizeFestival, slug } from '../festivals.js';
+import { USER_AGENT } from '../site.js';
 
 export function parseCSV(text) {
   const rows = []; let row = [], cell = '', quoted = false;
@@ -40,7 +41,7 @@ export async function importFeeds({ urls = (process.env.FESTIVAL_FEEDS || '').sp
   for (const u of urls) {
     let text;
     try {
-      const res = await fetchImpl(u, { headers: { 'User-Agent': process.env.NWS_USER_AGENT || 'Fieldwatch' } });
+      const res = await fetchImpl(u, { headers: { 'User-Agent': USER_AGENT } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       text = await res.text();
     } catch (e) { log.error(`feed ${u}: ${e.message}`); report.rejected.push({ feed: u, error: e.message }); continue; }

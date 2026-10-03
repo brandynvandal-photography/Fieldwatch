@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 process.env.DB_PATH = ':memory:';
-process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
+process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
 const { coverFromNLCD, effectiveGround, ensureGround, groundFor, indoorFromTags, indoorFromWords, learnedThreshold, lookupGround, pastRain, reportGround, reportSummary, soilFromUSDA, surfaceFromOSM, surfaceFromTags, validOverride } = await import('../src/ground.js');
 const { iso } = await import('../src/util.js');
 

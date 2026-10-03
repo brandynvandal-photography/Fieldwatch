@@ -1,5 +1,6 @@
 import './env.js';
-import { app } from './app.js';
+import { adminKeyBoot, app } from './app.js';
+import { USER_AGENT } from './site.js';
 import { startPolling } from './poller.js';
 import { startRadarLoop } from './radar.js';
 import { seedIfEmpty } from './seed.js';
@@ -9,6 +10,9 @@ import { startBackups } from './backup.js';
 
 const seeded = seedIfEmpty();
 if (seeded) console.log(`Empty database; seeded ${seeded} festivals from data/festivals.json`);
+if (adminKeyBoot.key) console.log(`\n==== Admin key, shown this once (kept hashed from here on) ====\n${adminKeyBoot.key}\nPaste it into the web build's Settings (open it with ?staff=1). Lost it: set ADMIN_KEY in the variables, or run npm run admin-key.\n====\n`);
+else console.log(`Admin key from the ${adminKeyBoot.source}${adminKeyBoot.madeAt ? `, made ${adminKeyBoot.madeAt}` : ''}`);
+console.log(`As ${USER_AGENT} to the weather service, the radar archive, Wikidata and the festival sites`);
 
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {

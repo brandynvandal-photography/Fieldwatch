@@ -15,7 +15,7 @@ process.env.RADAR_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-radar-'));
 process.env.BACKUP_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-backup-'));
 process.env.ADMIN_KEY = 'test-admin';
 process.env.NODE_KEY = 'test-node';
-process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
+process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
 delete process.env.OPENAI_API_KEY;
 delete process.env.APNS_KEY_PATH;
 delete process.env.TICKETMASTER_KEY; delete process.env.SEATGEEK_CLIENT_ID; delete process.env.EDMTRAIN_KEY; delete process.env.FESTIVAL_FEEDS;
@@ -47,6 +47,7 @@ globalThis.fetch = async (url, opts = {}) => {
 
 const { app } = await import('../src/app.js');
 const { q } = await import('../src/db.js');
+const { adminKeyStatus, ensureAdminKey, resetAdminKey } = await import('../src/adminkey.js');
 const { pollFestival, pollPoint, headsUp } = await import('../src/poller.js');
 const { refreshRadar, radarWanted, noteInterest } = await import('../src/radar.js');
 const { setWebPushTransport } = await import('../src/webpush.js');
@@ -309,7 +310,8 @@ test('the list is what is on: a week before gates for early entry and crews, thr
   assert.ok((await api('GET', '/festivals?all=1')).json.some(f => f.id === junk.id));
   assert.equal((await api('POST', '/festivals/nope/hide', { headers: admin })).status, 404);
   const h = (await api('GET', '/health')).json;
-  assert.equal(h.ok, true); assert.equal(typeof h.uptimeSeconds, 'number'); assert.equal(h.adminKey, true); assert.equal(typeof h.festivals, 'number');
+  assert.equal(h.ok, true); assert.equal(typeof h.uptimeSeconds, 'number'); assert.equal(h.adminKey, 'environment'); assert.equal(typeof h.festivals, 'number');
+  assert.equal(h.nwsUserAgent, 'set'); assert.equal(h.userAgent, process.env.NWS_USER_AGENT, 'health says who we are, so the shakedown can read it');
   assert.deepEqual({ ...h.sources, wikidata: typeof h.sources.wikidata }, { ticketmaster: false, seatgeek: false, edmtrain: false, wikidata: 'string', feeds: false }, 'no keys in tests; wikidata says why it is off');
   assert.equal(h.imports.running, false);
   assert.equal(h.lightning.on, true); assert.deepEqual(h.lightning.buckets.map(b => b.bucket), ['noaa-goes19', 'noaa-goes18']); assert.equal(h.lightning.files, 0, 'the mapper is never read in tests');
@@ -641,4 +643,26 @@ test('a festival\'s own staff key posts, moderates and sets the ground for that 
   assert.equal((await api('DELETE', `/festivals/${FEST}/partner-key`, { headers: admin })).json.issued, false);
   assert.equal((await api('POST', `/festivals/${FEST}/posts`, { body: { title: 'x', body: 'y' }, headers: staff })).status, 401, 'revoked: the key is dead');
   assert.ok(!JSON.stringify(q.partnerKeys()).includes(issued.key), 'the key itself is never stored');
+});
+
+test('the admin key the server makes: made once, kept hashed, never shown again; a reset kills the old one', async () => {
+  const saved = process.env.ADMIN_KEY, madeKey = k => ({ 'x-admin-key': k });
+  delete process.env.ADMIN_KEY;
+  try {
+    assert.equal(adminKeyStatus().source, 'none', 'nothing made yet: this suite set ADMIN_KEY before boot');
+    const made = ensureAdminKey();
+    assert.match(made.key, /^[A-Za-z0-9_-]{32}$/); assert.equal(made.source, 'database'); assert.ok(made.madeAt);
+    assert.deepEqual(ensureAdminKey(), { source: 'database', madeAt: made.madeAt }, 'the next boot finds it and never sees the key again');
+    assert.equal((await api('GET', '/admin/stats', { headers: madeKey(made.key) })).status, 200, 'the made key is the admin key');
+    assert.deepEqual((await api('GET', '/staff/me', { headers: madeKey(made.key) })).json, { scope: 'admin' });
+    assert.equal((await api('GET', '/admin/stats', { headers: admin })).status, 401, 'with ADMIN_KEY unset, the environment key is nothing');
+    assert.equal((await api('GET', '/health')).json.adminKey, 'database');
+    assert.ok(!JSON.stringify(q.setting('admin')).includes(made.key), 'the key itself is never stored');
+    const next = resetAdminKey();
+    assert.notEqual(next.key, made.key);
+    assert.equal((await api('GET', '/admin/stats', { headers: madeKey(made.key) })).status, 401, 'the old key is dead the moment the new one exists');
+    assert.equal((await api('GET', '/admin/stats', { headers: madeKey(next.key) })).status, 200, 'and the running server takes the new one with no restart');
+  } finally { process.env.ADMIN_KEY = saved; q.deleteSetting('admin'); }
+  assert.equal((await api('GET', '/admin/stats', { headers: admin })).status, 200, 'ADMIN_KEY back: the environment wins again');
+  assert.equal((await api('GET', '/health')).json.adminKey, 'environment');
 });

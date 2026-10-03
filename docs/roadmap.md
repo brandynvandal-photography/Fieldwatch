@@ -4,8 +4,9 @@
 
 The app is built; it has not met real data. Everything below the line is a human's to do, and this is the order of payoff:
 
-1. **The first live weekend** (items 2, 3, 4, 5, 15, 16; `docs/shakedown.md`): set a real contact in `NWS_USER_AGENT`, VAPID keys and
-   `ADMIN_KEY` on Railway, run `backend/scripts/shakedown.mjs`, point a monitor at `/health?strict=1`, and watch one festival through a weekend.
+1. **The first live weekend** (items 2, 3, 4, 5, 15, 16; `docs/shakedown.md`): deploy with a volume, copy the admin key from the
+   first boot's log, run `backend/scripts/shakedown.mjs`, point a monitor at `/health?strict=1`, and watch one festival through a
+   weekend. Nothing to set first: keys are made on boot and every source read is free.
 2. **Pins** (item 17): check every pin in `backend/data/grounds.json` and `festivals.json` on a map and set `verifiedOn`; at the grounds, Pin it here.
 3. **One partner festival** (items 9, 10, `docs/partner.md`): issue a staff key from Settings, hand over the link, have their team post during their event.
 4. **The importers** (item 14): set the three keys, read the first import report on the Sources screen, hide what is not a festival.

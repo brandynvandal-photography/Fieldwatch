@@ -348,7 +348,7 @@ function fakeBackend(list) {
       const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
       if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
-      if (m === 'GET' && path === '/health') return send(200, { ok: true, at: '2026-10-23T09:00:00Z', build: '4356d78', uptimeSeconds: 61, database: { path: '/data/fieldwatch.db', onVolume: true }, festivals: 14, push: { web: true }, adminKey: true, nwsUserAgent: 'placeholder', sources: { ticketmaster: false, seatgeek: false, edmtrain: true, wikidata: 'NWS_USER_AGENT not set', feeds: false }, imports: { running: false, lastStartedAt: '2026-10-23T09:00:00Z', lastFinishedAt: '2026-10-23T09:01:00Z' } });
+      if (m === 'GET' && path === '/health') return send(200, { ok: true, at: '2026-10-23T09:00:00Z', build: '4356d78', uptimeSeconds: 61, database: { path: '/data/fieldwatch.db', onVolume: true }, festivals: 14, push: { web: true }, adminKey: 'database', nwsUserAgent: 'default', userAgent: 'Fieldwatch/0.1.0 (+https://fieldwatch.test/)', sources: { ticketmaster: false, seatgeek: false, edmtrain: true, wikidata: 'WIKIDATA_IMPORT=false', feeds: false }, imports: { running: false, lastStartedAt: '2026-10-23T09:00:00Z', lastFinishedAt: '2026-10-23T09:01:00Z' } });
       const sameFollow = (s, b) => s.subscription.endpoint === b.endpoint && (b.festivalId ? s.festivalId === b.festivalId : !s.festivalId);
       if (m === 'POST' && path === '/push/subscribe') { const b = JSON.parse(raw); store.subs = store.subs.filter(s => !sameFollow(s, { endpoint: b.subscription.endpoint, festivalId: b.festivalId })); store.subs.push(b); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => b.festivalId || b.here ? !sameFollow(s, b) : s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
@@ -498,7 +498,7 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     await page.waitForSelector('button.row:has-text("Check the backend") .pill.on');
     const checked = await page.textContent('#app');
     assert.match(checked, /Up, build 4356d78, 14 festivals, data on a volume/);
-    assert.match(checked, /Sources on: Edmtrain\. NWS_USER_AGENT is not set\. Last import .*Admin key matches\./);
+    assert.match(checked, /Sources on: Edmtrain\. Last import .*Admin key matches\./);
 
     // The whole list: search it, hide a listing that is not a festival, unhide it.
     await page.click('button.row:has-text("All festivals")');
@@ -523,7 +523,7 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     assert.match(await page.textContent('#app'), /The key here is not the admin key or a staff key the backend knows/);
     await page.click('button:has-text("Festival sources")');
     await page.waitForSelector('.sub:has-text("Wrong admin key")');
-    assert.match(await page.textContent('#app'), /must match ADMIN_KEY/);
+    assert.match(await page.textContent('#app'), /does not know the key in Settings/);
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('#admin');
     await page.fill('#admin', 'k-admin'); await page.locator('#admin').blur();

@@ -21,7 +21,7 @@ This repo was scaffolded in a chat session on a phone, then worked over in a Cla
 
 ```
 # backend
-cd backend && npm install && cp .env.example .env && npm run seed && npm start
+cd backend && npm install && npm start   # seeds itself; prints the admin key once; .env only to change something
 curl localhost:3000/festivals
 npm test                      # node:test, no network: api.weather.gov is a fixture
 
@@ -46,12 +46,13 @@ The phone downloads a **festival pack** (`FestivalPack`: festival, alerts, posts
 
 ## Shared data shapes
 
-`Festival` records come from `backend/src/festivals.js` (`normalizeFestival`), whatever the source: the curated seed, the Ticketmaster, SeatGeek and Edmtrain APIs, Wikidata plus each festival site's schema.org JSON-LD (`backend/src/importers/wikidata.js`, a polite crawler: robots.txt honored, redirects followed by hand, public DNS names only, off until `NWS_USER_AGENT` is a real contact), feed URLs and community suggestions. `SafetyAlert`, `Incident` and `RadarLoop` are defined in `ios/Fieldwatch/Models/Models.swift` and produced by `backend/src/nws.js`, `backend/src/app.js` (`incidentToAlert`), `backend/src/radar.js` (`radarLoop`) and `node/uploader.py`. `web/index.html` consumes all three and re-implements the NWS normalizer and the radar square; change them in step. The weather logic (thresholds, the grid spread, `incoming`, the prep tables) is one block between `// ==== shared: start ====` and `// ==== shared: end ====` in `backend/src/incoming.js`, copied byte for byte into `web/index.html`; `backend/test/mirror.test.js` fails when the two differ, so edit the backend's and paste the block across. Pure functions only in that block: nothing from the page or the server. Keep them in sync by hand; there's no codegen. Dates are ISO 8601; the Swift decoder accepts with or without fractional seconds, the backend emits without (`util.js: iso()`).
+`Festival` records come from `backend/src/festivals.js` (`normalizeFestival`), whatever the source: the curated seed, the Ticketmaster, SeatGeek and Edmtrain APIs, Wikidata plus each festival site's schema.org JSON-LD (`backend/src/importers/wikidata.js`, a polite crawler: robots.txt honored, redirects followed by hand, public DNS names only, on from the first boot since the User-Agent names the app's page), feed URLs and community suggestions. `SafetyAlert`, `Incident` and `RadarLoop` are defined in `ios/Fieldwatch/Models/Models.swift` and produced by `backend/src/nws.js`, `backend/src/app.js` (`incidentToAlert`), `backend/src/radar.js` (`radarLoop`) and `node/uploader.py`. `web/index.html` consumes all three and re-implements the NWS normalizer and the radar square; change them in step. The weather logic (thresholds, the grid spread, `incoming`, the prep tables) is one block between `// ==== shared: start ====` and `// ==== shared: end ====` in `backend/src/incoming.js`, copied byte for byte into `web/index.html`; `backend/test/mirror.test.js` fails when the two differ, so edit the backend's and paste the block across. Pure functions only in that block: nothing from the page or the server. Keep them in sync by hand; there's no codegen. Dates are ISO 8601; the Swift decoder accepts with or without fractional seconds, the backend emits without (`util.js: iso()`).
 
 Hazard categories live in two places on purpose (node must classify offline): `backend/src/incidents.js` and the `CATEGORIES` list in `node/uploader.py`. Change both, and add a line to `backend/test/fixtures/hazard-samples.json`; both test suites run every sample through their own classifier, so a drift fails one of them.
 
 ## Rules that are not up for debate
 
+- Nothing to set up to run. Every variable in `backend/.env.example` is optional: the admin key and the web push keys are made on the first boot and kept in the database (`adminkey.js`, `webpush.js`; the admin key printed once, `ADMIN_KEY` in the environment wins), the User-Agent to every service defaults to the app's own page (`site.js`, `USER_AGENT`), the data follows the volume, and every source read is free and keyless. A feature that needs a token stays optional and says so in `/health` and `.env.example`.
 - No accounts, no login, no analytics that identify a person. Phones register only an APNs token + festival id. A festival's staff key (`POST /festivals/:id/partner-key`, kept hashed, shown once) is the festival's, not a person's: it works for that festival's posts, moderation, ground and record, and for nothing admin-wide (`requireStaff`; the web build asks `/staff/me` what a key is and hides the rest, `canStaff`, `adminScope`).
 - The receiver node records **county public-safety radio only**. Never the festival's operations channels without the promoter's written OK. See `docs/decisions.md`.
 - Do not integrate Broadcastify. They are not licensing new scanner-style mobile apps.
@@ -81,7 +82,7 @@ Hazard categories live in two places on purpose (node must classify offline): `b
 
 ## Things to verify early
 
-1. `NWSClient.userAgent` and `NWS_USER_AGENT` need a real contact email or NWS will block us. Nobody has hit the real API from this code yet: the cloud session's network policy blocked api.weather.gov, so the normalizer is only proven against a fixture.
+1. The User-Agent to the weather service is `Fieldwatch/<version> (+the site address)` unless `NWS_USER_AGENT` is set (`backend/src/site.js`; `NWSClient.userAgent` carries the same). Nobody has hit the real API from this code yet: the cloud session's network policy blocked api.weather.gov, so the normalizer is only proven against a fixture, and the first live call also confirms the service takes a website as the contact (its documentation says it does).
 2. Festival names, venues and dates in `backend/data/festivals.json` were confirmed against each festival's own site on 2026-09-27 (`source`, `verifiedOn`). Coordinates are venue centroids typed from memory; drop a pin on each before relying on polygon-based NWS alerts.
 3. `web/festivals.json` is a copy of that file; a backend test fails if they differ.
 4. `project.yml` bundle id prefix. `FieldwatchBackendURL` is the Railway deployment; the web build's `DEFAULT_BACKEND` is the same address. The `aps-environment` entitlement needs a paid team; on a free team, delete the `entitlements:` block to build to a device (the simulator doesn't care).

@@ -12,6 +12,7 @@ import { q } from '../db.js';
 import { distanceKm } from '../festivals.js';
 import { applyImport, dayEnd, dayStart, displayName, groupListings, listingKey, normalizeName, errorText } from './common.js';
 import { iso } from '../util.js';
+import { USER_AGENT } from '../site.js';
 
 export const SPARQL_ENDPOINT = 'https://query.wikidata.org/sparql';
 export const CACHE_KEY = 'wikidata:sites';
@@ -46,17 +47,17 @@ export const itemsSparql = classes => `SELECT DISTINCT ?item ?itemLabel ?coord ?
 export const parseClasses = body => [...new Set((body?.results?.bindings || []).map(b => String(b.class?.value || '').split('/').pop()).filter(id => /^Q\d+$/.test(id)))];
 
 /**
- * Why a run would not happen: WIKIDATA_IMPORT=false, 0 or no switches it off; otherwise it is on, but only
- * once NWS_USER_AGENT says who we are, since the festival sites we read (and Wikidata) must be able to reach us.
+ * Why a run would not happen: WIKIDATA_IMPORT=false, 0 or no switches it off. Otherwise it is on from the first boot:
+ * the festival sites we read (and Wikidata) can reach us through the User-Agent, which names the app's own page
+ * unless NWS_USER_AGENT says otherwise (site.js).
  */
-export function skipReason({ enabled = process.env.WIKIDATA_IMPORT, userAgent = process.env.NWS_USER_AGENT } = {}) {
+export function skipReason({ enabled = process.env.WIKIDATA_IMPORT } = {}) {
   if (enabled === false || OFF.has(String(enabled ?? '').trim().toLowerCase())) return 'WIKIDATA_IMPORT=false';
-  if (!String(userAgent || '').trim() || /example\.com/i.test(userAgent)) return 'NWS_USER_AGENT is unset or still the example.com placeholder; set a real contact before festival sites are read';
   return null;
 }
 
 /** The product token robots.txt would name us by: the first word of the User-Agent, before any version or contact. */
-export const productToken = (ua = process.env.NWS_USER_AGENT) => (String(ua || '').match(/^[a-z0-9_.-]+/i)?.[0] || 'Fieldwatch').toLowerCase();
+export const productToken = (ua = USER_AGENT) => (String(ua || '').match(/^[a-z0-9_.-]+/i)?.[0] || 'Fieldwatch').toLowerCase();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const PRIVATE_TLDS = new Set(['localhost', 'local', 'localdomain', 'internal', 'intranet', 'lan', 'home', 'corp', 'arpa', 'onion', 'invalid']);
@@ -262,7 +263,7 @@ async function fetchFollowing(fetchImpl, url, { timeoutMs, accept, userAgent, al
  * Returns { calls, events, robots }; throws when the site could not be read, a robots.txt that answers 5xx
  * included (the site keeps its last answer and is asked again later).
  */
-export async function checkSite(website, { fetchImpl = globalThis.fetch, now = Date.now(), timeoutMs = SITE_TIMEOUT_MS, userAgent = process.env.NWS_USER_AGENT || 'Fieldwatch' } = {}) {
+export async function checkSite(website, { fetchImpl = globalThis.fetch, now = Date.now(), timeoutMs = SITE_TIMEOUT_MS, userAgent = USER_AGENT } = {}) {
   let calls = 0;
   const opts = { timeoutMs, userAgent }, robotsByOrigin = new Map();
   const allowed = async u => {
@@ -328,10 +329,10 @@ export function festivalsFrom(listings, today) {
 
 const readCache = () => { try { const v = JSON.parse(q.setting(CACHE_KEY) || '{}'); return v && typeof v === 'object' && !Array.isArray(v) ? v : {}; } catch { return {}; } };
 
-export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, userAgent = process.env.NWS_USER_AGENT, fetchImpl = globalThis.fetch, now = Date.now(),
+export async function importWikidata({ enabled = process.env.WIKIDATA_IMPORT, userAgent = USER_AGENT, fetchImpl = globalThis.fetch, now = Date.now(),
   pauseMs = Number(process.env.WIKIDATA_PAUSE_MS ?? 400), maxSites = Number(process.env.WIKIDATA_MAX_SITES ?? 250),
   cacheDays = Number(process.env.WIKIDATA_CACHE_DAYS ?? 6), timeoutMs = SITE_TIMEOUT_MS, log = console } = {}) {
-  const skipped = skipReason({ enabled, userAgent });
+  const skipped = skipReason({ enabled });
   if (skipped) return { skipped };
   let calls = 0, errors = 0, sitesChecked = 0, siteErrors = 0, candidates = [], queried = false, lastError = null, lastSiteError = null;
   const sparql = async query => {

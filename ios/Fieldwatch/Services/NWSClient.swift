@@ -2,9 +2,10 @@ import Foundation
 
 /// Talks to api.weather.gov directly. Used as a fallback when the backend is
 /// unreachable, and for the hourly forecast. NWS requires a User-Agent that
-/// identifies the app and gives a contact.
+/// identifies the app and gives a contact; a website counts, so this names the
+/// app's own page, the same as the backend (`backend/src/site.js`).
 struct NWSClient {
-    var userAgent = "Fieldwatch/0.1 (you@example.com)"
+    var userAgent = "Fieldwatch/0.1 (+https://brandynvandal-photography.github.io/Fieldwatch/)"
 
     func activeAlerts(latitude: Double, longitude: Double) async throws -> [SafetyAlert] {
         let url = URL(string: "https://api.weather.gov/alerts/active?point=\(fmt(latitude)),\(fmt(longitude))")!

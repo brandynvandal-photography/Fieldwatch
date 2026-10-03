@@ -11,7 +11,8 @@
     "seed": "node src/seed.js",
     "poll": "node src/poller.js --once",
     "test": "node --test 'test/*.test.js'",
-    "vapid": "node src/vapid.js"
+    "vapid": "node src/vapid.js",
+    "admin-key": "node src/adminkey.js"
   },
   "dependencies": {
     "@parse/node-apn": "^6.0.1",

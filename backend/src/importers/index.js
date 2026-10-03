@@ -9,7 +9,7 @@ import { importEdmtrain } from './edmtrain.js';
 import { importWikidata, skipReason as wikidataSkipped } from './wikidata.js';
 import { importFeeds } from './feeds.js';
 
-// Wikidata needs no key and is on unless switched off (or NWS_USER_AGENT is still the placeholder), so imports run on a bare deployment.
+// Wikidata needs no key and is on unless switched off, so imports run on a bare deployment.
 export const importsConfigured = () => !wikidataSkipped() || Boolean(process.env.TICKETMASTER_KEY || process.env.SEATGEEK_CLIENT_ID || process.env.EDMTRAIN_KEY || process.env.FESTIVAL_FEEDS);
 export const imports = { last: null, running: false };
 let running = null;

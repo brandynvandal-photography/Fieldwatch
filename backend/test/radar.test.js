@@ -9,7 +9,7 @@ process.env.RADAR_FETCH_PAUSE_MS = '0';
 process.env.RADAR_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-radar-'));
 process.env.RADAR_HOURS = '12';
 process.env.RADAR_STEP_MINUTES = '10';
-process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
+process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
 
 // A real 1x1 transparent PNG, which is all the archive needs to have answered with.
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');

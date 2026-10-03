@@ -55,6 +55,7 @@ function print(r) {
   console.log(`${r.base} at ${r.at}`);
   if (!h) { console.log(`  ${r.errors.join('; ')}`); return; }
   console.log(`  health: ${h.ok ? 'ok' : 'PROBLEMS'}${h.build ? `, build ${h.build}` : ''}, up ${Math.round(h.uptimeSeconds / 60)} min, ${h.festivals} festivals, database ${h.database?.onVolume ? 'on a volume' : 'NOT on a volume'}`);
+  console.log(`  admin key from the ${h.adminKey || 'unknown'}; as ${h.userAgent || '(agent not reported)'}`);
   for (const p of h.problems || []) console.log(`  PROBLEM: ${p}`);
   for (const w of h.warnings || []) console.log(`  warning: ${w}`);
   const l = h.lightning || {};

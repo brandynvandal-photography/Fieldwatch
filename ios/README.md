@@ -27,7 +27,7 @@ This code has been reviewed but never compiled. Expect the first build to turn u
 
 ## Running without the backend
 
-The app still works: pick a festival from the cached list (empty on first run until the backend answers), and `NWSClient` pulls alerts and the hourly forecast straight from api.weather.gov. Set a real contact in `NWSClient.userAgent`; NWS blocks anonymous clients.
+The app still works: pick a festival from the cached list (empty on first run until the backend answers), and `NWSClient` pulls alerts and the hourly forecast straight from api.weather.gov. `NWSClient.userAgent` names the app's page as the contact NWS asks for; a mailbox works there too.
 
 ## Radar
 

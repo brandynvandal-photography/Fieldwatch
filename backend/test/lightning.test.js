@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 process.env.DB_PATH = ':memory:';
-process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
+process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
 process.env.GLM_BUCKETS = 'noaa-goes19,noaa-goes18';
 const { default: webpushLib } = await import('web-push');
 const vapid = webpushLib.generateVAPIDKeys();

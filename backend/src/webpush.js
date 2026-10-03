@@ -5,10 +5,10 @@
 // pushed; warnings, watches and staff posts are.
 import webpush from 'web-push';
 import { q } from './db.js';
+import { SITE } from './site.js';
 
 let PUBLIC = process.env.VAPID_PUBLIC_KEY || '', PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
-const SUBJECT = process.env.VAPID_SUBJECT || 'https://brandynvandal-photography.github.io/Fieldwatch/';
-export const SITE = (process.env.SITE_URL || 'https://brandynvandal-photography.github.io/Fieldwatch/').replace(/\/?$/, '/');
+const SUBJECT = process.env.VAPID_SUBJECT || SITE;
 let enabled = false, source = 'environment';
 if (!(PUBLIC && PRIVATE)) {
   const stored = q.setting('vapid');

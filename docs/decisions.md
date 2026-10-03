@@ -60,3 +60,15 @@ no-accounts rule. Revoking it is one call.
 To learn what is used, the backend counts packs opened, alert lists, alerts stored and their latency, pushes sent, heads-ups,
 posts, reports and follows, per festival per day, for ninety days. Nothing in a counter names a phone, an address or a
 person, and nothing is sent to a third party. That is the line between knowing whether the thing works and tracking people.
+
+## Nothing to set up
+
+Everything the backend needs to run, it makes or has a default for: the festival list seeds itself, the web push key
+pair and the admin key are made on the first boot and kept in the database (the key printed once, in that boot's log,
+and hashed from then on), the data follows the volume, and every service read (the weather service, the radar archive,
+the lightning buckets, the ground lookups, Wikidata, the festival sites) is free and keyless, reached with a User-Agent
+that names the app's own page, which is a contact each of them accepts. So a deploy with a volume is the whole setup,
+the key-free festival sources run from the first boot, and a token (Ticketmaster, SeatGeek, Edmtrain, an APNs key, a
+receiver node's key) only ever adds something. The one secret left, the admin key, exists because the moderation queue
+and the staff screens must be somebody's; it is the server's to make, not the operator's to invent, and the operator's
+to replace by setting `ADMIN_KEY` when it is lost.

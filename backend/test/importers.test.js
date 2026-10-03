@@ -4,7 +4,7 @@ import { tmEvent, tmVenue, tmPage } from './fixtures/ticketmaster.js';
 import { sgEvent, sgVenue } from './fixtures/seatgeek.js';
 
 process.env.DB_PATH = ':memory:';
-process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
+process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
 delete process.env.TICKETMASTER_KEY; delete process.env.SEATGEEK_CLIENT_ID; delete process.env.EDMTRAIN_KEY; delete process.env.FESTIVAL_FEEDS;
 process.env.WIKIDATA_IMPORT = 'false';   // on by default and keyless; its own suite covers it with a fake endpoint
 

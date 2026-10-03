@@ -19,3 +19,5 @@ if (volume) {
   process.env.RADAR_DIR ||= join(volume, 'radar');
   process.env.AUDIO_DIR ||= join(volume, 'audio');
 }
+// Railway's edge is one proxy hop, so report rate limits see the phone's address rather than the edge's.
+if (process.env.RAILWAY_ENVIRONMENT) process.env.TRUST_PROXY ||= '1';

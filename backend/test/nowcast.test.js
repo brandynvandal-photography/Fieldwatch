@@ -8,7 +8,7 @@ import { PNG } from 'pngjs';
 
 process.env.DB_PATH = ':memory:';
 process.env.RADAR_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-nowcast-'));
-process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
+process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
 const { SIZE, frameName } = await import('../src/radar.js');
 const { N, arrival, echoMask, motion, nowcastFor, resetNowcast } = await import('../src/nowcast.js');
 
