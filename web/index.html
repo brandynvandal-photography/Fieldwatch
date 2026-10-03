@@ -513,10 +513,13 @@ const normalizeAlert = ft => { const p = ft.properties; return {
   issuedAt: p.effective, onset: p.onset ?? null, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0 }; };
 const isWarning = a => a.severity === 'severe' || a.severity === 'extreme';
 const isActive = a => !a.expiresAt || Date.parse(a.expiresAt) > Date.now();
-const activeAlerts = f => (data(f).alerts || []).filter(isActive).sort((a, b) => (isWarning(b) - isWarning(a)));
+/** One row per warning: what says the same thing twice (one event, one end) is one, the newest kept. */
+const condenseAlerts = list => { const seen = new Set(); return list.slice().sort((a, b) => (Date.parse(b.issuedAt) || 0) - (Date.parse(a.issuedAt) || 0)).filter(a => { const k = `${a.channel || 'weather'}|${a.event}|${a.expiresAt || ''}`; if (seen.has(k)) return false; seen.add(k); return true; }); };
+const activeAlerts = f => condenseAlerts((data(f).alerts || []).filter(isActive)).sort((a, b) => (isWarning(b) - isWarning(a)));
 const skyAlerts = f => activeAlerts(f).filter(a => a.channel !== 'headsup');   // a heads-up has its own card under the sky
 const level = f => { const al = skyAlerts(f); return al.some(isWarning) ? 'warn' : al.length ? 'watch' : 'ok'; };
-const alertSub = a => a.channel === 'headsup' ? (a.onset ? `Expected ${fmtWhen(a.onset)}` : 'On the way') : a.expiresAt ? `Until ${fmtWhen(a.expiresAt)}` : (a.area || '');
+// A heads-up names its hour in the festival's own clock; the line under it counts down instead of saying the hour again in the phone's.
+const alertSub = a => a.channel === 'headsup' ? (a.onset ? (c => c === 'now' ? 'Now' : `In ${c}`)(countdownText(a.onset, true)) : 'On the way') : a.expiresAt ? `Until ${fmtWhen(a.expiresAt)}` : (a.area || '');
 
 async function loadAlerts(f){
   const b = backend();
@@ -1158,6 +1161,9 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
     if (rainIn != null && all.has('rain')) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
     if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)) };
   }
+  // A warning already in effect for the hazard is on the sky and says it all: no heads-up for the same thing.
+  const warned = new Set(alerts.filter(a => a.channel !== 'headsup' && /warning$/i.test(a.event || '') && Date.parse(a.onset || a.issuedAt || '') <= now && (!a.expiresAt || Date.parse(a.expiresAt) > now)).map(a => alertHazard(a.event)).filter(Boolean));
+  if (forecast && warned.has(forecast.hazard)) forecast = null;
   let watch = null;
   for (const a of alerts) {
     const onset = Date.parse(a.onset || ''), hz = alertHazard(a.event);
@@ -1488,7 +1494,7 @@ async function loadFeed(){
       if (on.length && got.every(r => r.status === 'rejected')) throw new Error('no signal');   // the last feed stays up, marked as old
       feed = { at: new Date().toISOString(), on: live().length, items: got.filter(r => r.status === 'fulfilled').map(r => r.value), partial: on.length < live().length };
     }
-    feed.items = feed.items.map(i => ({ ...i, alerts: (i.alerts || []).filter(isActive).sort((x, y) => sevRank(y) - sevRank(x)) })).filter(i => i.festival && (i.alerts.length || ['red', 'orange'].includes(i.lightning && i.lightning.code)));
+    feed.items = feed.items.map(i => ({ ...i, alerts: condenseAlerts((i.alerts || []).filter(isActive)).sort((x, y) => sevRank(y) - sevRank(x)) })).filter(i => i.festival && (i.alerts.length || ['red', 'orange'].includes(i.lightning && i.lightning.code)));
     S.feed = feed; S.feedErr = null;
   }catch(e){ S.feedErr = e; }
   S.feedBusy = false; save(); render();

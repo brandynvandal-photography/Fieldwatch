@@ -104,6 +104,9 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
     if (rainIn != null && all.has('rain')) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
     if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)) };
   }
+  // A warning already in effect for the hazard is on the sky and says it all: no heads-up for the same thing.
+  const warned = new Set(alerts.filter(a => a.channel !== 'headsup' && /warning$/i.test(a.event || '') && Date.parse(a.onset || a.issuedAt || '') <= now && (!a.expiresAt || Date.parse(a.expiresAt) > now)).map(a => alertHazard(a.event)).filter(Boolean));
+  if (forecast && warned.has(forecast.hazard)) forecast = null;
   let watch = null;
   for (const a of alerts) {
     const onset = Date.parse(a.onset || ''), hz = alertHazard(a.event);

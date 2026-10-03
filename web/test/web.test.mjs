@@ -308,7 +308,8 @@ function fakeBackend(list) {
   // What the home page shows: the fixture's warning at Hulaween, an advisory at the next festival that is on.
   const p = alertFeature().properties, toAlert = over => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null, severity: String(p.severity || 'Unknown').toLowerCase(), area: p.areaDesc ?? '', source: p.senderName ?? 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0, ...over });
   const other = store.list.find(f => isLive(f) && f.id !== 'hulaween-2026');
-  store.feed = [{ festivalId: 'hulaween-2026', alerts: [toAlert({})] }, ...(other ? [{ festivalId: other.id, alerts: [toAlert({ id: 'urn:oid:feed-adv', event: 'Heat Advisory', severity: 'minor', headline: 'Heat Advisory until 8 PM' })] }] : [])];
+  // Hulaween's warning comes twice, as the weather service lists an update beside the message it replaced: the page shows it once.
+  store.feed = [{ festivalId: 'hulaween-2026', alerts: [toAlert({}), toAlert({ id: 'urn:oid:feed-twice', issuedAt: '2026-10-23T13:02:00-04:00' })] }, ...(other ? [{ festivalId: other.id, alerts: [toAlert({ id: 'urn:oid:feed-adv', event: 'Heat Advisory', severity: 'minor', headline: 'Heat Advisory until 8 PM' })] }] : [])];
   const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS', 'access-control-allow-headers': 'Content-Type, x-admin-key' };
   const server = http.createServer((req, res) => {
     let raw = ''; req.on('data', c => { raw += c; }); req.on('end', () => {

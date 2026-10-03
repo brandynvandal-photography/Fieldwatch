@@ -49,6 +49,9 @@ test('a watch or warning that has not begun wins when it comes first; a heads-up
   assert.equal(incoming({ hourly: periods, grid: g, alerts: [ours], now: at(0, 30) }).source, 'forecast');
   const begun = { ...watch, onset: new Date(at(0)).toISOString() };
   assert.equal(incoming({ hourly: periods, grid: g, alerts: [begun], now: at(0, 30) }).source, 'forecast', 'a watch already in effect is on the sky, not on the way');
+  const warning = { ...begun, id: 'w2', event: 'Severe Thunderstorm Warning' };
+  assert.equal(incoming({ hourly: periods, grid: g, alerts: [warning], now: at(0, 30) }), null, 'a warning already in effect says it all: no heads-up for the same storms');
+  assert.equal(incoming({ hourly: periods, grid: g, alerts: [{ ...warning, event: 'Flood Warning' }], now: at(0, 30) }).source, 'forecast', 'a warning for something else leaves the storms heads-up alone');
   assert.equal(alertHazard('Flash Flood Warning'), 'flood'); assert.equal(alertHazard('High Wind Watch'), 'wind'); assert.equal(alertHazard('Rip Current Statement'), null);
 });
 

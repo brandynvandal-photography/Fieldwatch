@@ -25,12 +25,35 @@ export function normalizeAlert(feature) {
     expiresAt: p.ends ?? p.expires ?? null,
     channel: 'weather',
     relayCount: 0,
+    replaces: (p.references || []).map(r => r.identifier || '').filter(Boolean),   // the messages this one updates: the same warning, worded again
   };
 }
 
 export async function activeAlerts(lat, lon) {
   const fc = await nws(`https://api.weather.gov/alerts/active?point=${fmt(lat)},${fmt(lon)}`);
-  return (fc.features || []).map(normalizeAlert);
+  return condense(fc.features || []).map(normalizeAlert);
+}
+
+/**
+ * One message per warning. The weather service lists a warning once per update it has sent and once per zone segment it
+ * covers, and a county query brings in every segment in the county. An update replaces what it references; a zone-wide
+ * segment counts only where it names the grounds' own zone or county; and what still says the same thing twice (one event,
+ * one end) is one message, the newest. A phone reading three Extreme Heat Warnings learns nothing from the second.
+ */
+export function condense(features, zones = []) {
+  const ids = new Set(features.map(ft => ft.properties.id));
+  const superseded = new Set(features.flatMap(ft => (ft.properties.references || []).map(r => r.identifier)).filter(id => ids.has(id)));
+  const sentAt = ft => Date.parse(ft.properties.sent || ft.properties.effective || '') || 0;
+  const out = [], seen = new Set();
+  for (const ft of features.slice().sort((a, b) => sentAt(b) - sentAt(a))) {
+    const p = ft.properties, ugc = (p.geocode && p.geocode.UGC) || [];
+    if (superseded.has(p.id) || p.messageType === 'Cancel') continue;
+    if (!ft.geometry && zones.length && ugc.length && !zones.some(z => ugc.includes(z))) continue;
+    const key = `${p.event}|${p.ends || p.expires || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(ft);
+  }
+  return out;
 }
 
 /** Does this alert's polygon reach the grounds: a 3 km square around the point, tested at nine points, and the polygon's own corners inside it. Zone-wide alerts (no polygon) always do. */
@@ -56,10 +79,10 @@ export function reaches(geometry, lat, lon, km = 1.5) {
  */
 export async function alertsFor(lat, lon) {
   let zones = [];
-  try { const p = await point(lat, lon); zones = [p.county, p.forecastZone].map(u => String(u || '').split('/').pop()).filter(z => /^[A-Z]{2}[CZ]\d{3}$/.test(z)); } catch {}
+  try { const p = await point(lat, lon); zones = [...new Set([p.county, p.forecastZone, p.fireWeatherZone].map(u => String(u || '').split('/').pop()).filter(z => /^[A-Z]{2}[CZ]\d{3}$/.test(z)))]; } catch {}
   if (!zones.length) return activeAlerts(lat, lon);
   const fc = await nws(`https://api.weather.gov/alerts/active?zone=${zones.join(',')}`);
-  return (fc.features || []).filter(ft => reaches(ft.geometry, lat, lon)).map(normalizeAlert);
+  return condense((fc.features || []).filter(ft => reaches(ft.geometry, lat, lon)), zones).map(normalizeAlert);
 }
 
 // /points rarely changes, so cache it for the life of the process.

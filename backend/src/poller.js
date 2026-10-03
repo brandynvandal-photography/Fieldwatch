@@ -26,7 +26,7 @@ export async function pollFestival(f) {
 
   for (const a of fresh) {
     if (q.alert(a.id)) q.updateAlert(a);
-    else { q.insertAlert(f.id, a); brandNew.push(a); }
+    else { q.insertAlert(f.id, a); if (!(a.replaces || []).some(id => q.alert(id))) brandNew.push(a); }   // an update of a message we have is the same warning: stored, not pushed again
   }
   // Anything we had as active that NWS no longer lists has ended. A staff post or a forecast heads-up is not NWS's to end.
   let ended = 0;
@@ -61,7 +61,7 @@ export async function pollPoint(p) {
   const brandNew = [];
   for (const a of fresh) {
     if (q.alert(a.id)) q.updateAlert(a);
-    else { q.insertAlert(f.pointId, a); brandNew.push(a); }
+    else { q.insertAlert(f.pointId, a); if (!(a.replaces || []).some(id => q.alert(id))) brandNew.push(a); }
   }
   for (const id of q.activeAlertIds(f.pointId)) {
     if (!seenNow.has(id)) { const a = q.alert(id); if (a) q.updateAlert({ ...a, expiresAt: iso() }); }

@@ -126,6 +126,16 @@ test('an alert NWS stops listing is ended, and one with ends:null falls back to 
   assert.ok(ended.expiresAt && Date.parse(ended.expiresAt) <= Date.now(), 'vanished alert got an expiresAt of now');
 });
 
+test('an update of a warning the phone already has is stored, ends the message it replaces, and is not pushed again', async () => {
+  const f = q.festival(FEST);
+  nwsState.features = [alertFeature({ id: 'urn:oid:2.49.0.1.840.0.ccc', ends: null, event: 'Flood Advisory', severity: 'Minor', messageType: 'Update', sent: '2026-10-23T14:30:00-04:00', effective: '2026-10-23T14:30:00-04:00',
+    references: [{ '@id': 'https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.bbb', identifier: 'urn:oid:2.49.0.1.840.0.bbb', sender: 'w-nws.webmaster@noaa.gov', sent: '2026-10-23T14:02:00-04:00' }] })];
+  assert.deepEqual(await pollFestival(f), [], 'the same advisory worded again: nothing to push');
+  const alerts = (await api('GET', `/festivals/${FEST}/alerts`)).json;
+  assert.deepEqual(alerts.map(a => a.id), ['urn:oid:2.49.0.1.840.0.ccc'], 'the update is what the phone sees');
+  assert.ok(Date.parse(q.alert('urn:oid:2.49.0.1.840.0.bbb').expiresAt) <= Date.now(), 'the message it replaced has ended');
+});
+
 test('staff posts need the admin key and a known severity', async () => {
   assert.equal((await api('POST', `/festivals/${FEST}/posts`, { body: { title: 'x', body: 'y' } })).status, 401);
   assert.equal((await api('POST', `/festivals/${FEST}/posts`, { body: { title: 'x', body: 'y' }, headers: { 'x-admin-key': 'wrong' } })).status, 401);

@@ -33,3 +33,16 @@ test('the zone query keeps zone-wide alerts and the polygons that reach the grou
   assert.deepEqual((await alertsFor(31, -84)).map(a => a.id), ['zone'], 'no zones known: the point query');
   assert.ok(calls.some(u => u.includes('/alerts/active?point=31.0000,-84.0000')));
 });
+
+test('one message per warning: an update replaces what it references, a segment for another part of the county is left out, and one event with one end is listed once', async () => {
+  const heat = (id, sent, over = {}) => alertFeature({ id, event: 'Extreme Heat Warning', sent, effective: sent, ends: '2026-10-24T22:00:00-04:00', geocode: { UGC: ['FLZ024'] }, ...over });
+  const old = heat('old', '2026-10-23T10:00:00-04:00');
+  const upd = heat('upd', '2026-10-23T14:00:00-04:00', { messageType: 'Update', references: [{ '@id': 'https://api.weather.gov/alerts/old', identifier: 'old', sender: 'w-nws.webmaster@noaa.gov', sent: '2026-10-23T10:00:00-04:00' }] });
+  const coast = heat('coast', '2026-10-23T14:00:00-04:00', { geocode: { UGC: ['FLZ025'] } });
+  const twice = heat('twice', '2026-10-23T13:00:00-04:00', { geocode: { UGC: ['FLC121'] } });
+  const flood = alertFeature({ id: 'flood', event: 'Flood Warning', sent: '2026-10-23T14:00:00-04:00', effective: '2026-10-23T14:00:00-04:00', ends: '2026-10-23T20:00:00-04:00', geocode: { UGC: ['FLC121'] } });
+  pointsOk = true; answer = () => ({ features: [old, upd, coast, twice, flood] });
+  const got = await alertsFor(lat, lon);
+  assert.deepEqual(got.map(a => a.id), ['upd', 'flood'], 'the update stands for the old message, the coast segment is another zone, the county copy says the same thing');
+  assert.deepEqual(got[0].replaces, ['old'], 'an update names what it replaces, so the poller knows it is not new');
+});
