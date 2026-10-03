@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { alertFeature, points, hourly, grid } from './fixtures/nws.js';
 
 // Everything below must be set before the app is imported: db.js opens DB_PATH at import time.
@@ -11,6 +12,7 @@ process.env.DB_PATH = ':memory:';
 process.env.RADAR_FETCH_PAUSE_MS = '0';
 process.env.AUDIO_DIR = audioDir;
 process.env.RADAR_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-radar-'));
+process.env.BACKUP_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-backup-'));
 process.env.ADMIN_KEY = 'test-admin';
 process.env.NODE_KEY = 'test-node';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@example.com)';
@@ -580,4 +582,41 @@ test('the live stream: a page listening hears which festival changed and what ki
   ctl.abort(); nwsState.features = before;
   await new Promise(r => setTimeout(r, 50));
   assert.equal((await api('GET', '/health')).json.live, 0, 'and gone when it hangs up');
+});
+
+test('health says what to alert on; the counters add up with nobody in them; a backup is a file to download', async () => {
+  const h = (await api('GET', '/health')).json;
+  assert.equal(h.ok, true); assert.deepEqual(h.problems, []); assert.ok(Array.isArray(h.warnings));
+  assert.ok(h.polling && 'lastOkAt' in h.polling); assert.ok(h.radar && 'festivals' in h.radar); assert.ok(h.backups && 'count' in h.backups);
+  assert.equal((await api('GET', '/health?strict=1')).status, 200, 'strict answers 200 while nothing is wrong');
+  await api('GET', `/festivals/${FEST}/pack`); await api('GET', `/festivals/${FEST}/alerts`); await api('GET', '/alerts');
+  assert.equal((await api('GET', '/admin/stats')).status, 401);
+  const st = (await api('GET', '/admin/stats?days=7', { headers: admin })).json;
+  assert.ok(st.totals.pack >= 1 && st.totals.alerts >= 1 && st.totals.feed >= 1, JSON.stringify(st.totals));
+  assert.ok(st.totals['alert.new'] >= 1, 'alerts stored are counted');
+  assert.ok(st.festivals.some(f => f.id === FEST && f.counts.pack >= 1), 'per festival, by name');
+  assert.ok(!JSON.stringify(st).includes('push.example'), 'no endpoint, token or address in the numbers');
+  const made = (await api('POST', '/admin/backup', { headers: admin })).json;
+  assert.ok(made.bytes > 0 && made.count >= 1 && /^fieldwatch-\d{4}-\d{2}-\d{2}\.db$/.test(made.newest), JSON.stringify(made));
+  const dl = await fetchReal(`${base}/admin/backup`, { headers: admin });
+  assert.equal(dl.status, 200); assert.match(dl.headers.get('content-disposition') || '', /fieldwatch-\d{4}-\d{2}-\d{2}\.db/);
+  assert.equal(Buffer.from(await dl.arrayBuffer()).subarray(0, 15).toString(), 'SQLite format 3');
+  const copy = new Database(join(process.env.BACKUP_DIR, made.newest), { readonly: true });
+  assert.ok(copy.prepare('SELECT count(*) AS n FROM festivals').get().n >= 1, 'the copy opens and holds the festivals'); copy.close();
+  assert.equal((await api('GET', '/health')).json.backups.newest, made.newest);
+});
+
+test('the shakedown script reads a whole backend in one pass', async () => {
+  const { shakedown } = await import('../scripts/shakedown.mjs');
+  const now = Date.now(), DAY = 86_400_000;
+  q.upsertFestival({ ...q.festival(FEST), id: 'shakedown-2026', name: 'Shakedown', startDate: new Date(now - DAY).toISOString(), endDate: new Date(now + DAY).toISOString() });
+  try {
+    const r = await shakedown(base, { key: 'test-admin', fetchImpl: fetchReal, sseMs: 400 });
+    assert.equal(r.health.ok, true); assert.deepEqual(r.errors, []);
+    const row = r.festivals.find(f => f.id === 'shakedown-2026');
+    assert.ok(row, `the festival that is on is in the report: ${r.festivals.map(f => f.id)}`);
+    assert.match(row.alerts, /\d+ active/); assert.match(row.lightning, /^(none|green|yellow|orange|red|indoor)/); assert.match(row.radar, /frames/); assert.match(row.ground, /soil/); assert.match(row.nowcast, /tracked|rain in/);
+    assert.equal(r.live.opened, true); assert.equal(r.live.hello, true, 'the stream said hello');
+    assert.ok(r.admin.stats.totals && r.admin.imports, 'with the key, the counters and the last import');
+  } finally { q.deleteFestival('shakedown-2026'); }
 });

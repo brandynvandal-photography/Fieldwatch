@@ -6,11 +6,12 @@ import { readFile, unlink } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { q } from './db.js';
 import { buildPack } from './pack.js';
-import { festivalsInWindow, pollFestival, polledRecently } from './poller.js';
+import { festivalsInWindow, pollFestival, polledRecently, pollingStatus } from './poller.js';
 import { pushAlert } from './push.js';
 import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
 import QRCode from 'qrcode';
-import { RADAR_DIR, noteInterest, radarLoop, refreshRadarSoon } from './radar.js';
+import { RADAR_DIR, noteInterest, radarLoop, radarStatus, refreshRadarSoon } from './radar.js';
+import { backupNow, backupStatus, backups } from './backup.js';
 import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './incidents.js';
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
@@ -101,8 +102,22 @@ async function publishAndPush(festival, incident) {
 
 // A page to open in a browser when the app says it cannot reach the backend: which build this is, where its data
 // lives, which sources have keys and whether an import has run. No secrets: a key is reported as set or not.
-app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
-  ok: true, at: iso(),
+/** What a monitor should alert on: no successful alert poll in ten minutes, no lightning file in five, while a festival is on. The rest is a warning. */
+export function healthProblems({ on = festivalsInWindow().length } = {}) {
+  const ageMin = t => t ? (Date.now() - Date.parse(t)) / 60_000 : null;
+  const problems = [], warnings = [], p = pollingStatus(), l = lightningStatus(), r = radarStatus(), b = backupStatus();
+  if (on && p.lastRunAt && (!p.lastOkAt || ageMin(p.lastOkAt) > 10)) problems.push(p.lastOkAt ? `alerts: no successful poll in ${Math.round(ageMin(p.lastOkAt))} min${p.lastError ? ` (${p.lastError})` : ''}` : `alerts: no successful poll yet${p.lastError ? ` (${p.lastError})` : ''}`);
+  if (on && l.on && l.lastTickAt && (!l.lastFileAt || ageMin(l.lastFileAt) > 5)) problems.push(l.lastFileAt ? `lightning: last file ${Math.round(ageMin(l.lastFileAt))} min ago` : 'lightning: no file read yet');
+  if (r.lastError && (!r.lastOkAt || Date.parse(r.errorAt) > Date.parse(r.lastOkAt))) warnings.push(`radar: ${r.lastError}`);
+  if (!process.env.NWS_USER_AGENT || /example\.com/.test(process.env.NWS_USER_AGENT)) warnings.push('NWS_USER_AGENT is a placeholder; the weather service may refuse us');
+  if (!process.env.ADMIN_KEY) warnings.push('no ADMIN_KEY: staff routes are off');
+  if (!webPushEnabled()) warnings.push('web push off: no VAPID keys');
+  if (b.lastError) warnings.push(`backup: ${b.lastError}`);
+  return { problems, warnings };
+}
+// ?strict=1 answers 503 while there is a problem, for a monitor that only reads status codes. Without it the body says.
+app.get('/health', (req, res) => { const { problems, warnings } = healthProblems(); res.status(req.query.strict && problems.length ? 503 : 200).set('Cache-Control', 'no-store').json({
+  ok: !problems.length, problems, warnings, at: iso(),
   build: (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 7) || null,
   uptimeSeconds: Math.round(process.uptime()),
   database: { path: process.env.DB_PATH || 'fieldwatch.db', onVolume: Boolean(process.env.RAILWAY_VOLUME_MOUNT_PATH) },
@@ -118,7 +133,8 @@ app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({
     // Per source, what the last run managed and the last error it hit, so a failing key or a blocked host shows here.
     sources: Object.fromEntries(Object.entries(imports.last || {}).filter(([, v]) => v && typeof v === 'object')
       .map(([k, v]) => [k, v.skipped ? { skipped: v.skipped } : { calls: v.calls ?? 0, errors: v.errors ?? 0, festivals: v.festivals ?? 0, added: v.added ?? 0, ...(v.lastError && { lastError: v.lastError }), ...(v.error && { error: v.error }) }])) },
-}));
+  polling: pollingStatus(), radar: radarStatus(), backups: backupStatus(),
+}); });
 
 // ---- Festivals: the list itself ------------------------------------------
 // What is on: grounds open through the day after the end (festivals.js). ?all=1 for everything published.
@@ -134,6 +150,7 @@ app.get('/events', sse);
 // 15 miles (code red or orange) puts a festival on the page too; red is an alert already, orange is its own row.
 const RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
 app.get('/alerts', (req, res) => {
+  q.count('*', 'feed');
   const on = festivalsInWindow(), rank = a => RANK[String(a.severity || '').toLowerCase()] || 0;
   const items = on.map(f => ({ festival: f, alerts: q.activeAlerts(f.id).sort((a, b) => rank(b) - rank(a)), lightning: lightningFor(f.id) })).filter(i => i.alerts.length || ['red', 'orange'].includes(i.lightning?.code));
   const top = i => Math.max(i.alerts[0] ? rank(i.alerts[0]) : 0, i.lightning?.code === 'red' ? 3 : i.lightning?.code === 'orange' ? 2 : 0);
@@ -197,6 +214,7 @@ app.post('/admin/import', requireAdmin, (req, res) => {
 app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
   if (!polledRecently(req.festival.id)) { try { await pollFestival(req.festival); } catch {} }
   noteInterest(req.festival.id); refreshRadarSoon(req.festival);
+  q.count(req.festival.id, 'pack');
   res.json(await buildPack(req.festival));
 }));
 
@@ -211,7 +229,7 @@ app.post('/festivals/:id/ground/report', loadFestival, wrap(async (req, res) => 
   groundReportTimes.set(ip, [...recent, now]);
   const r = await reportGround(req.festival, String(req.body?.state || ''), { now, q, save: f => q.upsertFestival(f) });
   if (r.error) return res.status(400).json({ error: r.error });
-  changed(req.festival.id, 'ground');
+  changed(req.festival.id, 'ground'); q.count(req.festival.id, 'ground.report');
   res.json({ ...r, reports: reportSummary(q, req.festival.id, now) });
 }));
 
@@ -249,6 +267,7 @@ app.get('/festivals/:id/radar', loadFestival, (req, res) => {
 
 app.get('/festivals/:id/alerts', loadFestival, wrap(async (req, res) => {
   if (!polledRecently(req.festival.id)) { try { await pollFestival(req.festival); } catch {} }
+  q.count(req.festival.id, 'alerts');
   res.json(q.activeAlerts(req.festival.id));
 }));
 
@@ -259,6 +278,7 @@ app.post('/festivals/:id/posts', requireAdmin, loadFestival, wrap(async (req, re
   if (!title || !body) return res.status(400).json({ error: 'title and body required' });
   if (!SEVERITIES.includes(severity)) return res.status(400).json({ error: `severity must be one of ${SEVERITIES.join(', ')}` });
   const info = q.insertPost(req.festival.id, title, body);
+  q.count(req.festival.id, 'post');
   const alert = {
     id: `official-${req.festival.id}-${info.lastInsertRowid}`,
     event: title, headline: null, body, instruction: null, severity,
@@ -321,6 +341,7 @@ app.post('/festivals/:id/reports', loadFestival, (req, res) => {
 
   const { summary, category, location, latitude, longitude } = req.body || {};
   if (!summary || String(summary).length < 8) return res.status(400).json({ error: 'summary required' });
+  q.count(req.festival.id, 'report');
   const hit = classify(summary) || { category: category || 'other', level: 'advisory' };
   const incident = {
     id: `rep-${randomUUID()}`, festivalId: req.festival.id, category: hit.category, level: hit.level,
@@ -371,6 +392,7 @@ app.post('/push/subscribe', wrap(async (req, res) => {
   const { subscription, festivalId, point, quiet } = req.body || {};
   if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys is required' });
   if (festivalId && !q.festival(festivalId)) return res.status(404).json({ error: 'no such festival' });
+  q.count(festivalId || 'here', 'follow');
   // A phone with no festival follows a point: wherever it is, rounded to about a kilometer, so a warning for that spot reaches it.
   const lat = Number(point?.latitude), lon = Number(point?.longitude);
   const at = !festivalId && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { latitude: Math.round(lat * 100) / 100, longitude: Math.round(lon * 100) / 100 } : null;
@@ -381,6 +403,18 @@ app.post('/push/subscribe', wrap(async (req, res) => {
   res.json({ ok: true, welcome: quiet ? false : await pushWelcome(clean, target) });
 }));
 app.get('/admin/import', requireAdmin, (req, res) => res.json({ ...(imports.last || { never: true }), running: imports.running }));
+/** Use, with nobody in it: packs opened, alerts listed and stored, pushes sent, heads-ups, posts, reports, follows, per festival, for the last `days` (7, up to 90). */
+app.get('/admin/stats', requireAdmin, (req, res) => {
+  const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
+  const totals = {}, per = {};
+  for (const { festivalId, key, n } of q.stats(days)) { totals[key] = (totals[key] || 0) + n; (per[festivalId] ||= {})[key] = n; }
+  const latency = totals['alert.latency_n'] ? Math.round(totals['alert.latency_s'] / totals['alert.latency_n']) : null;
+  const festivals = Object.entries(per).filter(([id]) => id !== '*').map(([id, counts]) => ({ id, name: q.festival(id)?.name || id, counts })).sort((a, b) => (b.counts.pack || 0) - (a.counts.pack || 0));
+  res.set('Cache-Control', 'no-store').json({ days, totals, alertLatencySeconds: latency, festivals });
+});
+/** The newest backup as a file, and a way to take one now. */
+app.get('/admin/backup', requireAdmin, (req, res) => { const [b] = backups(); if (!b) return res.status(404).json({ error: 'no backup yet' }); res.download(b.path, b.name); });
+app.post('/admin/backup', requireAdmin, wrap(async (req, res) => { const r = await backupNow(); res.json({ ...backupStatus(), bytes: r.bytes }); }));
 app.delete('/push/subscribe', (req, res) => {
   const endpoint = req.body?.endpoint || req.query.endpoint;
   if (!endpoint) return res.status(400).json({ error: 'endpoint required' });

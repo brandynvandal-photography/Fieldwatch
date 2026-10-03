@@ -69,6 +69,13 @@ db.exec(`
     created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS ground_reports_festival ON ground_reports(festival_id, created_at);
+  CREATE TABLE IF NOT EXISTS stats (
+    day TEXT NOT NULL,
+    festival_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    n INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, festival_id, key)
+  );
 `);
 // Added later: a festival someone suggested waits as 'pending' until an admin approves it.
 if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
@@ -123,6 +130,9 @@ const s = {
   setSetting: db.prepare(`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`),
   insertGroundReport: db.prepare(`INSERT INTO ground_reports (festival_id, state, effective, tier, created_at) VALUES (?, ?, ?, ?, ?)`),
   groundReports: db.prepare(`SELECT state, effective, tier, created_at FROM ground_reports WHERE festival_id = ? AND created_at >= ? ORDER BY created_at DESC`),
+  count: db.prepare(`INSERT INTO stats (day, festival_id, key, n) VALUES (?, ?, ?, ?) ON CONFLICT(day, festival_id, key) DO UPDATE SET n = n + excluded.n`),
+  stats: db.prepare(`SELECT festival_id, key, SUM(n) AS n FROM stats WHERE day >= ? GROUP BY festival_id, key`),
+  purgeStats: db.prepare(`DELETE FROM stats WHERE day < ?`),
 };
 
 export const q = {
@@ -165,6 +175,10 @@ export const q = {
   setSetting: (key, value) => s.setSetting.run(key, value),
   insertGroundReport: (festivalId, state, effective, tier) => s.insertGroundReport.run(festivalId, state, effective, tier, iso()),
   groundReports: (festivalId, since) => s.groundReports.all(festivalId, iso(since)).map(r => ({ state: r.state, effective: r.effective, tier: r.tier, at: r.created_at })),
+  // Counters with no one in them: how much each festival's pack, alerts and pushes are used, by day. Nothing names a phone.
+  count: (festivalId, key, n = 1) => { if (n) s.count.run(iso().slice(0, 10), festivalId || '*', key, n); },
+  stats: days => s.stats.all(new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)).map(r => ({ festivalId: r.festival_id, key: r.key, n: r.n })),
+  purgeStats: days => s.purgeStats.run(new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)),
 };
 
 function rowToIncident(r) {

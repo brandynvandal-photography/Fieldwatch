@@ -1984,7 +1984,9 @@ screens.sources = () => {
     ${!r && !S.sourcesBusy && staffHint(S.sourcesErr) ? `<p class="note">${esc(staffHint(S.sourcesErr))}</p>` : ''}
     ${r && !r.never ? `<div class="group glass">${Object.keys(SOURCE_NAMES).filter(k => r[k]).map(k => `<div class="row"><div class="main"><div class="t">${SOURCE_NAMES[k]}</div><div class="s">${esc(line(k, r[k]))}</div></div><span class="pill ${r[k].skipped || r[k].error ? '' : 'on'}">${r[k].skipped ? 'Off' : r[k].error ? 'Error' : 'On'}</span></div>`).join('')}</div>` : ''}
     <button class="btn quiet" ${S.sourcesBusy ? 'disabled' : ''} onclick="runSources()">${S.sourcesBusy ? 'Running' : 'Run now'}</button>
-    <p class="note">Keys go in the backend's variables: TICKETMASTER_KEY, SEATGEEK_CLIENT_ID, EDMTRAIN_KEY.</p>`;
+    <p class="note">Keys go in the backend's variables: TICKETMASTER_KEY, SEATGEEK_CLIENT_ID, EDMTRAIN_KEY.</p>
+    ${S.stats && S.stats.totals ? (t => `<p class="h">Last ${S.stats.days} days</p><div class="group glass">${[['Packs opened', t.pack], ['Alerts stored', t['alert.new']], ['Pushes sent', (t['push.web'] || 0) + (t['push.apns'] || 0)], ['Heads-ups', t.headsup], ['Follows', t.follow], ['Alert latency', S.stats.alertLatencySeconds != null ? `${S.stats.alertLatencySeconds} s` : null]]
+      .filter(([, v]) => v != null).map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v num">${esc(String(v || 0))}</span></div>`).join('')}</div><p class="note">Counts with nobody in them.</p>`)(S.stats.totals) : ''}`;
 };
 // ---- the whole list, for staff: search it, hide a listing the importers got wrong, unhide one hidden by mistake ----
 async function loadCatalog(){
@@ -2028,6 +2030,7 @@ async function loadSources(){
   const b = backend(); if (!b || !S.admin) { S.sources = null; return; }
   S.sourcesBusy = true; render();
   try{ S.sources = await getJSON(`${b}/admin/import`, adminHeaders()); S.sourcesErr = null; }catch(e){ S.sources = null; S.sourcesErr = e; }
+  try{ S.stats = await getJSON(`${b}/admin/stats?days=7`, adminHeaders()); }catch(e){ S.stats = null; }
   S.sourcesBusy = false; render();
 }
 /** Starts a run on the backend and watches it finish; a run can take minutes when it reads festival sites. */
@@ -2100,6 +2103,8 @@ async function checkBackend(){
   const keys = Object.keys(h.sources || {}).filter(k => h.sources[k] === true || h.sources[k] === 'on').map(k => SOURCE_NAMES[k] || k);
   lines.push(keys.length ? `Sources on: ${keys.join(', ')}` : 'No source keys seen');
   if (h.nwsUserAgent === 'placeholder') lines.push('NWS_USER_AGENT is not set');
+  for (const p of h.problems || []) { ok = false; lines.push(`Problem: ${p}`); }
+  for (const w of (h.warnings || []).filter(w => !/NWS_USER_AGENT/.test(w))) lines.push(w);
   if (h.imports) lines.push(h.imports.running ? 'An import is running' : h.imports.lastFinishedAt ? `Last import ${fmtFull(h.imports.lastFinishedAt)}` : 'No import has finished since boot');
   if (S.admin) {
     try{ await getJSON(`${b}/admin/import`, adminHeaders()); lines.push('Admin key matches'); }

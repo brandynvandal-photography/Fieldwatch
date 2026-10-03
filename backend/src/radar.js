@@ -84,6 +84,9 @@ function prune(id, oldestWanted) {
 
 const inflight = new Map();     // festival id -> the refresh promise currently running for it
 const lastRefresh = new Map();
+const radar = { lastError: null, errorAt: null, lastOkAt: null };
+/** For /health: the festivals with a loop, when a refresh last fetched without a failure, and the last error. */
+export const radarStatus = () => ({ festivals: lastRefresh.size, lastOkAt: radar.lastOkAt, lastError: radar.lastError, errorAt: radar.errorAt });
 const failures = new Map();     // `${id}/${t}` -> attempts; a frame the archive never produces stops being asked for
 const MAX_ATTEMPTS = 3;
 const PAUSE_MS = Number(process.env.RADAR_FETCH_PAUSE_MS ?? 100);   // between requests on a first fill; 0 in tests
@@ -117,8 +120,8 @@ async function fill(f, { now = Date.now() } = {}) {
     if (missing.length > 3 && PAUSE_MS) await sleep(PAUSE_MS);   // a first fill is dozens of requests; don't hammer the archive
   }
   // One line per refresh, not one per frame: an archive outage would otherwise flood the log.
-  if (failed) console.error(`[${f.id}] radar: ${fetched} frames fetched, ${failed} failed${gaveUp ? ` (${gaveUp} given up)` : ''}: ${firstError}`);
-  else if (fetched) console.log(`[${f.id}] radar: ${fetched} new frame${fetched === 1 ? '' : 's'}`);
+  if (failed) { radar.lastError = `${f.id}: ${firstError}`; radar.errorAt = iso(now); console.error(`[${f.id}] radar: ${fetched} frames fetched, ${failed} failed${gaveUp ? ` (${gaveUp} given up)` : ''}: ${firstError}`); }
+  else { radar.lastOkAt = iso(now); if (fetched) console.log(`[${f.id}] radar: ${fetched} new frame${fetched === 1 ? '' : 's'}`); }
   prune(f.id, wanted[0]);
   for (const key of failures.keys()) if (key.startsWith(`${f.id}/`) && Number(key.split('/')[1]) < wanted[0]) failures.delete(key);
   lastRefresh.set(f.id, now);

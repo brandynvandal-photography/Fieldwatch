@@ -41,7 +41,9 @@ npm test                    # every route, with api.weather.gov replaced by a fi
 | GET | `/push/vapid` | The public VAPID key the web build subscribes with; 404 until keys are set |
 | POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings, or `{ subscription, point: { latitude, longitude } }` for wherever it is; either way one test notification comes straight back |
 | GET | `/admin/import` | The last festival import report, plus `running` while one is in progress (admin key) |
-| GET | `/health` | Open it in a browser when the app cannot reach the backend: build, uptime, where the database is, which sources have keys, whether an import ran. No secrets |
+| GET | `/admin/stats` | Use for the last `?days=7` (up to 90), per festival, with nobody in it: packs opened, alert lists, alerts stored and their latency, pushes sent, heads-ups, posts, reports, follows (admin key) |
+| GET | `/admin/backup` | The newest database backup as a file; `POST` takes one now (admin key) |
+| GET | `/health` | Open it in a browser when the app cannot reach the backend: `ok`, `problems` (no successful alert poll in ten minutes, no lightning file in five, while a festival is on), `warnings` (a placeholder user agent, no admin key, push off, a radar or backup error), build, uptime, where the database is, which sources have keys, polling, radar, backups, whether an import ran. No secrets. `?strict=1` answers 503 while there is a problem, for a monitor that reads status codes |
 | DELETE | `/push/subscribe` | `{ endpoint }` and it stops |
 | POST | `/devices` | `{ token, festivalId }` subscribe a phone |
 | DELETE | `/devices/:token` | Unsubscribe |
@@ -169,3 +171,10 @@ Scanner traffic and attendee reports, filtered down to hazards.
 The rules are duplicated in `node/uploader.py`. `test/fixtures/hazard-samples.json` is run through both, so they can't drift silently.
 
 If a node couldn't transcribe on-device, set `OPENAI_API_KEY` and the backend will run Whisper on the upload.
+
+## Operating it
+
+- **Watch `/health?strict=1`** from an uptime monitor (UptimeRobot, Better Stack, a cron with curl): it answers 503 while a festival is on and the alert poll has not succeeded in ten minutes or no lightning file has been read in five. The plain `/health` always answers 200 and says the same in `problems` and `warnings`.
+- **Backups**: a copy of the database is written once a day (`BACKUP_HOURS`) to `BACKUP_DIR` (default: a `backups` folder beside the database, on the volume), the last `BACKUP_KEEP` (7) kept. `GET /admin/backup` downloads the newest; `POST /admin/backup` takes one now. Restoring is copying the file over `DB_PATH` with the service stopped.
+- **Counters**: `GET /admin/stats` counts use per festival per day: packs opened, alert lists served, alerts stored and how long after issue, pushes sent (web and APNs), heads-ups, posts, hazard reports, ground reports, follows. Nothing in them names a phone, an address or a person, in keeping with the no-tracking rule; they are kept ninety days.
+- **The shakedown script**: `node scripts/shakedown.mjs https://your-host ADMIN_KEY` reads the whole backend in one pass from any machine and prints what is live, stale or failing. `docs/shakedown.md` is the checklist for the first live weekend.

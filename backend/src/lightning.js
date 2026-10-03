@@ -202,6 +202,7 @@ async function announce(f, prev, a, now) {
   const tz = await point(f.latitude, f.longitude).then(p => p.timeZone).catch(() => null);
   const alert = codeAlert(f, a, tz, now);
   if (q.alert(alert.id)) q.updateAlert(alert); else q.insertAlert(f.id, alert);
+  q.count(f.id, 'lightning.alert');
   state.episodes.set(f.id, { code: a.code, id: alert.id });
   const r = await pushAlert(q.tokensFor(f.id), f, alert), w = await pushWeb(f, alert);
   console.log(`[${f.id}] lightning: ${a.code}, ${alert.nearestMi} mi push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);

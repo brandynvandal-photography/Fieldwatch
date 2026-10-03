@@ -45,5 +45,6 @@ export async function pushAlert(tokens, festival, alert) {
   for (const f of result.failed) {
     if (f.status === '410' || f.response?.reason === 'BadDeviceToken') q.deleteDevice(f.device);
   }
+  q.count(festival.id, 'push.apns', result.sent.length);
   return { sent: result.sent.length, failed: result.failed.length };
 }

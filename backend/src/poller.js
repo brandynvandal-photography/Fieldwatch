@@ -16,6 +16,9 @@ export function festivalsInWindow(now = Date.now()) {
 }
 
 const lastPolled = new Map();
+// Liveness for /health: when a poll last ran, when one last succeeded, and the last error, so a stale feed shows as a problem.
+const polling = { lastRunAt: null, lastOkAt: null, lastError: null, errorAt: null, festivals: 0 };
+export const pollingStatus = () => ({ lastRunAt: polling.lastRunAt ? iso(polling.lastRunAt) : null, lastOkAt: polling.lastOkAt ? iso(polling.lastOkAt) : null, lastError: polling.lastError, errorAt: polling.errorAt, festivals: polling.festivals });
 
 /** Fetch NWS alerts for one festival, store new ones, push them, and end the ones that vanished. */
 export async function pollFestival(f) {
@@ -38,6 +41,9 @@ export async function pollFestival(f) {
   if (brandNew.length) {
     const tokens = q.tokensFor(f.id);
     for (const a of brandNew) {
+      q.count(f.id, 'alert.new');
+      const latency = Math.round((Date.now() - Date.parse(a.issuedAt || '')) / 1000);
+      if (Number.isFinite(latency) && latency >= 0) { q.count(f.id, 'alert.latency_s', latency); q.count(f.id, 'alert.latency_n'); }
       const r = await pushAlert(tokens, f, a);
       const w = await pushWeb(f, a);
       console.log(`[${f.id}] new: ${a.event} (${a.severity}) push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
@@ -90,6 +96,7 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   const a = headsUpAlert(f, inc, p.timeZone, now, ground);
   q.setSetting(key, JSON.stringify({ hazard: inc.hazard, startsAt: inc.startsAt, at: new Date(now).toISOString() }));
   if (q.alert(a.id)) q.updateAlert(a); else q.insertAlert(f.id, a);
+  q.count(f.id, 'headsup');
   changed(f.id, 'headsup');
   const r = await pushAlert(q.tokensFor(f.id), f, a);
   const w = await pushWeb(f, a);
@@ -99,15 +106,19 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
 
 export async function pollOnce() {
   const on = festivalsInWindow();
+  polling.lastRunAt = Date.now(); polling.festivals = on.length;
+  if (!on.length) polling.lastOkAt = polling.lastRunAt;   // nothing to poll is not a failure
   try { await ensureGround(on, { save: f => q.upsertFestival(f) }); } catch (e) { console.error('ground lookup failed:', e.message); }
   for (const f of on) {
-    try { await pollFestival(f); } catch (e) { console.error(`[${f.id}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
+    try { await pollFestival(f); polling.lastOkAt = Date.now(); }
+    catch (e) { polling.lastError = `${f.id}: ${e.message}`; polling.errorAt = iso(); console.error(`[${f.id}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
     try { await headsUp(f); } catch (e) { console.error(`[${f.id}] heads-up failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   }
   for (const p of q.webSubscriptionPoints()) {
     try { await pollPoint(p); } catch (e) { console.error(`[pt:${p.latitude},${p.longitude}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   }
   q.purgeAlerts(daysFromNow(-7));
+  q.purgeStats(90);
 }
 
 export function startPolling(seconds = Number(process.env.POLL_SECONDS || 30)) {
