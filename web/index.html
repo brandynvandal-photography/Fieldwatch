@@ -998,7 +998,7 @@ function askPush(f){
   if (!f || f.id === 'here' || !backend() || isFav(f.id) || (S.asked || {})[f.id]) return '';
   if (!PUSH_OK) return IOS && !STANDALONE && !IN_PREVIEW ? `<div class="ask glass"><div class="t">Favorite ${esc(f.name)}?</div><p>Add Fieldwatch to your Home Screen first: Share, then "Add to Home Screen". Then favorite it here.</p><div class="acts"><button class="btn small quiet" onclick="askedPush()">Got it</button></div></div>` : '';
   if (Notification.permission === 'denied') return '';
-  return `<div class="ask glass"><div class="t">Favorite ${esc(f.name)}?</div><p>Warnings, heads-ups and lightning codes reach this phone even when the app is closed.</p><div class="acts"><button class="btn small" onclick="toggleFavorite('${esc(f.id)}')">${I.heart}Favorite</button><button class="btn small quiet" onclick="askedPush()">Not now</button></div></div>`;
+  return `<div class="ask glass"><div class="t">Favorite ${esc(f.name)}?</div><p>Its warnings reach this phone even when the app is closed.</p><div class="acts"><button class="btn small" onclick="toggleFavorite('${esc(f.id)}')">${I.heart}Favorite</button><button class="btn small quiet" onclick="askedPush()">Not now</button></div></div>`;
 }
 function askedPush(){ const f = fest(); if (f) { S.asked = { ...(S.asked || {}), [f.id]: true }; save(); } render(); }
 // ---- staff mode: the backend address, its check and the admin key stay out of sight until someone who runs it asks ----
@@ -1331,7 +1331,7 @@ const incomingLabel = inc => inc.hazard === 'rain' && inc.mud ? TIER[inc.mud.tie
 function headsUpCard(f){
   const inc = incomingFor(f); if (!inc) return '';
   const P = PREP[inc.hazard] || PREP.storms, now = inc.minutes <= 0, label = incomingLabel(inc);
-  const steps = deadlines(inc.startsAt, campFor(inc, setupFor(f))).slice(0, 3);
+  const steps = deadlines(inc.startsAt, campFor(inc, setupFor(f))).slice(0, 1);   // the first thing to do; the rest is a tap away
   return `<button class="headsup glass ${esc(inc.hazard)}" onclick="later(function(){ go('prep') })">
     <span class="hu-top"><span class="eyebrow">${now ? 'Happening now' : inc.source === 'radar' ? 'On the radar' : 'On the way'}</span><span class="hu-when num" data-countdown="${esc(inc.startsAt)}">${esc(countdownText(inc.startsAt))}</span></span>
     <h3>${esc(label)}</h3>
@@ -1572,7 +1572,7 @@ screens.feed = () => {
       ${f && f.id === 'here' ? '' : `<button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button>`}
       <button class="row" onclick="later(function(){ go('picker') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Search festivals</div><div class="s">By name or place</div></div>${I.chev}</button>
     </div>
-    ${fd ? `<p class="note">Checked ${esc(ago(fd.at))}. Alerts come from the National Weather Service and festival staff.</p>` : ''}`;
+    ${fd ? `<p class="note">Checked ${esc(ago(fd.at))}.</p>` : ''}`;
 };
 
 /** The words typed, each of which must appear somewhere in the name, the place or the county, in any order. */
@@ -1652,14 +1652,13 @@ screens.home = () => {
     </div>
     ${askPush(f)}
     <div class="group glass">
-      ${here ? '' : `<button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">${f.isPartner ? 'Updates from the festival' : 'Not yet partnered'}</div></div>${I.chev}</button>
-      <button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">${backend() ? 'County dispatch and reports' : 'Needs the Fieldwatch backend'}</div></div>${I.chev}</button>
-      <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>
+      ${here ? '' : `${f.isPartner || (f.site || []).length ? `<button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">Updates from the festival</div></div>${I.chev}</button>` : ''}
+      ${backend() ? `<button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">County dispatch and reports</div></div>${I.chev}</button>
+      <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>` : ''}
       ${S.admin && backend() ? `<button class="row" onclick="later(function(){ go('ground') })"><span class="lead">${I.ground}</span><div class="main"><div class="t">Ground and what is standing</div><div class="s">${esc(groundLine(d.ground) || 'What the rain and wind advice assumes')}</div></div>${I.chev}</button>` : ''}`}
       ${pushRow()}
     </div>
-    ${listingNote(f)}
-    <p class="note">Carrier emergency alerts still arrive on their own.</p>`;
+    ${listingNote(f)}`;
 };
 // Where a festival's listing came from, with the link the source gave (Edmtrain's terms ask for it as given).
 const SOURCES = { ticketmaster: 'Ticketmaster', seatgeek: 'SeatGeek', edmtrain: 'Edmtrain' };
@@ -1688,9 +1687,6 @@ screens.weather = () => {
     <span class="eyebrow">${esc(f.county)}</span>
     <h1 class="title">Weather</h1>
     <p class="sub">${esc(outlook(f) || statusLine(f))}</p>
-    <div class="group glass"><button class="row" onclick="later(function(){ go('radar') })"><span class="lead">${I.radar}</span><div class="main"><div class="t">Radar</div><div class="s">Last ${HOURS} hours</div></div>${I.chev}</button></div>
-    ${lightningTile(f)}
-    ${headsUpCard(f)}
     ${alerts}
     <p class="h">Forecast</p>
     ${chart}
@@ -1739,16 +1735,13 @@ screens.alert = id => {
     ${ours ? todo : ''}
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
     ${a.channel === 'lightning' ? `<div class="group glass"><button class="row" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Lightning right now</div><div class="s">The code, the nearest flash, the all-clear</div></div>${I.chev}</button></div>` : ''}
-    ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'AirDrop reaches phones nearby with no signal. Ask them to set AirDrop to Everyone for 10 minutes.' : 'Nearby share reaches phones with no signal. Or text it.'}</p>` : ''}
+    ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'Works with no signal. They need AirDrop set to Everyone.' : 'Works with no signal. Or text it.'}</p>` : ''}
     ${sections.length ? `<div class="group glass secs">${sections.map(s => section(s.label, bullets(s.text))).join('')}</div>` : ''}
     ${!ours && (instruction || paragraphs.length) ? `<details class="more glass"><summary>Full alert${I.chev}</summary><div class="inner secs">${instruction ? section('What to do', bullets(instruction)) : ''}${paragraphs.length ? section('From the weather service', paragraphs) : ''}</div></details>` : ours ? paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('') : ''}
     <div class="group glass">
       <div class="kv"><span class="k">Area</span><span class="v">${esc(areaText(a.area))}</span></div>
       <div class="kv"><span class="k">Source</span><span class="v">${esc(a.source)}</span></div>
-      <div class="kv"><span class="k">Issued</span><span class="v num">${esc(fmtFull(a.issuedAt))}</span></div>
-      ${a.expiresAt ? `<div class="kv"><span class="k">Ends</span><span class="v num">${esc(fmtFull(a.expiresAt))}</span></div>` : ''}
-    </div>
-    <p class="note">Saved on this phone. Opens without signal.</p>`;
+    </div>`;
 };
 
 // ---- the one line to act on. A person in a panic reads the first line and nothing else, so every alert opens with one ----
@@ -1795,11 +1788,13 @@ screens.prep = () => {
     ${setupHead(f)}
     ${setupRow(f)}
     <div class="group glass steps">${plan.map(d => `<div class="step"><span class="n"></span><span class="task">${esc(d.task)}</span><b class="by num">${d.late ? 'now' : 'by ' + esc(fmtTime(d.startBy))}</b></div>`).join('')}</div>
+    <details class="correct"><summary>Timeline and what to pack${I.chev}</summary><div class="inner">
     <p class="h">Timeline</p>
     <div class="group glass">${rows.map(([k, l, t]) => `<div class="tl ${k === stage ? 'now' : ''}"><span class="k">${esc(l)}</span><span class="v">${esc(t)}</span></div>`).join('')}</div>
     <p class="h">Pack for shelter</p>
     <div class="group glass steps">${SHELTER_PACK.map(s => `<div class="step"><span class="n"></span><span class="task">${esc(s)}</span></div>`).join('')}</div>
-    <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : inc.source === 'radar' ? 'From the rain on the radar' : 'Read from the National Weather Service forecast'}${d.at ? ` · checked ${esc(ago(d.at))}` : ''}. Carrier emergency alerts still arrive on their own.</p>`;
+    </div></details>
+    <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : inc.source === 'radar' ? 'From the rain on the radar' : 'From the National Weather Service forecast'}${d.at ? ` · checked ${esc(ago(d.at))}` : ''}.</p>`;
 };
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
@@ -1809,16 +1804,17 @@ screens.lightning = () => {
     : live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi at ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
     : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'Nothing read from the mapper yet') : 'Lightning codes come from the backend';
   const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
+  const codeRow = k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(CODE[k].ring)}</div><div class="s">${esc(CODE[k].protocol)}</div><div class="s you">${esc(CODE[k].you)}</div></div></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Lightning</h1>
     <p class="sub">${indoor ? 'No codes for this event' : live ? esc(c.text) : esc(statusLine(f))}</p>
     <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>
       ${live && l.code === 'red' && l.allClearAt ? `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">to the all-clear unless it strikes again</span>` : ''}</div>
-    ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}${kv('Last within 8 mi', l.lastNearAt ? esc(fmtTime(l.lastNearAt)) : 'none in 30 min')}${kv('Data', l.dataAt ? esc(ago(l.dataAt)) : 'none')}</div>` : ''}
-    <p class="h">The codes</p>
-    <div class="group glass">${Object.keys(CODE).map(k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(CODE[k].ring)}</div><div class="s">${esc(CODE[k].protocol)}</div><div class="s you">${esc(CODE[k].you)}</div></div></div>`).join('')}</div>
-    <p class="note">Read every 20 seconds from the GOES lightning mapper. It sees cloud tops and can miss flashes under a thick anvil. The festival's own detection and its safety staff are the authority. Carrier emergency alerts still arrive on their own.</p>`;
+    ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}</div>` : ''}
+    ${live ? `<p class="h">This code</p><div class="group glass">${codeRow(l.code)}</div><details class="correct"><summary>The other codes${I.chev}</summary><div class="inner"><div class="group glass">${Object.keys(CODE).filter(k => k !== l.code).map(codeRow).join('')}</div></div></details>`
+      : `<p class="h">The codes</p><div class="group glass">${Object.keys(CODE).map(codeRow).join('')}</div>`}
+    <p class="note">GOES lightning mapper, read every 20 seconds. It can miss flashes under a thick anvil. The festival's own detection and safety staff are the authority.</p>`;
 };
 screens.ground = () => {
   const f = fest(); if (!f || f.id === 'here') return screens.picker();
@@ -2084,6 +2080,7 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   ${staffMode() ? `<p class="h">Admin</p>
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="only if you run the backend" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label>${S.admin && backend() ? `${fest() && fest().id !== 'here' ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>` : ''}</div>` : ''}
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen with an icon. Works with no signal.</p></div>` : ''}
+  <p class="note">Carrier emergency alerts still arrive on their own.</p>
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
   <p class="note credits" onclick="creditsTap()">Weather and alerts: National Weather Service. Radar: ${esc(ATTRIBUTION)}. Map: OpenStreetMap contributors. Listings: Ticketmaster, SeatGeek, Edmtrain and people here. No account, no login.</p>`;
 
