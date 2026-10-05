@@ -257,7 +257,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .code.now{background:rgba(26,21,51,.05)}
 .code .you{color:var(--ink-2);margin-top:5px}
 .pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)} .pill.green{background:var(--ok);color:#fff}
-.codefold{margin-bottom:18px} .codefold summary{display:flex;align-items:center;gap:10px;width:100%;min-height:62px;padding:12px 16px;border-radius:var(--radius);cursor:pointer;list-style:none} .codefold summary::-webkit-details-marker{display:none} .codefold summary .main{flex:1;min-width:0;text-align:left} .codefold summary .t{font-weight:600;font-size:17px;line-height:1.25} .codefold summary .s{color:var(--muted);font-size:14px;margin-top:2px;line-height:1.3} .codefold summary .bar{width:5px;border-radius:3px;flex:none;align-self:stretch} .codefold summary .bar.warn{background:var(--warn)} .codefold summary .fav{color:var(--accent);display:inline-flex;flex:none} .codefold summary .fav svg{width:16px;height:16px} .codefold summary>svg:last-child{flex:none;color:var(--muted);transition:transform .2s} .codefold[open] summary>svg:last-child{transform:rotate(90deg)} .codefold .inner{margin-top:18px}
+.codefold{margin-bottom:18px} .codefold summary{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:14px 16px;border-radius:var(--radius);cursor:pointer;list-style:none} .codefold summary::-webkit-details-marker{display:none} .codefold summary .main{flex:1;min-width:0;text-align:left} .codefold summary .top{display:flex;align-items:center;gap:10px} .codefold summary .t{flex:1;min-width:0;font-weight:600;font-size:17px;line-height:1.25} .codefold summary .s{color:var(--muted);font-size:14px;margin-top:5px;line-height:1.35;text-wrap:pretty} .codefold summary .bar{width:5px;border-radius:3px;flex:none;align-self:stretch} .codefold summary .bar.warn{background:var(--warn)} .codefold summary .fav{color:var(--accent);display:inline-flex;flex:none} .codefold summary .fav svg{width:16px;height:16px} .codefold summary .top>svg:last-child{flex:none;color:var(--muted);transition:transform .2s} .codefold[open] summary .top>svg:last-child{transform:rotate(90deg)} .codefold .inner{margin-top:18px}
 .feedfest .fh{display:flex;align-items:center;gap:10px;width:100%} .feedfest .fh .main{flex:1;min-width:0} .feedfest .fh .fav{color:var(--accent);display:inline-flex;flex:none} .feedfest .fh .fav svg{width:16px;height:16px} .feedfest button.fh>svg:last-child{flex:none;color:var(--muted)}
 /* Alerts */
 .alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative;align-items:center}
@@ -1576,18 +1576,21 @@ const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'he
 const feedCode = i => { const fd = S.feed, l = lightningState((fd && fd.codes && fd.codes[i.festival.id]) || i.lightning || null, i.alerts); return l ? l.code : 'none'; };
 const CODE_ORDER = { red: 5, orange: 4, yellow: 3, green: 2, indoor: 1, none: 0 };
 const CODE_GROUP = { red: 'Code Red', orange: 'Code Orange', yellow: 'Code Yellow', green: 'Code Green', indoor: 'Indoors', none: 'No lightning data', later: 'Favorites not on yet' };
+// The quiet bulk of the list, folded into one bubble each: the group's pill and why there is nothing to grade.
+const FOLDS = { green: { pill: CODE.green.label, cls: 'green', why: 'No lightning within 20 mi' }, indoor: { pill: 'Indoors', cls: '', why: 'No lightning codes' } };
 /**
- * Code Green is the quiet bulk of the list, so every green festival starts inside one bubble: how many, what is going on at them
- * (warnings and advisories counted, a red bar when a warning is inside), the code's pill, a heart if one is a favorite. A tap opens
- * the cards, worst first; the next visit folds them again. The bubble is the group's own header. The other codes stay open.
+ * Code Green and Indoors are the quiet bulk of the list, so each starts folded into one bubble: how many festivals, what is going on
+ * at them (warnings and advisories counted, a red bar when a warning is inside), the group's pill, a heart if one is a favorite. The
+ * sub line runs the full width under the title row so it reads on a phone. A tap opens the cards, worst first; the next visit folds
+ * them again. The bubble is the group's own header. The other codes stay open.
  */
-function greenFold(items, card){
-  const alerts = items.flatMap(i => i.alerts), warnings = alerts.filter(isWarning).length, advisories = alerts.length - warnings;
+function codeFold(kind, items, card){
+  const spec = FOLDS[kind], alerts = items.flatMap(i => i.alerts), warnings = alerts.filter(isWarning).length, advisories = alerts.length - warnings;
   const fav = items.some(i => isFav(i.festival.id)), count = (n, one, many) => n ? ` · ${n} ${n === 1 ? one : many}` : '';
-  const sub = `No lightning within 20 mi${count(warnings, 'warning', 'warnings')}${count(advisories, 'advisory', 'advisories')}`;
-  return `<details class="codefold"><summary class="glass">${warnings ? '<span class="bar warn"></span>' : ''}${fav ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="main"><div class="t">${items.length} festival${items.length === 1 ? '' : 's'}</div><div class="s">${esc(sub)}</div></div><span class="pill green">${esc(CODE.green.label)}</span>${I.chev}</summary><div class="inner">${items.map(card).join('')}</div></details>`;
+  const sub = `${spec.why}${count(warnings, 'warning', 'warnings')}${count(advisories, 'advisory', 'advisories')}`;
+  return `<details class="codefold ${kind}"><summary class="glass">${warnings ? '<span class="bar warn"></span>' : ''}<div class="main"><div class="top">${fav ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="t">${items.length} festival${items.length === 1 ? '' : 's'}</div><span class="pill${spec.cls ? ` ${spec.cls}` : ''}">${esc(spec.pill)}</span>${I.chev}</div><div class="s">${esc(sub)}</div></div></summary><div class="inner">${items.map(card).join('')}</div></details>`;
 }
-/** The festivals list: every festival that is on, organized by lightning code, red at the top; within a code the worst alert, then the nearest. Code Green is one bubble (greenFold); the other codes stay open. A favorite not on yet comes last, with when it opens. */
+/** The festivals list: every festival that is on, organized by lightning code, red at the top; within a code the worst alert, then the nearest. Code Green and Indoors are one bubble each (codeFold); the other codes stay open. A favorite not on yet comes last, with when it opens. */
 screens.feed = () => {
   const fd = S.feed, f = fest(), items = fd && fd.items || [];
   const cards = live().map(x => items.find(i => i.festival.id === x.id) || { festival: x, alerts: [], lightning: null });
@@ -1598,11 +1601,11 @@ screens.feed = () => {
   const on = live().length, warns = items.filter(i => i.alerts[0] && isWarning(i.alerts[0])).length;   // an item is a festival with something going on: an alert, or an orange or red
   const head = !fd ? (S.feedBusy ? 'Checking' : S.feedErr ? staffFail(S.feedErr) : 'No signal') : warns ? `${warns} warning${warns > 1 ? 's' : ''}` : items.length ? `${items.length} advisor${items.length > 1 ? 'ies' : 'y'}` : 'All clear';
   const sub = `${on} festival${on === 1 ? '' : 's'} on now · ${head}${fd && fd.partial ? ' · nearest dozen checked' : ''}`;
-  // Headed by code once there is more than one code on the list; Code Green is one bubble (greenFold), its own header.
+  // Headed by code once there is more than one code on the list; Code Green and Indoors are one bubble each (codeFold), their own headers.
   const groups = [];
   for (const i of cards) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
   const card = i => feedCard(i, { fav: isFav(i.festival.id) });
-  const list = groups.map(g => g.k === 'green' ? greenFold(g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(CODE_GROUP[g.k] || 'No lightning data')}</p>` : ''}${g.items.map(card).join('')}`).join('');
+  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(CODE_GROUP[g.k] || 'No lightning data')}</p>` : ''}${g.items.map(card).join('')}`).join('');
   return topbar(S.stack.length ? backBtn() : '', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
     <h1 class="title">Festivals</h1>

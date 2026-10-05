@@ -822,6 +822,23 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.equal(await page.textContent('.codefold summary .s'), greenText);
     assert.equal(await page.$('.codefold summary .bar'), null, 'no bar with nothing going on');
     assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), 0);
+
+    // Indoors is a bubble too, beside the green one: a club show gets no code, and its bubble says so.
+    const indoorOne = store.list.filter(f => isLive(f)).find(f => f.id !== 'hulaween-2026');
+    store.lightning[indoorOne.id] = { code: 'indoor', indoor: true, at: new Date().toISOString(), dataAt: new Date().toISOString(), source: 'GOES GLM' };
+    await page.click('button[aria-label="Refresh"]');
+    await page.waitForSelector('details.codefold.indoor');
+    assert.equal(await page.textContent('.codefold.green summary .t'), `${liveCount - 1} festivals`);
+    assert.equal(await page.textContent('.codefold.indoor summary .t'), '1 festival');
+    assert.equal(await page.textContent('.codefold.indoor summary .s'), 'No lightning codes');
+    assert.equal(await page.textContent('.codefold.indoor summary .pill'), 'Indoors');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), [], 'two bubbles, no headers');
+    assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), 0, 'both folded');
+    await page.click('.codefold.indoor summary');
+    await page.waitForFunction(() => document.querySelector('details.codefold.indoor')?.open);
+    assert.deepEqual(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).map(e => e.querySelector('.fh .t').textContent)), [indoorOne.name], 'a tap opens the one inside, and only that bubble');
+    assert.equal(await page.textContent('.codefold.indoor .feedfest .fh .pill'), 'Indoors');
+    await shot(page, '22-feed-indoors');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
@@ -969,6 +986,10 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     store.feed = [{ festivalId: 'hulaween-2026', alerts: [alertFeature().properties].map(p => ({ id: p.id, event: p.event, headline: p.headline ?? null, body: '', instruction: null, severity: 'severe', area: '', source: 'NWS', issuedAt: p.effective, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0 })) }];
     await page.click('button:has-text("Festivals")'); await page.waitForSelector('span.eyebrow:has-text("Right now")');
     await page.click('button[aria-label="Refresh"]'); await page.waitForFunction(() => !S.feedBusy); await page.waitForSelector('h1.title:has-text("Festivals")');
+    await page.waitForSelector('details.codefold.indoor');
+    assert.equal(await page.textContent('.codefold.indoor summary .t'), '1 festival', 'an indoor festival starts in the Indoors bubble');
+    assert.equal(await page.textContent('.codefold.indoor summary .s'), 'No lightning codes · 1 warning'); assert.ok(await page.$('.codefold.indoor summary .bar.warn'), 'with its warning counted and barred');
+    await page.click('.codefold.indoor summary'); await page.waitForFunction(() => document.querySelector('details.codefold.indoor')?.open);
     assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Indoors');
     await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
     delete store.ground['hulaween-2026'];
