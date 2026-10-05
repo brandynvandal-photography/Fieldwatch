@@ -535,8 +535,20 @@ const STORE = 'fieldwatch.web';
 function load(){
   try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff }); }catch(e){}
 }
+/** What survives a reload: the chosen festival, the favorites and your own spot. Flashes are a minute of satellite and are fetched again. */
+function keepCache(){
+  const keep = new Set([S.fest, 'here', ...Object.keys(S.favorites || {})].filter(Boolean)), out = {};
+  for (const id of Object.keys(S.cache || {})) { if (!keep.has(id)) continue; const { flashes, ...rest } = S.cache[id] || {}; out[id] = rest; }
+  return out;
+}
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope })); }catch(e){}
+  const body = { fest: S.fest, cache: keepCache(), backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope };
+  try{ localStorage.setItem(STORE, JSON.stringify(body)); S.saveError = null; }
+  catch(e){
+    // Out of room: the settings matter more than the weather copy. Keep them, let the copy go, and say so in Diagnostics.
+    try{ localStorage.setItem(STORE, JSON.stringify({ ...body, cache: {}, feed: null, fests: null })); S.saveError = 'Storage is full, so the last weather is not kept between opens'; }
+    catch(e2){ S.saveError = `Nothing is kept between opens: ${e2.message || e2.name || 'storage is blocked'}`; }
+  }
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -685,8 +697,12 @@ function iemURL(bbox, t){
     BBOX: bbox.map(n => n.toFixed(0)).join(','), WIDTH: SIZE, HEIGHT: SIZE, FORMAT: 'image/png', TRANSPARENT: 'true', TIME: isoMin(t) });
   return `${IEM_WMS}?${p}`;
 }
+/** The loop that last played here, kept with the festival so it plays again with no signal: the shell cache holds the frames. */
+function rememberRadar(f, loop){ if (loop.kept) return; S.cache[f.id] = { ...data(f), radar: { at: new Date().toISOString(), frames: loop.frames, attribution: loop.attribution, hours: loop.hours, step: loop.step } }; save(); }
+function keptRadar(f){ const k = data(f).radar; return k && Array.isArray(k.frames) && k.frames.length ? { bbox: coverage(f), frames: k.frames, attribution: k.attribution, hours: k.hours, step: k.step, kept: true, at: k.at } : null; }
 async function radarLoop(f){
   const b = backend(), bbox = coverage(f);
+  if (navigator.onLine === false) { const k = keptRadar(f); if (k) return k; }   // no signal: straight to the loop from before it dropped
   if (b) {
     // The backend's cache serves everyone once it holds a couple of hours and is current; until then, when it is down, or when its newest
     // frame is stale (the archive was out of its reach for a while), the archive answers directly, like the alerts.
@@ -714,10 +730,10 @@ function tiles(bbox){
 
 const radar = { frames: [], loaded: new Set(), failed: 0, index: 0, playing: true, timer: 0, loop: null };
 function stopRadar(){ clearTimeout(radar.timer); radar.timer = 0; radar.frames = []; radar.loaded.clear(); radar.failed = 0; radar.loop = null; }
-async function startRadar(f){
+async function startRadar(f, kept){
   stopRadar();
-  let loop;
-  try { loop = await radarLoop(f); } catch(e) { radar.loop = { error: e.message || 'unreachable', frames: [] }; render(); return; }
+  let loop = kept || null;
+  if (!loop) try { loop = await radarLoop(f); } catch(e) { loop = keptRadar(f); if (!loop) { radar.loop = { error: e.message || 'unreachable', frames: [] }; render(); return; } }
   if (S.screen !== 'radar') return;
   radar.loop = loop; radar.frames = loop.frames; radar.index = loop.frames.length - 1; radar.playing = true;
   render();
@@ -725,8 +741,9 @@ async function startRadar(f){
   // Newest first, so the present shows while the past fills in.
   loop.frames.map((fr, i) => i).reverse().forEach(i => {
     const img = document.getElementById('fr' + i); if (!img) return;
-    img.onload = () => { radar.loaded.add(i); if (radar.loaded.size === 1) { radar.index = i; showFrame(); tick(); } updateRadarNote(); };
-    img.onerror = () => { radar.failed++; updateRadarNote(); };
+    img.onload = () => { radar.loaded.add(i); if (radar.loaded.size === 1) { radar.index = i; showFrame(); tick(); rememberRadar(f, loop); } updateRadarNote(); };
+    // Every frame failed and a loop from before is on this phone: play that one, and say that is what it is.
+    img.onerror = () => { radar.failed++; if (radar.failed === loop.frames.length && !loop.kept && keptRadar(f)) { startRadar(f, keptRadar(f)); return; } updateRadarNote(); };
     img.src = loop.frames[i].url;
   });
 }
@@ -760,7 +777,7 @@ function updateRadarNote(){
   const bar = document.getElementById('radar-progress'); if (bar) bar.style.width = total ? `${Math.round(100 * (got + radar.failed) / total)}%` : '0';
   if (bar && got + radar.failed >= total) setTimeout(() => { bar.style.opacity = '0'; }, 400);
   const n = document.getElementById('radar-loaded'); if (!n) return;
-  n.textContent = got === total ? '' : radar.failed === total
+  n.textContent = got === total ? (radar.loop && radar.loop.kept ? 'No signal. This is the loop from before it dropped.' : '') : radar.failed === total
     ? (IN_PREVIEW ? 'This preview cannot reach the radar archive. Open the hosted build to see it live.' : 'Cannot reach the radar archive right now.')
     : `Loading ${got} of ${total} frames`;
 }
@@ -1868,16 +1885,30 @@ screens.radar = () => {
   return topbar(backBtn(), '', '') + `<span class="eyebrow">${esc(f.county)}</span><h1 class="title">Radar</h1><p class="sub">Last ${HOURS} hours, 160 km around ${esc(f.name)}</p>${body}`;
 };
 
+/** The alert a notification carried, kept by the service worker: the screen opens on it before the list has loaded, and after NWS stopped listing it. */
+async function lookupKeptAlert(id){
+  S.keptAlert = { id, pending: true };
+  let alert = null;
+  try{ const r = 'caches' in window ? await caches.match(`./alert/${encodeURIComponent(id)}`) : null; if (r) alert = await r.json(); }catch(e){}
+  if (S.keptAlert && S.keptAlert.id === id) { S.keptAlert = { id, alert }; if (S.screen === 'alert' && S.param === id) render(); }
+}
 screens.alert = id => {
-  const f = fest(); const a = (data(f).alerts || []).find(x => x.id === id);
-  if (!a) return topbar(backBtn(), '', '') + (S.busy && !data(f).alerts ? `<div class="card glass" style="margin-top:22px"><h3>Checking</h3></div>` : `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`);
+  const f = fest(), listed = (f ? data(f).alerts || [] : []).find(x => x.id === id), kept = S.keptAlert && S.keptAlert.id === id ? S.keptAlert : null;
+  const a = listed || (kept && kept.alert) || null;
+  if (!a) {
+    if (!kept) lookupKeptAlert(id);
+    const checking = !kept || kept.pending || (S.busy && f && !data(f).alerts);
+    return topbar(backBtn(), '', '') + (checking ? `<div class="card glass" style="margin-top:22px"><h3>Checking</h3></div>` : `<div class="empty"><b>Alert expired</b>It's no longer in effect.</div>`);
+  }
   const warn = isWarning(a), hu = a.channel === 'headsup', { sections, paragraphs } = parseNWS(a.body), act = actionFor(a);
   const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim(), ours = hu || a.channel === 'lightning';
   const when = hu && a.onset ? `Expected ${fmtTime(a.onset)} · <span data-countdown="${esc(a.onset)}">${esc(countdownText(a.onset))}</span>`
+    : a.expiresAt && !isActive(a) ? `Ended ${esc(fmtTime(a.expiresAt))}`
     : a.expiresAt ? `Until ${esc(fmtTime(a.expiresAt))} · <span data-countdown="${esc(a.expiresAt)}" data-left="1">${esc(leftText(a.expiresAt))}</span>` : esc(a.area);
   const todo = instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${hu ? 'Solidify camp' : 'What to do'}</div><p>${esc(instruction)}</p></div></div>` : '';
   return topbar(backBtn(), '', `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>`) + `
     <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p class="num">${when}</p></div>
+    ${!listed ? `<p class="note">From the notification. The festival's own list has not loaded${isActive(a) ? '' : ', and this one has ended'}.</p>` : ''}
     ${act ? `<div class="donow ${warn ? 'warn' : ''}"><div class="t">${esc(act[0])}</div><div class="s">${esc(act[1])}</div></div>` : ''}
     ${ours ? todo : ''}
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
@@ -1905,7 +1936,11 @@ const ACTION = {
 /** [do, and] for an alert: the festival's own protocol for lightning, the timing line for a heads-up, the hazard for a warning. */
 function actionFor(a){
   if (a.channel === 'lightning') return a.code === 'red' || isWarning(a) ? ['Shelter now', 'Full work stoppage. Not a tent, canopy or stage.'] : ['Head for shelter', 'Evacuation procedures. Staff hold posts.'];
-  if (a.channel === 'headsup') return [timing(a.hazard || alertHazard(a.event) || 'storms', a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - Date.now()) / 60000)) : 999).replace(/\.$/, ''), (PREP[a.hazard || 'storms'] || PREP.storms).camp[0] + '.'];
+  if (a.channel === 'headsup') {
+    // The timing line, then the first task of this festival's own list: camping, day lot or crew, inside or out.
+    const f = fest(), hz = a.hazard || alertHazard(a.event) || 'storms', first = campFor({ hazard: hz, indoor: f ? insideOf(f) : false }, f ? setupFor(f) : 'day')[0];
+    return [timing(hz, a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - Date.now()) / 60000)) : 999).replace(/\.$/, ''), first ? `${first}.` : ''];
+  }
   const hz = alertHazard(a.event); if (!hz) return null;
   return ACTION[hz][isWarning(a) || /warning/i.test(a.event || '') ? 'warn' : 'watch'];
 }
@@ -2227,6 +2262,7 @@ async function loadDiagnostics(){
   try{ const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null; d.sw = !('serviceWorker' in navigator) ? 'Not in this browser' : reg ? (reg.active ? `Active${navigator.serviceWorker.controller ? ', controlling this page' : ''}` : reg.installing ? 'Installing' : 'Registered') : 'Not registered'; }catch(e){ d.sw = `Error: ${e.message}`; }
   try{ const names = 'caches' in window ? await caches.keys() : []; let n = 0; for (const name of names) n += (await (await caches.open(name)).keys()).length; d.shell = names.length ? `${n} files in ${names.join(', ')}` : 'Nothing cached'; }catch(e){ d.shell = `Error: ${e.message}`; }
   try{ const est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; d.storage = est ? `${(est.usage / 1048576).toFixed(1)} MB of ${Math.round((est.quota || 0) / 1048576)} MB` : 'Unknown'; }catch(e){ d.storage = `Error: ${e.message}`; }
+  try{ const v = localStorage.getItem(STORE) || ''; d.saved = S.saveError || `${Math.max(1, Math.round(v.length / 1024))} KB kept between opens`; }catch(e){ d.saved = `Error: ${e.message}`; }
   S.diag = d; if (S.screen === 'diagnostics') render();
 }
 let liveAt = null;
@@ -2243,6 +2279,7 @@ screens.diagnostics = () => {
       ${kv('Service worker', esc(g.sw || 'Checking'))}
       ${kv('App shell', esc(g.shell || 'Checking'))}
       ${kv('Storage', esc(g.storage || 'Checking'))}
+      ${kv('Saved', esc(g.saved || 'Checking'))}
       ${kv('Installed', STANDALONE ? 'Yes, from the Home Screen' : IOS ? 'No. Add to Home Screen for warnings' : 'No')}
     </div>
     <p class="h">${f ? esc(f.name) : 'No festival'}</p>

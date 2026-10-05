@@ -29,8 +29,10 @@ sets, watches and tries, in order. `node backend/scripts/shakedown.mjs https://y
    buzz within seconds. On an iPhone this needs the site on the Home Screen first.
 8. **Lightning.** When a storm is within twenty miles, compare the code and the nearest flash with the festival's own detection and
    with the radar. The all-clear countdown should match thirty minutes after the last close flash.
-9. **No signal.** Airplane mode: the festival page opens from the cache, the last radar loop plays, an alert opens in full. Back
-   online, the page catches up within a minute without a reload.
+9. **No signal.** Airplane mode: the festival page opens from the cache, the last radar loop plays with "No signal. This is the
+   loop from before it dropped." under it and the frames' real times on the stamp, an alert opens in full, and a warning that
+   was pushed while the phone was out opens from the notification even before the list loads. Back online, the page catches
+   up within a minute without a reload.
 10. **Battery.** Note the percentage at the start and after four hours with the app open, and after four with it closed.
 11. **Ground.** After rain, tap How is the ground. Staff: Correct it on the Ground screen if the lookup read the surface wrong, and
     Pin it here if the pin is not on the grounds.

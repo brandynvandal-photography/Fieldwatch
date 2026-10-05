@@ -6,6 +6,7 @@
 import webpush from 'web-push';
 import { q } from './db.js';
 import { SITE } from './site.js';
+import { ttlFor } from './util.js';
 
 let PUBLIC = process.env.VAPID_PUBLIC_KEY || '', PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
 const SUBJECT = process.env.VAPID_SUBJECT || SITE;
@@ -57,6 +58,14 @@ export function sentences(text, max) {
   const cut = text.slice(0, max + 1).lastIndexOf('. ');
   return cut > 0 ? text.slice(0, cut + 1) : text.slice(0, max);
 }
+/** The alert trimmed for a push: whole sentences of the body and the instruction, nothing the page cannot show. */
+const slim = a => ({ ...a, body: sentences(String(a.body || '').replace(/\s+/g, ' '), 700), instruction: sentences(String(a.instruction || '').replace(/\s+/g, ' '), 400), geometry: undefined });
+/** Web push payloads cap near four kilobytes: cut the body first, then drop the alert, never the lines that say what to do. */
+function fit(p) {
+  let s = JSON.stringify(p); if (s.length <= 3800) return s;
+  p = { ...p, alert: { ...p.alert, body: sentences(p.alert.body || '', 200) } }; s = JSON.stringify(p); if (s.length <= 3800) return s;
+  const { alert, ...rest } = p; return JSON.stringify(rest);
+}
 export async function pushWeb(festival, alert) {
   if (!enabled) return { sent: 0, skipped: true };
   if (!worthPushing(alert)) return { sent: 0, minor: true };
@@ -64,15 +73,16 @@ export async function pushWeb(festival, alert) {
   const subs = here ? q.webSubscriptionsAt(festival.latitude, festival.longitude) : q.webSubscriptionsFor(festival.id);
   if (!subs.length) return { sent: 0 };
   const urgent = alert.severity === 'extreme' || alert.severity === 'severe';
-  const payload = JSON.stringify({
+  const payload = fit({
     title: alert.event,
     body: `${festival.name}. ${sentences(String(alert.headline || alert.body || '').replace(/\s+/g, ' '), 160)}`,
-    tag: alert.id, urgent, severity: alert.severity,
+    tag: alert.id, urgent, severity: alert.severity, channel: alert.channel || 'weather', issuedAt: alert.issuedAt || null, expiresAt: alert.expiresAt || null,
     url: here ? `${SITE}?here=1&alert=${encodeURIComponent(alert.id)}` : `${SITE}?f=${encodeURIComponent(festival.id)}&alert=${encodeURIComponent(alert.id)}`,
+    alert: slim(alert),   // the alert itself, so the tap opens it with no signal
   });
   let sent = 0, gone = 0, failed = 0;
   await Promise.all(subs.map(async ({ endpoint, subscription }) => {
-    try { await transport(subscription, payload, { TTL: 6 * 3600, urgency: urgent ? 'high' : 'normal' }); sent++; }
+    try { await transport(subscription, payload, { TTL: ttlFor(alert), urgency: urgent ? 'high' : 'normal' }); sent++; }
     catch (e) {
       // 404/410: the browser let the subscription go. 401/403: it was made against other keys; it can never work again.
       if (e && [401, 403, 404, 410].includes(e.statusCode)) { q.deleteWebSubscription(endpoint); gone++; }

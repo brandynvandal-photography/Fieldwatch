@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { alertFeature, points } from './fixtures/nws.js';
 
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
+process.env.NWS_RETRY_MS = '0';
 const calls = [];
 let answer = () => ({ features: [] }), pointsOk = true;
 globalThis.fetch = async url => { url = String(url); calls.push(url); if (url.includes('/points/')) return pointsOk ? Response.json(points) : new Response('no', { status: 500 }); return Response.json(answer(url)); };

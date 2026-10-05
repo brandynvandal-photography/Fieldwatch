@@ -99,23 +99,23 @@ export function assess(f, flashes, now = Date.now(), lastFileAt = null, carry = 
     orangeUntil: code === 'orange' && lastMid ? iso(lastMid.t + RECENT_MS) : null, at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
 }
 
-const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, lastFileAt: null, lastTickAt: null };
+const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, duplicates: 0, lastFileAt: null, lastTickAt: null };
 /** A red or orange alert still standing for this festival, as the flash it stands on: its end, less the window that end was set from. */
 function carried(f, now) {
   const ep = state.episodes.get(f.id);
-  const al = ep ? q.alert(ep.id) : q.activeAlerts(f.id, now).find(x => x.channel === 'lightning' && (x.code === 'red' || x.code === 'orange'));
+  const al = ep ? q.alert(f.id, ep.id) : q.activeAlerts(f.id, now).find(x => x.channel === 'lightning' && (x.code === 'red' || x.code === 'orange'));
   if (!al || (al.code !== 'red' && al.code !== 'orange') || !al.expiresAt || Date.parse(al.expiresAt) <= now || !Number.isFinite(Number(al.nearestMi))) return null;
   return { code: al.code, t: Date.parse(al.expiresAt) - (al.code === 'red' ? ALL_CLEAR_MS : RECENT_MS), mi: Number(al.nearestMi) };
 }
 export const lightningFor = id => state.per.get(id) || null;
 /** The flashes of the last half hour within twenty miles of a festival, newest first, for a map: where, how far, how old. */
 export const flashesFor = (f, now = Date.now(), limit = 300) => state.flashes
-  .map(x => ({ latitude: x.lat, longitude: x.lon, at: iso(x.t), ageSeconds: Math.max(0, Math.round((now - x.t) / 1000)), mi: Math.round(milesBetween(f.latitude, f.longitude, x.lat, x.lon) * 10) / 10 }))
+  .map(x => ({ latitude: x.lat, longitude: x.lon, at: iso(x.t), ageSeconds: Math.max(0, Math.round((now - x.t) / 1000)), mi: Math.round(milesBetween(f.latitude, f.longitude, x.lat, x.lon) * 10) / 10, sat: x.sat || null }))
   .filter(x => x.mi <= RINGS.yellow).sort((a, b) => a.ageSeconds - b.ageSeconds).slice(0, limit);
 export const lightningStatus = () => ({ on: lightningOn(), lastTickAt: state.lastTickAt ? iso(state.lastTickAt) : null, lastFileAt: state.lastFileAt ? iso(state.lastFileAt) : null,
-  files: state.files, flashes: state.flashes.length, buckets: buckets().map(b => ({ bucket: b, files: 0, lastFileAt: null, lastError: null, ...state.buckets[b] })) });
+  files: state.files, flashes: state.flashes.length, duplicates: state.duplicates, buckets: buckets().map(b => ({ bucket: b, files: 0, lastFileAt: null, lastError: null, ...state.buckets[b] })) });
 /** Tests start from nothing. */
-export function resetLightning() { state.flashes = []; state.seen.clear(); state.per.clear(); state.buckets = {}; state.episodes.clear(); state.files = 0; state.lastFileAt = state.lastTickAt = null; }
+export function resetLightning() { state.flashes = []; state.seen.clear(); state.per.clear(); state.buckets = {}; state.episodes.clear(); state.files = 0; state.duplicates = 0; state.lastFileAt = state.lastTickAt = null; }
 const errorText = e => `${e?.message || e}${e?.cause?.code ? ` (${e.cause.code})` : ''}`;
 
 /** One pass: list, fetch what is new, trim the buffer, grade every festival that is on, announce a turn to red. */
@@ -144,7 +144,13 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
       if (!res.ok) throw new Error(`HTTP ${res.status} for ${w.key}`);
       const flashes = await readFlashes(Buffer.from(await res.arrayBuffer()));
       state.seen.set(w.key, w.t);
-      state.flashes.push(...flashes.filter(x => festivals.some(f => milesBetween(f.latitude, f.longitude, x.lat, x.lon) <= REACH_MI)));
+      // Where both satellites see a festival, a flash both saw is one flash: the second copy, within two seconds and the
+      // mapper's footprint of one already held from the other satellite, is dropped. Each kept flash names its satellite.
+      for (const x of flashes) {
+        if (!festivals.some(f => milesBetween(f.latitude, f.longitude, x.lat, x.lon) <= REACH_MI)) continue;
+        if (state.flashes.some(y => y.sat !== w.bucket && Math.abs(y.t - x.t) <= 2000 && milesBetween(y.lat, y.lon, x.lat, x.lon) <= 6.2)) { state.duplicates++; continue; }
+        state.flashes.push({ ...x, sat: w.bucket });
+      }
       b.files++; state.files++; got++;
       if (!b.lastFileAt || w.t > b.lastFileAt) b.lastFileAt = w.t;
       if (!state.lastFileAt || w.t > state.lastFileAt) state.lastFileAt = w.t;
@@ -157,7 +163,7 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
     // Indoors (a club, a hall, an arena) the building is the shelter: the protocol is for outdoor grounds, so no code and no alert.
     if (effectiveGround(f).indoor === true) {
       state.per.set(f.id, { code: 'indoor', indoor: true, at: iso(now), dataAt: state.lastFileAt ? iso(state.lastFileAt) : null, source: 'GOES GLM' });
-      if (!prev || prev.code !== 'indoor') { for (const al of q.activeAlerts(f.id, now).filter(x => x.channel === 'lightning')) q.updateAlert({ ...al, expiresAt: iso(now) }); state.episodes.delete(f.id); changed(f.id, 'lightning'); }
+      if (!prev || prev.code !== 'indoor') { for (const al of q.activeAlerts(f.id, now).filter(x => x.channel === 'lightning')) q.updateAlert(f.id, { ...al, expiresAt: iso(now) }); state.episodes.delete(f.id); changed(f.id, 'lightning'); }
       continue;
     }
     const a = assess(f, state.flashes, now, state.lastFileAt, carried(f, now));
@@ -194,18 +200,18 @@ function codeAlert(f, a, tz, now) {
 async function announce(f, prev, a, now) {
   const ep = state.episodes.get(f.id);
   if (prev && a.code === prev.code) {
-    const old = ep && q.alert(ep.id), end = until(a);
-    if (old && end && old.expiresAt !== end) q.updateAlert({ ...old, expiresAt: end, nearestMi: a.nearestMi ?? old.nearestMi });
+    const old = ep && q.alert(f.id, ep.id), end = until(a);
+    if (old && end && old.expiresAt !== end) q.updateAlert(f.id, { ...old, expiresAt: end, nearestMi: a.nearestMi ?? old.nearestMi });
     return;
   }
-  if (ep) { const old = q.alert(ep.id); if (old && (!old.expiresAt || Date.parse(old.expiresAt) > now)) q.updateAlert({ ...old, expiresAt: iso(now) }); state.episodes.delete(f.id); }
+  if (ep) { const old = q.alert(f.id, ep.id); if (old && (!old.expiresAt || Date.parse(old.expiresAt) > now)) q.updateAlert(f.id, { ...old, expiresAt: iso(now) }); state.episodes.delete(f.id); }
   if (a.code !== 'red' && a.code !== 'orange') { if (prev && (prev.code === 'red' || prev.code === 'orange')) console.log(`[${f.id}] lightning: ${a.code}`); return; }
   // After a restart the alert may already be there from before; adopt it rather than push it twice.
   const had = q.activeAlerts(f.id, now).find(x => x.channel === 'lightning' && x.code === a.code);
-  if (had) { state.episodes.set(f.id, { code: a.code, id: had.id }); if (until(a) && had.expiresAt !== until(a)) q.updateAlert({ ...had, expiresAt: until(a) }); return; }
+  if (had) { state.episodes.set(f.id, { code: a.code, id: had.id }); if (until(a) && had.expiresAt !== until(a)) q.updateAlert(f.id, { ...had, expiresAt: until(a) }); return; }
   const tz = await point(f.latitude, f.longitude).then(p => p.timeZone).catch(() => null);
   const alert = codeAlert(f, a, tz, now);
-  if (q.alert(alert.id)) q.updateAlert(alert); else q.insertAlert(f.id, alert);
+  if (q.alert(f.id, alert.id)) q.updateAlert(f.id, alert); else q.insertAlert(f.id, alert);
   q.count(f.id, 'lightning.alert');
   state.episodes.set(f.id, { code: a.code, id: alert.id });
   const r = await pushAlert(q.tokensFor(f.id), f, alert), w = await pushWeb(f, alert);

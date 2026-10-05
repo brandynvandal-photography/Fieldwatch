@@ -1,4 +1,5 @@
 import apn from '@parse/node-apn';
+import { ttlFor } from './util.js';
 import { existsSync } from 'node:fs';
 import { q } from './db.js';
 
@@ -32,6 +33,9 @@ export async function pushAlert(tokens, festival, alert) {
   note.pushType = 'alert';
   note.priority = 10;
   note.sound = 'default';
+  // The warning's own end is the expiry: a phone with no signal gets it when it is back, never once it is over. One message per alert id.
+  note.expiry = Math.floor(Date.now() / 1000) + ttlFor(alert);
+  note.collapseId = alert.id;
   note.alert = {
     title: alert.event,
     subtitle: festival.name,

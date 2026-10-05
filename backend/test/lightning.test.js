@@ -120,13 +120,13 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   await lightningTick({ now: now + 5 * MIN, fetchImpl, festivals: [fest] });
   const later = lightningFor(fest.id);
   assert.equal(later.allClearAt, new Date(now + 4 * MIN + ALL_CLEAR_MS).toISOString().replace('.000Z', 'Z'));
-  assert.equal(q.alert(alerts[0].id).expiresAt, later.allClearAt, 'the alert ends with the new all-clear'); assert.equal(sent.length, 1);
+  assert.equal(q.alert(fest.id, alerts[0].id).expiresAt, later.allClearAt, 'the alert ends with the new all-clear'); assert.equal(sent.length, 1);
   // Thirty-one minutes after that flash, with a fresh quiet file: green, and the alert has run out on its own.
   const t2 = now + 4 * MIN + ALL_CLEAR_MS + MIN;
   files.set(key('G19', t2 - MIN), lcfa(t2 - MIN, []));
   await lightningTick({ now: t2, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'green');
-  assert.ok(Date.parse(q.alert(alerts[0].id).expiresAt) < t2);
+  assert.ok(Date.parse(q.alert(fest.id, alerts[0].id).expiresAt) < t2);
   // A flash 10 miles out: orange, pushed once (a normal push, not an urgent one), ending fifteen minutes after that flash.
   files.set(key('G19', t2 + 2 * MIN), lcfa(t2 + 2 * MIN, [north(10)]));
   await lightningTick({ now: t2 + 3 * MIN, fetchImpl, festivals: [fest] });
@@ -142,13 +142,13 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   await lightningTick({ now: t2 + 6 * MIN, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3); assert.equal(sent[2].payload.title, 'Code Red: lightning within 8 miles');
   const live = q.activeAlerts(fest.id, t2 + 6 * MIN).filter(x => x.channel === 'lightning');
-  assert.equal(live.length, 1); assert.equal(live[0].code, 'red'); assert.ok(Date.parse(q.alert(orange[0].id).expiresAt) <= t2 + 6 * MIN, 'the orange alert is ended, not left beside the red');
+  assert.equal(live.length, 1); assert.equal(live[0].code, 'red'); assert.ok(Date.parse(q.alert(fest.id, orange[0].id).expiresAt) <= t2 + 6 * MIN, 'the orange alert is ended, not left beside the red');
   // A restart mid-red: before a single file is read again, the red alert already in the database keeps the grade red, with its own
   // all-clear, so the phone's tile and its sky card never disagree; then the files are read again, the alert is adopted, nobody is pushed twice.
   resetLightning();
   await lightningTick({ now: t2 + 7 * MIN, fetchImpl, festivals: [fest], maxFiles: 0 });
   assert.equal(lightningFor(fest.id).code, 'red', 'an empty buffer does not clear a red that is still out');
-  assert.equal(lightningFor(fest.id).allClearAt, q.alert(live[0].id).expiresAt, 'its all-clear is the alert\'s'); assert.equal(lightningFor(fest.id).lastNearMi, 5);
+  assert.equal(lightningFor(fest.id).allClearAt, q.alert(fest.id, live[0].id).expiresAt, 'its all-clear is the alert\'s'); assert.equal(lightningFor(fest.id).lastNearMi, 5);
   await lightningTick({ now: t2 + 7 * MIN, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3);
   assert.equal(q.activeAlerts(fest.id, t2 + 7 * MIN).filter(x => x.channel === 'lightning').length, 1);
@@ -156,7 +156,7 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   const t3 = t2 + 5 * MIN + ALL_CLEAR_MS + MIN;
   files.set(key('G19', t3 - MIN), lcfa(t3 - MIN, []));
   await lightningTick({ now: t3, fetchImpl, festivals: [fest] });
-  assert.equal(lightningFor(fest.id).code, 'green'); assert.ok(Date.parse(q.alert(live[0].id).expiresAt) <= t3);
+  assert.equal(lightningFor(fest.id).code, 'green'); assert.ok(Date.parse(q.alert(fest.id, live[0].id).expiresAt) <= t3);
   resetLightning();
   await lightningTick({ now: t3 + MIN, fetchImpl, festivals: [fest], maxFiles: 0 });
   assert.equal(lightningFor(fest.id).code, 'none', 'nothing read yet and nothing standing: no data, not a guess');

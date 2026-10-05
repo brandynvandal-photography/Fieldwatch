@@ -13,11 +13,12 @@ db.exec(`
     end_date TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS alerts (
-    id TEXT PRIMARY KEY,
     festival_id TEXT NOT NULL,
+    id TEXT NOT NULL,
     json TEXT NOT NULL,
     first_seen TEXT NOT NULL,
-    expires_at TEXT
+    expires_at TEXT,
+    PRIMARY KEY (festival_id, id)
   );
   CREATE INDEX IF NOT EXISTS alerts_festival ON alerts(festival_id);
   CREATE TABLE IF NOT EXISTS posts (
@@ -77,6 +78,13 @@ db.exec(`
     PRIMARY KEY (day, festival_id, key)
   );
 `);
+// One warning can cover two places (two festivals in one county, a followed spot inside a festival's zone) and each must
+// list and push it, so alerts are keyed by place and id. A database from before that was keyed by id alone: rebuild it.
+if (!/PRIMARY KEY \(festival_id, id\)/.test(db.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'alerts'`).get()?.sql || '')) {
+  db.exec(`CREATE TABLE alerts_new (festival_id TEXT NOT NULL, id TEXT NOT NULL, json TEXT NOT NULL, first_seen TEXT NOT NULL, expires_at TEXT, PRIMARY KEY (festival_id, id));
+    INSERT OR IGNORE INTO alerts_new (festival_id, id, json, first_seen, expires_at) SELECT festival_id, id, json, first_seen, expires_at FROM alerts;
+    DROP TABLE alerts; ALTER TABLE alerts_new RENAME TO alerts; CREATE INDEX IF NOT EXISTS alerts_festival ON alerts(festival_id);`);
+}
 // Added later: a festival someone suggested waits as 'pending' until an admin approves it.
 if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
   db.exec(`ALTER TABLE festivals ADD COLUMN status TEXT NOT NULL DEFAULT 'published'`);
@@ -95,9 +103,9 @@ const s = {
   festival: db.prepare(`SELECT json FROM festivals WHERE id = ?`),
   deleteFestival: db.prepare(`DELETE FROM festivals WHERE id = ?`),
 
-  alert: db.prepare(`SELECT json FROM alerts WHERE id = ?`),
+  alert: db.prepare(`SELECT json FROM alerts WHERE festival_id = ? AND id = ?`),
   insertAlert: db.prepare(`INSERT INTO alerts (id, festival_id, json, first_seen, expires_at) VALUES (?, ?, ?, ?, ?)`),
-  updateAlert: db.prepare(`UPDATE alerts SET json = ?, expires_at = ? WHERE id = ?`),
+  updateAlert: db.prepare(`UPDATE alerts SET json = ?, expires_at = ? WHERE festival_id = ? AND id = ?`),
   activeAlerts: db.prepare(`SELECT json FROM alerts WHERE festival_id = ? AND (expires_at IS NULL OR expires_at > ?) ORDER BY first_seen DESC`),
   activeAlertIds: db.prepare(`SELECT id FROM alerts WHERE festival_id = ? AND (expires_at IS NULL OR expires_at > ?)`),
   purgeAlerts: db.prepare(`DELETE FROM alerts WHERE expires_at IS NOT NULL AND expires_at < ?`),
@@ -145,9 +153,9 @@ export const q = {
   festival: id => { const r = s.festival.get(id); return r ? JSON.parse(r.json) : null; },
   deleteFestival: id => s.deleteFestival.run(id),
 
-  alert: id => { const r = s.alert.get(id); return r ? JSON.parse(r.json) : null; },
+  alert: (festivalId, id) => { const r = s.alert.get(festivalId, id); return r ? JSON.parse(r.json) : null; },
   insertAlert: (festivalId, a) => s.insertAlert.run(a.id, festivalId, JSON.stringify(a), iso(), a.expiresAt),
-  updateAlert: a => s.updateAlert.run(JSON.stringify(a), a.expiresAt, a.id),
+  updateAlert: (festivalId, a) => s.updateAlert.run(JSON.stringify(a), a.expiresAt, festivalId, a.id),
   activeAlerts: (festivalId, at) => s.activeAlerts.all(festivalId, iso(at)).map(r => JSON.parse(r.json)),   // `at`: the clock to judge "active" by (tests run on a simulated one)
   activeAlertIds: festivalId => s.activeAlertIds.all(festivalId, iso()).map(r => r.id),
   purgeAlerts: olderThan => s.purgeAlerts.run(iso(olderThan)),

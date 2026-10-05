@@ -1299,3 +1299,90 @@ test('a festival\'s staff key opens that festival\'s staff rows and nothing admi
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
+
+test('a heads-up from the backend opens like any alert, from the home page row and from a link: the timing line first, then the first thing to do', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  const onset = new Date(Date.now() + 150 * 60000).toISOString();
+  const hu = { id: 'fieldwatch:headsup:hulaween-2026:storms:1', event: 'Storms expected around 5:00 PM', headline: null, body: 'The forecast has a 60% chance of thunder, gusts to 34 mph past the canopy line and 0.6 in of rain.',
+    instruction: 'Stake every loop, tie guy lines, weigh the legs by 4:35 PM. Drop pop-up canopies and flags by 4:45 PM.', severity: 'moderate', area: 'Suwannee Hulaween', source: 'Fieldwatch, from the NWS forecast',
+    issuedAt: new Date().toISOString(), onset, expiresAt: new Date(Date.now() + 6 * 3600000).toISOString(), channel: 'headsup', hazard: 'storms', minutes: 150, plan: [] };
+  store.feed[0].alerts.push(hu);
+  store.alerts['hulaween-2026'] = [...store.feed[0].alerts];
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('.feedfest:has-text("Suwannee Hulaween") .alert:has-text("Storms expected")');
+    await page.waitForSelector('.alerthead');
+    assert.equal(await page.textContent('.alerthead .eyebrow'), 'Heads-up');
+    assert.match(await page.textContent('.alerthead h2'), /Storms expected around 5:00 PM/);
+    assert.equal(await page.textContent('.donow .t'), 'Secure camp now. Charge phones, fill water and pick your shelter');
+    assert.match(await page.textContent('.donow .s'), /^(Drop pop-up canopies and flags|Know where the shelter is and how long the walk takes)\.$/, 'the first task of this festival\'s own list');
+    assert.ok(await page.$('.todo'), 'the heads-up\'s own instruction, the camp list by the clock');
+    // The link a push carries lands on the same screen, on a phone that has never opened the app.
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026&alert=${encodeURIComponent(hu.id)}`);
+    await page.waitForSelector('.alerthead');
+    assert.match(await page.textContent('.alerthead h2'), /Storms expected around 5:00 PM/);
+    assert.match(await page.textContent('.donow .t'), /^Secure camp now/);
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('a full phone: the settings still save, the weather copy is let go and Diagnostics says so; only what a reload needs is kept at all', async () => {
+  const { page, context, seen } = await newPage();
+  await page.addInitScript(() => {
+    const real = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (k, v) { if (k === 'fieldwatch.web' && window.__full && String(v).length > 2000) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError'); return real.call(this, k, v); };
+  });
+  const { server, base: api } = await fakeBackend([...FESTS]);
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
+    await page.waitForFunction(() => { const d = JSON.parse(localStorage.getItem('fieldwatch.web')); return Boolean(d.cache && d.cache['hulaween-2026'] && d.cache['hulaween-2026'].hourly); });
+    let kept = await page.evaluate(() => { S.cache['elsewhere-2026'] = { alerts: [], hourly: [] }; S.cache['hulaween-2026'].flashes = { flashes: [] }; save(); return JSON.parse(localStorage.getItem('fieldwatch.web')); });
+    assert.deepEqual(Object.keys(kept.cache), ['hulaween-2026'], 'a festival neither chosen nor a favorite is not kept');
+    assert.equal('flashes' in kept.cache['hulaween-2026'], false, 'flashes are a minute of satellite, fetched again, never kept');
+    assert.ok(kept.cache['hulaween-2026'].hourly.length > 0);
+    // The store is full. The settings save without the weather copy, and Diagnostics says so.
+    await page.evaluate(() => { window.__full = true; save(); });
+    kept = await page.evaluate(() => JSON.parse(localStorage.getItem('fieldwatch.web')));
+    assert.equal(kept.fest, 'hulaween-2026', 'the chosen festival survives'); assert.deepEqual(kept.cache, {}); assert.equal(kept.toured, true);
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('h1.title:has-text("Settings")');
+    await page.click('button.row:has-text("Diagnostics")'); await page.waitForSelector('h1.title:has-text("Diagnostics")');
+    await page.waitForFunction(() => /Storage is full/.test(document.body.textContent));
+    assert.equal(await page.textContent('.kv:has(.k:text-is("Saved")) .v'), 'Storage is full, so the last weather is not kept between opens');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('no signal: the radar plays the loop from before it dropped, and says that is what it is', async () => {
+  const { page, context, seen, live } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  const STEP = 10 * 60000, newest = Math.floor((Date.now() - 12 * 60000) / STEP) * STEP;
+  const frames = Array.from({ length: 24 }, (_, i) => { const t = newest - (23 - i) * STEP; return { time: new Date(t).toISOString().replace(/\.\d{3}Z$/, 'Z'), url: `/radar/hulaween-2026/${new Date(t).toISOString().slice(0, 16).replace(/[-:]/g, '')}Z.png` }; });
+  store.radar['hulaween-2026'] = { festivalId: 'hulaween-2026', hours: 12, stepMinutes: 10, size: 512, bounds: { west: 0, south: 0, east: 1, north: 1 }, attribution: 'NOAA NEXRAD via Iowa Environmental Mesonet', frames };
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky');
+    await page.click('button.orb:has-text("Radar")');
+    await page.waitForFunction(() => document.querySelectorAll('.frame').length === 24 && document.getElementById('radar-loaded')?.textContent === '');
+    const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('fieldwatch.web')).cache['hulaween-2026'].radar);
+    assert.equal(kept.frames.length, 24, 'the loop that played is kept with the festival');
+    // The signal drops: the backend and the archive are out of reach. The frames the service worker kept still answer (stood in for here).
+    live.iem = false;
+    await page.route(`${api}/**`, r => (/\/radar\/[^/]+\/[^/]+\.png$/.test(r.request().url()) ? r.fulfill({ status: 200, contentType: 'image/png', body: PNG }) : r.abort('failed')));
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    await page.click('button.orb:has-text("Radar")');
+    await page.waitForFunction(() => document.getElementById('radar-loaded')?.textContent === 'No signal. This is the loop from before it dropped.');
+    assert.equal(await page.$$eval('.frame', els => els.length), 24, 'the kept loop, not the archive\'s 48');
+    assert.equal(await page.evaluate(() => radar.loop.kept), true);
+    assert.match(await page.textContent('#radar-ago'), /ago/, 'the stamp is honest about the age');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});

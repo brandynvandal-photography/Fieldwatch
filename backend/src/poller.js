@@ -1,6 +1,6 @@
 import './env.js';
 import { q } from './db.js';
-import { activeAlerts, alertsFor, gridpoint, hourly, point } from './nws.js';
+import { activeAlerts, alertsFor, gridpoint, hourly, nwsStats, point } from './nws.js';
 import { changed } from './live.js';
 import { headsUpAlert, incoming, spreadGrid } from './incoming.js';
 import { ensureGround, groundFor } from './ground.js';
@@ -17,24 +17,29 @@ export function festivalsInWindow(now = Date.now()) {
 
 const lastPolled = new Map();
 // Liveness for /health: when a poll last ran, when one last succeeded, and the last error, so a stale feed shows as a problem.
-const polling = { lastRunAt: null, lastOkAt: null, lastError: null, errorAt: null, festivals: 0 };
-export const pollingStatus = () => ({ lastRunAt: polling.lastRunAt ? iso(polling.lastRunAt) : null, lastOkAt: polling.lastOkAt ? iso(polling.lastOkAt) : null, lastError: polling.lastError, errorAt: polling.errorAt, festivals: polling.festivals });
+const polling = { lastRunAt: null, lastOkAt: null, lastError: null, errorAt: null, festivals: 0, overruns: 0 };
+export const pollingStatus = () => ({ lastRunAt: polling.lastRunAt ? iso(polling.lastRunAt) : null, lastOkAt: polling.lastOkAt ? iso(polling.lastOkAt) : null, lastError: polling.lastError, errorAt: polling.errorAt, festivals: polling.festivals , overruns: polling.overruns, nws: { calls: nwsStats.calls, retries: nwsStats.retries } })
+
+// An end must stand for two polls: the weather service answers an empty list for seconds at a time, and one empty answer
+// must not end every warning on the sky card and buzz them as new when the next poll brings them back.
+const missing = new Map();
+const goneTwice = (place, id, seen) => { const k = `${place}|${id}`; if (seen) { missing.delete(k); return false; } const n = (missing.get(k) || 0) + 1; missing.set(k, n); if (n >= 2) { missing.delete(k); return true; } return false; };
 
 /** Fetch NWS alerts for one festival, store new ones, push them, and end the ones that vanished. */
 export async function pollFestival(f) {
   const fresh = await alertsFor(f.latitude, f.longitude);
   lastPolled.set(f.id, Date.now());
-  const seenNow = new Set(fresh.map(a => a.id));
+  const seenNow = new Set(fresh.map(a => a.id)), replaced = new Set(fresh.flatMap(a => a.replaces || []));   // a message an update supersedes ends at once
   const brandNew = [];
 
   for (const a of fresh) {
-    if (q.alert(a.id)) q.updateAlert(a);
-    else { q.insertAlert(f.id, a); if (!(a.replaces || []).some(id => q.alert(id))) brandNew.push(a); }   // an update of a message we have is the same warning: stored, not pushed again
+    if (q.alert(f.id, a.id)) q.updateAlert(f.id, a);
+    else { q.insertAlert(f.id, a); if (!(a.replaces || []).some(id => q.alert(f.id, id))) brandNew.push(a); }   // an update of a message we have is the same warning: stored, not pushed again
   }
-  // Anything we had as active that NWS no longer lists has ended. A staff post or a forecast heads-up is not NWS's to end.
+  // Anything we had as active that NWS no longer lists, twice running, has ended. A staff post or a forecast heads-up is not NWS's to end.
   let ended = 0;
   for (const id of q.activeAlertIds(f.id)) {
-    if (!seenNow.has(id)) { const a = q.alert(id); if (a && (a.channel || 'weather') === 'weather') { q.updateAlert({ ...a, expiresAt: iso() }); ended++; } }
+    if (replaced.has(id) || goneTwice(f.id, id, seenNow.has(id))) { const a = q.alert(f.id, id); if (a && (a.channel || 'weather') === 'weather') { q.updateAlert(f.id, { ...a, expiresAt: iso() }); ended++; } }
   }
   if (brandNew.length || ended) changed(f.id, 'alerts');
 
@@ -63,14 +68,14 @@ export const pointFestival = p => ({ id: 'here', name: 'Where you are', latitude
 export async function pollPoint(p) {
   const f = pointFestival(p);
   const fresh = await activeAlerts(f.latitude, f.longitude);
-  const seenNow = new Set(fresh.map(a => a.id));
+  const seenNow = new Set(fresh.map(a => a.id)), replaced = new Set(fresh.flatMap(a => a.replaces || []));
   const brandNew = [];
   for (const a of fresh) {
-    if (q.alert(a.id)) q.updateAlert(a);
-    else { q.insertAlert(f.pointId, a); if (!(a.replaces || []).some(id => q.alert(id))) brandNew.push(a); }
+    if (q.alert(f.pointId, a.id)) q.updateAlert(f.pointId, a);
+    else { q.insertAlert(f.pointId, a); if (!(a.replaces || []).some(id => q.alert(f.pointId, id))) brandNew.push(a); }
   }
   for (const id of q.activeAlertIds(f.pointId)) {
-    if (!seenNow.has(id)) { const a = q.alert(id); if (a) q.updateAlert({ ...a, expiresAt: iso() }); }
+    if (replaced.has(id) || goneTwice(f.pointId, id, seenNow.has(id))) { const a = q.alert(f.pointId, id); if (a) q.updateAlert(f.pointId, { ...a, expiresAt: iso() }); }
   }
   for (const a of brandNew) {
     const w = await pushWeb(f, a);
@@ -95,7 +100,7 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   if (prev && prev.hazard === inc.hazard && Math.abs(Date.parse(prev.startsAt) - Date.parse(inc.startsAt)) < 90 * 60_000 && now - Date.parse(prev.at) < 6 * 3_600_000) return null;
   const a = headsUpAlert(f, inc, p.timeZone, now, ground);
   q.setSetting(key, JSON.stringify({ hazard: inc.hazard, startsAt: inc.startsAt, at: new Date(now).toISOString() }));
-  if (q.alert(a.id)) q.updateAlert(a); else q.insertAlert(f.id, a);
+  if (q.alert(f.id, a.id)) q.updateAlert(f.id, a); else q.insertAlert(f.id, a);
   q.count(f.id, 'headsup');
   changed(f.id, 'headsup');
   const r = await pushAlert(q.tokensFor(f.id), f, a);
@@ -104,19 +109,32 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   return a;
 }
 
-export async function pollOnce() {
+/** A few at a time: one slow answer from the weather service must not push the whole pass past POLL_SECONDS. */
+async function pool(items, n, fn) {
+  const queue = [...items];
+  await Promise.all(Array.from({ length: Math.min(n, queue.length) }, async () => { while (queue.length) await fn(queue.shift()); }));
+}
+const POOL = Number(process.env.POLL_CONCURRENCY || 3);
+let inFlight = null;
+/** One pass over everything that is on. A pass that is still running when the next is due is not overlapped: the next tick joins it and the overrun is counted. */
+export function pollOnce() {
+  if (inFlight) { polling.overruns++; return inFlight; }
+  inFlight = pollPass().finally(() => { inFlight = null; });
+  return inFlight;
+}
+async function pollPass() {
   const on = festivalsInWindow();
   polling.lastRunAt = Date.now(); polling.festivals = on.length;
   if (!on.length) polling.lastOkAt = polling.lastRunAt;   // nothing to poll is not a failure
   try { await ensureGround(on, { save: f => q.upsertFestival(f) }); } catch (e) { console.error('ground lookup failed:', e.message); }
-  for (const f of on) {
+  await pool(on, POOL, async f => {
     try { await pollFestival(f); polling.lastOkAt = Date.now(); }
     catch (e) { polling.lastError = `${f.id}: ${e.message}`; polling.errorAt = iso(); console.error(`[${f.id}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
     try { await headsUp(f); } catch (e) { console.error(`[${f.id}] heads-up failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
-  }
-  for (const p of q.webSubscriptionPoints()) {
+  });
+  await pool(q.webSubscriptionPoints(), POOL, async p => {
     try { await pollPoint(p); } catch (e) { console.error(`[pt:${p.latitude},${p.longitude}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
-  }
+  });
   q.purgeAlerts(daysFromNow(-7));
   q.purgeStats(90);
 }

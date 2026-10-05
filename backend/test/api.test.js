@@ -16,6 +16,7 @@ process.env.BACKUP_DIR = mkdtempSync(join(tmpdir(), 'fieldwatch-backup-'));
 process.env.ADMIN_KEY = 'test-admin';
 process.env.NODE_KEY = 'test-node';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
+process.env.NWS_RETRY_MS = '0';
 delete process.env.OPENAI_API_KEY;
 delete process.env.APNS_KEY_PATH;
 delete process.env.TICKETMASTER_KEY; delete process.env.SEATGEEK_CLIENT_ID; delete process.env.EDMTRAIN_KEY; delete process.env.FESTIVAL_FEEDS;
@@ -121,11 +122,13 @@ test('an alert NWS stops listing is ended, and one with ends:null falls back to 
   const f = q.festival(FEST);
   nwsState.features = [alertFeature({ id: 'urn:oid:2.49.0.1.840.0.bbb', ends: null, event: 'Flood Advisory', severity: 'Minor' })];
   await pollFestival(f);
+  assert.ok(Date.parse(q.alert(FEST, 'urn:oid:2.49.0.1.840.0.aaa').expiresAt) > Date.now(), 'one poll without it is not an end: the service answers empty for seconds at a time');
+  await pollFestival(f);
   const alerts = (await api('GET', `/festivals/${FEST}/alerts`)).json;
   assert.deepEqual(alerts.map(a => a.id), ['urn:oid:2.49.0.1.840.0.bbb']);
   assert.equal(alerts[0].expiresAt, '2026-10-23T15:00:00-04:00');
   assert.equal(alerts[0].severity, 'minor');
-  const ended = q.alert('urn:oid:2.49.0.1.840.0.aaa');
+  const ended = q.alert(FEST, 'urn:oid:2.49.0.1.840.0.aaa');
   assert.ok(ended.expiresAt && Date.parse(ended.expiresAt) <= Date.now(), 'vanished alert got an expiresAt of now');
 });
 
@@ -136,7 +139,7 @@ test('an update of a warning the phone already has is stored, ends the message i
   assert.deepEqual(await pollFestival(f), [], 'the same advisory worded again: nothing to push');
   const alerts = (await api('GET', `/festivals/${FEST}/alerts`)).json;
   assert.deepEqual(alerts.map(a => a.id), ['urn:oid:2.49.0.1.840.0.ccc'], 'the update is what the phone sees');
-  assert.ok(Date.parse(q.alert('urn:oid:2.49.0.1.840.0.bbb').expiresAt) <= Date.now(), 'the message it replaced has ended');
+  assert.ok(Date.parse(q.alert(FEST, 'urn:oid:2.49.0.1.840.0.bbb').expiresAt) <= Date.now(), 'the message it replaced has ended');
 });
 
 test('staff posts need the admin key and a known severity', async () => {
@@ -509,6 +512,8 @@ test('the home page feed: every current alert at every festival that is on, the 
   assert.ok(!feed.items.some(i => i.festival.id === FEST), 'a festival weeks out is not on, so its alerts are not on the home page');
   nwsState.features = [];
   await pollFestival(q.festival('feed-test-2026'));
+  assert.ok((await api('GET', '/alerts')).json.items.some(i => i.festival.id === 'feed-test-2026'), 'one empty answer from NWS is not an end');
+  await pollFestival(q.festival('feed-test-2026'));
   assert.ok(!(await api('GET', '/alerts')).json.items.some(i => i.festival.id === 'feed-test-2026'), 'cleared alerts leave the feed');
   q.deleteFestival('feed-test-2026');
 });
@@ -533,7 +538,7 @@ test('a heads-up goes out hours before the forecast turns: once per window, push
   await pollFestival(q.festival(FEST));
   assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'NWS not listing it does not end it: it is ours, and it ends with the window');
   nwsState.features = before;
-  q.updateAlert({ ...a, expiresAt: new Date().toISOString() });
+  q.updateAlert(FEST, { ...a, expiresAt: new Date().toISOString() });
   assert.equal((await api('DELETE', '/push/subscribe', { body: { endpoint: sub.endpoint } })).json.ok, true);
 });
 

@@ -1,10 +1,22 @@
 // National Weather Service API. Free, no key, but it wants a User-Agent with a contact (site.js: the app's page unless NWS_USER_AGENT says otherwise).
 import { USER_AGENT as UA } from './site.js';
 
-async function nws(url) {
-  const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/geo+json' } });
-  if (!res.ok) throw new Error(`NWS ${res.status} for ${url}`);
-  return res.json();
+// The service drops to 503 or hangs for seconds at a time: every call has a timeout and one retry on a network error
+// or a 5xx, so a hiccup never stalls the poll loop or reads as a change in the weather.
+const TIMEOUT_MS = Number(process.env.NWS_TIMEOUT_MS || 10_000), RETRY_MS = Number(process.env.NWS_RETRY_MS ?? 1000);
+export const nwsStats = { calls: 0, retries: 0 };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function nws(url, attempt = 0) {
+  nwsStats.calls++;
+  try {
+    const res = await fetch(url, { headers: { 'User-Agent': UA, Accept: 'application/geo+json' }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+    if (!res.ok) { const e = new Error(`NWS ${res.status} for ${url}`); e.transient = res.status >= 500; throw e; }
+    return res.json();
+  } catch (e) {
+    const transient = e.transient || e.name === 'TimeoutError' || e.name === 'AbortError' || Boolean(e.cause);
+    if (attempt === 0 && transient) { nwsStats.retries++; await sleep(RETRY_MS); return nws(url, 1); }
+    throw e;
+  }
 }
 
 const fmt = n => Number(n).toFixed(4);
