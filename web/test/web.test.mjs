@@ -53,6 +53,8 @@ const json = obj => ({ status: 200, contentType: 'application/geo+json', body: J
 async function newPage(opts = {}) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
     timezoneId: 'America/New_York', locale: 'en-US', serviceWorkers: 'block', colorScheme: opts.dark ? 'dark' : 'light' });
+  // Every page but the walkthrough's own test has taken the tour, so its coach marks never sit over what a test taps.
+  if (!opts.tour) await context.addInitScript(() => { try { const d = JSON.parse(localStorage.getItem('fieldwatch.web') || '{}'); if (!d.toured) localStorage.setItem('fieldwatch.web', JSON.stringify({ ...d, toured: true })); } catch (e) {} });
   const page = await context.newPage();
   const seen = { alerts: 0, points: 0, hourly: 0, grid: 0, daily: 0, frames: [], tiles: 0, fonts: 0, backend: 0, errors: [] };
   const live = { nws: true, iem: true };
@@ -79,18 +81,29 @@ async function newPage(opts = {}) {
 const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 /** Icons that grew past their box: an SVG outside a chart or the radar wider than 70 px is a button swallowed by its icon (Safari does this to an unsized SVG in a flex row). */
-const oversizedIcons = page => page.$$eval('svg', els => els.filter(e => !e.closest('.chart, .rmap, #crew') && e.getBoundingClientRect().width > 70).map(e => `${e.parentElement.className || e.parentElement.tagName} ${Math.round(e.getBoundingClientRect().width)}px`));
+const oversizedIcons = page => page.$$eval('svg', els => els.filter(e => !e.closest('.chart, .rmap, #crew, .scene, .illus') && e.getBoundingClientRect().width > 70).map(e => `${e.parentElement.className || e.parentElement.tagName} ${Math.round(e.getBoundingClientRect().width)}px`));
 
-test('the walkthrough opens once; then only what is on: bubbles first, the rest a list, search, and a way to add one', async () => {
-  const { page, context, seen } = await newPage();
+test('the walkthrough opens once: an intro scene, pages that teach, a start page; the first festival page gives the tour; then only what is on', async () => {
+  const { page, context, seen } = await newPage({ tour: true });
   await page.goto(`${base}/index.html`);
   await page.waitForSelector('h1.title');
   assert.equal(await page.textContent('h1.title'), 'Fieldwatch');
+  // The cover is the intro scene; four pages follow, the last with the two ways in. Next and Skip page through; the dots follow.
+  assert.equal(await page.$$eval('.walk .page', els => els.length), 5);
+  assert.ok(await page.$('.walk .cover .scene .zap'), 'the cover is the intro scene');
+  assert.deepEqual(await page.$$eval('.walk .page h2', els => els.map(e => e.textContent)), ['One look at the sky', 'The lightning code', 'Radar, forecast, prep', 'Warnings find you']);
   assert.equal(await page.$$eval('.trio .orb', els => els.length), 3);
+  assert.deepEqual(await page.$$eval('.codes .crow .pill', els => els.map(e => e.textContent)), ['Code Red', 'Code Orange', 'Code Yellow', 'Code Green'], 'the codes page lists the four, red first');
   await shot(page, '0-welcome');
-  await page.click('button:has-text("Use my location")');
+  await page.click('.walk .nav .next'); await page.waitForFunction(() => S.walkStep === 1);
+  assert.equal(await page.$eval('.walk .dots i.on', e => [...e.parentNode.children].indexOf(e)), 1, 'the dots follow');
+  await page.click('.walk .nav button:has-text("Skip")'); await page.waitForFunction(() => S.walkStep === 4);
+  assert.ok(await page.$('.walk .nav.last'), 'on the start page the nav steps aside');
+  await shot(page, '0b-start');
+  await page.click('button:has-text("Pick a festival")');
   await page.waitForSelector('span.eyebrow:has-text("Right now")');
   assert.equal(await page.textContent('h1.title'), 'Festivals', 'without a location the festivals list is the home page');
+  assert.deepEqual(await page.evaluate(() => [S.geoDenied, S.geoSkip]), [false, true], 'picking a festival is not a denial: location can still be asked for');
   assert.match(await page.textContent('.sub'), /warning|advisor|All clear|Checking|No signal/, 'and its line says what is happening');
   await page.click('button.row:has-text("Search festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
@@ -116,9 +129,30 @@ test('the walkthrough opens once; then only what is on: bubbles first, the rest 
   assert.match(await page.textContent('.empty'), /Not on right now/);
   assert.ok(await page.$('button.row:has-text("Right where you are")'), 'your own spot is always an option');
   await page.fill('#q', '');
+  // The first festival page gives the tour: a spotlight per element, Next through to Done, remembered after.
+  await page.fill('#q', 'hulaween'); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
+  await page.waitForSelector('#coach .card .t');
+  const anchors = [['.sky', 'The sky right now'], ['.bolt', 'The lightning code'], ['.orbrow', 'Radar, alerts, forecast'], ['.tb.fav', 'Warnings find you'], ['.topbar .side:first-child .tb', 'Everything else that is on']];
+  const steps = []; for (const a of anchors) if (await page.$(a[0])) steps.push(a);
+  assert.equal(steps.length, 4, 'with no backend there is no lightning tile, so its step is skipped; the rest stand');
+  await page.waitForTimeout(600);   // the page's own rise has ended; the spotlight has been measured against the settled page
+  for (let i = 0; i < steps.length; i++) {
+    await page.waitForTimeout(400);
+    assert.equal(await page.textContent('#coach .card .k'), `${i + 1} of ${steps.length}`);
+    assert.equal(await page.textContent('#coach .card .t'), steps[i][1]);
+    const spot = await page.$eval('#coach .spot', e => ({ x: parseFloat(e.style.left), y: parseFloat(e.style.top) })), target = await page.$eval(steps[i][0], e => e.getBoundingClientRect());
+    assert.ok(Math.abs(spot.x + 6 - target.x) < 2 && Math.abs(spot.y + 6 - target.y) < 2, `step ${i + 1} spotlights ${steps[i][0]}: ${JSON.stringify(spot)} vs ${target.x},${target.y}`);
+    if (i === 0) await shot(page, '0c-tour');
+    assert.equal(await page.textContent('#coach .card .acts .btn:not(.quiet)'), i === steps.length - 1 ? 'Done' : 'Next');
+    await page.click('#coach .card .acts .btn:not(.quiet)');
+    if (i < steps.length - 1) await page.waitForFunction(n => (document.querySelector('#coach .card .k') || {}).textContent === n, `${i + 2} of ${steps.length}`);
+  }
+  await page.waitForSelector('#coach', { state: 'detached' });
+  assert.equal(await page.evaluate(() => S.toured), true);
   await page.goto(`${base}/index.html`);
   await page.waitForSelector('span.eyebrow:has-text("Right now")');
   assert.notEqual(await page.textContent('h1.title'), 'Fieldwatch', 'the welcome step is shown once');
+  assert.equal(await page.evaluate(() => S.toured), true, 'and the tour is remembered');
   assert.deepEqual(seen.errors, []);
   await context.close();
 });
@@ -723,7 +757,8 @@ test('warnings stay on across a backend redeploy: on open the phone registers ag
   const { server, store, base: api } = await fakeBackend([...FESTS]);
   await page.addInitScript(() => {
     // Warnings were switched on for Hulaween against a key the backend no longer has.
-    if (!localStorage.getItem('fieldwatch.web')) localStorage.setItem('fieldwatch.web', JSON.stringify({ fest: 'hulaween-2026', welcomed: true, push: { endpoint: 'https://push.example.test/old', fest: 'hulaween-2026' } }));
+    const d0 = JSON.parse(localStorage.getItem('fieldwatch.web') || '{}');
+    if (!d0.fest) localStorage.setItem('fieldwatch.web', JSON.stringify({ ...d0, fest: 'hulaween-2026', welcomed: true, push: { endpoint: 'https://push.example.test/old', fest: 'hulaween-2026' } }));
     const mk = (endpoint, key) => ({ endpoint, options: { applicationServerKey: key }, unsubscribe: async () => { window.__unsubscribed = endpoint; window.__sub = null; return true; },
       toJSON: () => ({ endpoint, expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }) });
     window.__sub = mk('https://push.example.test/old', new Uint8Array([1, 2, 3]).buffer);

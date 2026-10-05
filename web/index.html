@@ -139,16 +139,97 @@ button.row:active{background:rgba(255,255,255,.35)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px;font-weight:600}
 
 /* Welcome */
-.welcome{min-height:calc(100vh - 140px);min-height:calc(100svh - 140px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8px 0 30px}
 .mark{position:relative;isolation:isolate;width:150px;height:150px;margin-bottom:28px}
 .mark .glow{position:absolute;inset:-16px;border-radius:50%;background:conic-gradient(from 0deg,var(--pink),var(--tang),var(--lime),var(--cyan),var(--violet),var(--pink));filter:blur(22px);z-index:-1;opacity:.9}
 @media (prefers-reduced-motion:no-preference){.mark .glow{animation:spin 16s linear infinite}}
 .mark .glass{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;color:var(--ink)}
 .mark svg{width:66px;height:66px}
-.welcome h1.title{font-size:54px;margin-bottom:10px}
-.welcome .sub{font-size:18px;margin-bottom:28px}
+/* The walkthrough: a pager of pages under an empty top bar, the intro scene as its cover, Skip and Next with dots in a pill at the bottom. */
+.walk{display:flex;flex-direction:column;min-height:calc(100vh - 62px);min-height:calc(100svh - 62px);padding-bottom:8px}
+.walk .pages{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;margin:0 calc(-1 * var(--gutter));-webkit-overflow-scrolling:touch}
+.walk .pages::-webkit-scrollbar{display:none}
+.walk .page{flex:none;width:100%;scroll-snap-align:start;scroll-snap-stop:always;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:8px var(--gutter) 24px}
+.walk .page h2{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:30px;line-height:1.08;letter-spacing:-.012em;text-wrap:balance;margin:26px 0 10px}
+.walk .page>p{color:var(--muted);font-size:16px;line-height:1.5;max-width:32ch;text-wrap:pretty;margin:0}
+.walk .page .note{margin:14px auto 0}
+.walk .acts{display:flex;flex-direction:column;gap:10px;width:100%;max-width:320px;margin-top:24px}
+.walk .nav{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:10px auto 0;padding:5px;border-radius:999px;width:100%;max-width:360px}
+.walk .nav .tb{height:40px;min-width:76px;padding:0 16px;font-size:15px}
+.walk .nav .tb svg{width:18px;height:18px}
+.walk .nav .dots{display:flex;gap:7px}
+.walk .nav .dots i{width:7px;height:7px;border-radius:50%;background:var(--line);transition:background .2s,transform .2s}
+.walk .nav .dots i.on{background:var(--accent);transform:scale(1.3)}
+.walk .nav.last .tb{visibility:hidden}
+.walk .cover h1.title{font-size:54px;margin:0 0 8px}
+.walk .cover .sub{font-size:18px;margin:0 0 14px}
+.walk .cover .hint{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
+/* The scene: a sun up, clouds in, one bolt, the name. The base rules are the final frame, so with motion off the cover is simply there. */
+.scene{position:relative;width:240px;height:210px;margin:0 auto 10px;isolation:isolate}
+.scene .sun{position:absolute;left:50%;top:50%;width:124px;height:124px;margin:-62px 0 0 -62px;border-radius:50%;background:radial-gradient(circle at 45% 40%,#FFF1B8,#FFB03B 58%,transparent 74%);filter:blur(1px);box-shadow:0 0 70px 24px rgba(255,176,59,.3)}
+.scene .cloud{position:absolute;top:28%;width:170px;height:100px;border-radius:50%;filter:blur(20px);opacity:.95}
+.scene .c1{left:-36px;background:radial-gradient(circle,var(--violet),transparent 70%)}
+.scene .c2{right:-36px;top:42%;background:radial-gradient(circle,var(--pink),transparent 70%)}
+.scene .zap{position:absolute;left:50%;top:50%;width:68px;height:68px;margin:-36px 0 0 -34px;color:#fff;filter:drop-shadow(0 0 14px rgba(255,255,255,.95)) drop-shadow(0 0 36px var(--accent))}
+.scene .zap svg{width:68px;height:68px;display:block}
+.scene .zap svg path{fill:currentColor}
+.scene .flash{position:absolute;inset:-24px;border-radius:50%;background:#fff;filter:blur(22px);opacity:0;z-index:2;pointer-events:none}
+@media (prefers-reduced-motion:no-preference){
+  .cover:not(.played) .sun{animation:sunrise 1.1s cubic-bezier(.2,.7,.2,1) both}
+  .cover:not(.played) .c1{animation:cloudin 1.1s .55s ease-out both}
+  .cover:not(.played) .c2{animation:cloudin2 1.1s .75s ease-out both}
+  .cover:not(.played) .zap{animation:zap 1s 1.55s ease-out both}
+  .cover:not(.played) .flash{animation:flash .55s 1.6s ease-out both}
+  .cover:not(.played) h1{animation:fadeup .7s 1.95s ease-out both}
+  .cover:not(.played) .sub{animation:fadeup .7s 2.25s ease-out both}
+  .cover:not(.played) .hint{animation:fadeup .7s 2.7s ease-out both}
+  .skyd .mini.warn{animation:swap 6s 1s ease-in-out infinite}
+  .codes .crow .pill{animation:lit 4.8s ease-in-out infinite}
+  .codes .crow:nth-child(2) .pill{animation-delay:1.2s} .codes .crow:nth-child(3) .pill{animation-delay:2.4s} .codes .crow:nth-child(4) .pill{animation-delay:3.6s}
+  .walk .trio .orb{animation:float 3.6s ease-in-out infinite} .walk .trio .orb:nth-child(2){animation-delay:.6s} .walk .trio .orb:nth-child(3){animation-delay:1.2s}
+  .notif{animation:dropin .8s .4s cubic-bezier(.2,.8,.2,1) both}
+  @keyframes sunrise{from{transform:translateY(70px) scale(.55);opacity:0}to{transform:none;opacity:1}}
+  @keyframes cloudin{from{transform:translateX(-90px);opacity:0}to{transform:none;opacity:.95}}
+  @keyframes cloudin2{from{transform:translateX(90px);opacity:0}to{transform:none;opacity:.95}}
+  @keyframes zap{0%{opacity:0;transform:scale(.5)}14%{opacity:1;transform:scale(1.12)}24%{opacity:.15}36%{opacity:1;transform:scale(1)}100%{opacity:1;transform:none}}
+  @keyframes flash{0%{opacity:0}12%{opacity:.9}100%{opacity:0}}
+  @keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  @keyframes swap{0%,38%{opacity:0}52%,88%{opacity:1}100%{opacity:0}}
+  @keyframes lit{0%,100%{transform:scale(1)}12%{transform:scale(1.1)}24%{transform:scale(1)}}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  @keyframes dropin{from{opacity:0;transform:translateY(-26px) scale(.96)}to{opacity:1;transform:none}}
+}
+/* The pages' pictures. */
+.illus{width:100%;max-width:340px;margin:0 auto}
+.skyd{position:relative;height:150px}
+.skyd .mini{position:absolute;inset:0;border-radius:28px;padding:22px 18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+.skyd .mini .k{display:block;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin:0 0 4px;opacity:.72}
+.skyd .mini b{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-weight:600;font-size:24px;line-height:1.05;letter-spacing:-.012em;text-wrap:balance}
+.skyd .mini small{font-size:13px;opacity:.85;line-height:1.35}
+.skyd .mini.warn{background:linear-gradient(160deg,var(--warn),var(--warn-2));color:#fff;box-shadow:0 16px 44px rgba(244,63,94,.35);opacity:0}
+@media (prefers-reduced-motion:reduce){.skyd .mini.warn{opacity:1}}
+.codes{border-radius:var(--radius);padding:6px 14px;text-align:left}
+.codes .crow{display:flex;align-items:center;gap:12px;padding:10px 0;font-size:14px;line-height:1.35;color:var(--ink-2)}
+.codes .crow+.crow{border-top:1px solid var(--line)}
+.codes .crow .pill{min-width:112px;text-align:center}
+.walk .trio{justify-content:center;margin:6px 0 0}
+.notif{display:flex;align-items:center;gap:12px;text-align:left;border-radius:22px;padding:12px 14px}
+.notif .app{width:38px;height:38px;border-radius:10px;background:var(--grad);color:#fff;display:grid;place-items:center;flex:none}
+.notif .app svg{width:20px;height:20px}
+.notif .main{flex:1;min-width:0}
+.notif b{display:block;font-size:15px;line-height:1.25}
+.notif small{display:block;color:var(--muted);font-size:13px;line-height:1.35;margin-top:2px}
+.notif .when{font-size:12px;color:var(--muted);align-self:flex-start}
+/* The tour: a spotlight on one element of the festival page, a card that says what it is. */
+.coach{position:fixed;inset:0;z-index:40}
+.coach .dim{position:absolute;inset:0}
+.coach .spot{position:fixed;border-radius:28px;box-shadow:0 0 0 200vmax rgba(12,9,28,.62);pointer-events:none;transition:left .35s,top .35s,width .35s,height .35s,border-radius .35s}
+.coach .card{position:fixed;left:16px;right:16px;max-width:528px;margin:0 auto;padding:16px 18px 14px;border-radius:var(--radius);transition:top .35s}
+.coach .card .k{display:block;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.coach .card .t{font-weight:700;font-size:17px;line-height:1.25}
+.coach .card p{color:var(--muted);font-size:14px;line-height:1.45;margin-top:5px}
+.coach .card .acts{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}
+@media (prefers-reduced-motion:reduce){.coach .spot,.coach .card{transition:none}}
 .trio{display:flex;gap:16px;margin-bottom:36px}
-.welcome .btn{max-width:320px}
 
 /* Bubbles: a color lit from behind, frosted in front. */
 .bubble{position:relative;display:block;width:100%;padding:0;text-align:center;isolation:isolate}
@@ -372,7 +453,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .pend .s{color:var(--muted);font-size:14px;margin-top:3px;line-height:1.4}
 .pend .link{display:inline-block;margin-top:4px;font-size:14px}
 .acts{display:flex;gap:10px;justify-content:center;margin-top:12px}
-.days .dayrow{display:grid;grid-template-columns:52px 1fr auto auto;gap:12px;align-items:center;padding:12px 16px;text-align:left}
+.days .dayrow{display:grid;grid-template-columns:56px 1fr auto auto;gap:14px;align-items:center;padding:16px 22px;text-align:left}
 .dayrow+.dayrow{border-top:1px solid var(--glass-border)}
 .dayrow .wd{font-weight:700;display:flex;align-items:center;gap:6px}.dayrow .wd svg{width:18px;height:18px;color:var(--muted)}
 .dayrow .fc{color:var(--muted);font-size:14px;line-height:1.3;min-width:0}
@@ -444,7 +525,7 @@ const IN_PREVIEW = !!(window.claude && typeof window.claude.use === 'function');
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
 const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
-const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false,
+const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false, toured: false, geoSkip: false, walkStep: 0, introPlayed: false,
   fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
   staffScope: null, hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
   post: { title: '', body: '', severity: 'minor', error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false };
@@ -452,10 +533,10 @@ let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff }); }catch(e){}
 }
 function save(){
-  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope })); }catch(e){}
+  try{ localStorage.setItem(STORE, JSON.stringify({ fest: S.fest, cache: S.cache, backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope })); }catch(e){}
 }
 // The Fieldwatch backend this build talks to unless Settings (or ?backend=) says otherwise. 'none' means NWS and the archive directly.
 const DEFAULT_BACKEND = 'https://fieldwatch-production.up.railway.app';
@@ -1488,21 +1569,44 @@ function statusLine(f){
 
 const screens = {};
 
+// ---- the walkthrough: the intro scene as a cover, three pages that teach, a start page. Once; Settings replays it. ----
+const WALK = [
+  { k: 'cover' },
+  { k: 'sky', h: 'One look at the sky', p: 'The top card is the sky right now. Green is clear. Red means read one line and move. Tap it for the full alert.' },
+  { k: 'code', h: 'The lightning code', p: 'Graded from the satellite every 20 seconds, by the nearest flash. Red means go.' },
+  { k: 'tools', h: 'Radar, forecast, prep', p: 'Twelve hours of radar. The forecast by the hour. What to do before weather arrives. Loaded once, it works with no signal.' },
+  { k: 'start', h: 'Warnings find you', p: 'Heart a festival and its warnings reach this phone even with the app closed. Your location opens the festival you are at.' },
+];
+// The pages' pictures are the app's own parts: a sky card that turns, the four codes, the three orbs, a notification.
+const miniSky = () => `<div class="illus skyd"><div class="mini ok glass"><span class="k">Right now</span><b>All clear</b><small>Nothing in the next 12 hours</small></div><div class="mini warn"><span class="k">Right now</span><b>Severe Thunderstorm Warning</b><small>Get into a vehicle or building.</small></div></div>`;
+const codeRows = () => `<div class="illus codes glass">${['red', 'orange', 'yellow', 'green'].map(k => `<div class="crow"><span class="pill ${k}">${esc(CODE[k].label)}</span><span>${esc(CODE[k].ring)}. ${esc(CODE[k].text)}</span></div>`).join('')}</div>`;
+const trioOrbs = () => `<div class="illus trio">${[['Radar', I.radar, 262], ['Alerts', I.bell, 345], ['Forecast', I.chart, 190]].map(([l, ic, h]) => `<div class="orb" style="--hue:${h}"><i class="glow"></i><span class="glass">${ic}</span><span class="l">${l}</span></div>`).join('')}</div>`;
+const notifMock = () => `<div class="illus"><div class="notif glass"><span class="app">${I.bolt}</span><div class="main"><b>Severe Thunderstorm Warning</b><small>Your festival. Get into a vehicle or building.</small></div><span class="when">now</span></div></div>`;
+function walkPage(pg){
+  if (pg.k === 'cover') return `<section class="page cover${S.introPlayed ? ' played' : ''}"><div class="scene"><i class="sun"></i><i class="cloud c1"></i><i class="cloud c2"></i><span class="zap">${I.bolt}</span><i class="flash"></i></div><h1 class="title">Fieldwatch</h1><p class="sub">The sky, before the crowd knows.</p><p class="hint">Swipe, or tap Next</p></section>`;
+  const illus = pg.k === 'sky' ? miniSky() : pg.k === 'code' ? codeRows() : pg.k === 'tools' ? trioOrbs() : notifMock();
+  const acts = pg.k === 'start' ? `<div class="acts"><button class="btn" onclick="start(true)">${I.pin}Use my location</button><button class="btn quiet" onclick="start(false)">Pick a festival</button></div><p class="note">No account. Nothing tracked.</p>` : '';
+  return `<section class="page">${illus}<h2>${esc(pg.h)}</h2><p>${esc(pg.p)}</p>${acts}</section>`;
+}
 screens.welcome = () => topbar('', '', '') + `
-  <div class="welcome">
-    <div class="mark"><i class="glow"></i><span class="glass">${I.radar}</span></div>
-    <h1 class="title">Fieldwatch</h1>
-    <p class="sub">The sky, before the crowd knows.</p>
-    <div class="trio">
-      <div class="orb" style="--hue:345"><i class="glow"></i><span class="glass">${I.bell}</span><span class="l">Alerts</span></div>
-      <div class="orb" style="--hue:262"><i class="glow"></i><span class="glass">${I.radar}</span><span class="l">Radar</span></div>
-      <div class="orb" style="--hue:190"><i class="glow"></i><span class="glass">${I.chart}</span><span class="l">Forecast</span></div>
-    </div>
-    <button class="btn" onclick="start(true)">Use my location</button>
-    <button class="btn quiet" onclick="start(false)" style="margin-top:10px">Not now</button>
-    <p class="note">Your location opens the festival you are at or the weather where you stand. Without it you get every festival that is on. No account. Nothing tracked.</p>
+  <div class="walk">
+    <div class="pages" onscroll="walkScrolled()">${WALK.map(walkPage).join('')}</div>
+    <div class="nav glass${S.walkStep === WALK.length - 1 ? ' last' : ''}"><button class="tb" onclick="walkTo(${WALK.length - 1})">Skip</button><div class="dots">${WALK.map((_, i) => `<i class="${i === S.walkStep ? 'on' : ''}"></i>`).join('')}</div><button class="tb next" onclick="walkTo(S.walkStep + 1)">Next${I.chev}</button></div>
   </div>`;
-function start(useLocation){ later(() => { S.welcomed = true; if (!useLocation) S.geoDenied = true; save(); go('feed', null, { reset: true }); if (useLocation) locate(); }); }
+let walkAnim = 0, introTimer;
+/** Next and Skip scroll the pager a page; a swipe lands on one and the dots follow. A scroll we started is not read back until it settles. */
+function walkTo(i){ const p = document.querySelector('.walk .pages'); if (!p) return; S.walkStep = Math.max(0, Math.min(WALK.length - 1, i)); walkAnim = Date.now() + 700; p.scrollTo({ left: S.walkStep * p.clientWidth, behavior: MOTION ? 'smooth' : 'auto' }); walkDots(); }
+function walkScrolled(){ if (Date.now() < walkAnim) return; const p = document.querySelector('.walk .pages'); if (!p) return; const i = Math.round(p.scrollLeft / p.clientWidth); if (i !== S.walkStep) { S.walkStep = i; walkDots(); } }
+function walkDots(){ document.querySelectorAll('.walk .dots i').forEach((d, i) => d.classList.toggle('on', i === S.walkStep)); const nav = document.querySelector('.walk .nav'); if (nav) nav.classList.toggle('last', S.walkStep === WALK.length - 1); }
+/** After a render of the walkthrough: back to the page we were on, and the intro scene plays once, whatever re-renders. */
+function walkMount(){
+  const p = document.querySelector('.walk .pages'); if (!p) return;
+  if (S.walkStep) p.scrollLeft = S.walkStep * p.clientWidth;
+  if (!S.introPlayed) { clearTimeout(introTimer); introTimer = setTimeout(() => { S.introPlayed = true; const c = document.querySelector('.walk .cover'); if (c) c.classList.add('played'); }, 3400); }
+}
+/** Into the app: the list, and a location if asked for. Picking a festival instead is not a denial; the app stops asking on its own and asks again when a location row is tapped. */
+function start(useLocation){ later(() => { S.welcomed = true; S.geoSkip = !useLocation; save(); go('feed', null, { reset: true }); if (useLocation) { locate(true); if (!IN_PREVIEW && 'geolocation' in navigator && !S.geoDenied) toast('Finding where you are', 2500); } }); }
+function replayIntro(){ S.welcomed = false; S.toured = false; S.walkStep = 0; S.introPlayed = false; save(); go('welcome', null, { reset: true }); }
 
 // ---- the festivals list: every festival that is on, organized by lightning code ----------------------------------
 const SEV_RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
@@ -2165,7 +2269,8 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <div class="group glass"><label class="field"><span class="k">URL</span><input id="backend" value="${esc(S.backend)}" placeholder="${esc(DEFAULT_BACKEND.replace(/^https:\/\//, ''))}" inputmode="url" autocapitalize="off" autocorrect="off" onchange="setBackend(this.value)"></label></div>
   <p class="note">Empty uses the default. Type none to go without.</p>
   ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
-  <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : 'Off'}</span></button></div>
+  <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : S.geoDenied ? 'Blocked' : 'Off'}</span></button></div>
+  <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">See the walkthrough again</div></div>${I.chev}</button></div>
   ${staffMode() ? `<p class="h">Admin</p>
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
   ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
@@ -2244,7 +2349,7 @@ function useHere(){
   if (S.here) { goHere(); return; }
   if (S.geoDenied) { toast('Allow location for this site in your browser settings, then try again.', 4500); return; }
   if (!('geolocation' in navigator)) { toast('This browser cannot find your location.'); return; }
-  S.wantHere = true; toast('Finding you'); locate();
+  S.wantHere = true; toast('Finding you'); locate(true);
 }
 function goHere(){
   const h = S.here; if (!h) return;
@@ -2262,8 +2367,8 @@ async function placeHere(){
     if (S.fest === 'here') render();
   }catch(e){}
 }
-function locate(){
-  if (!('geolocation' in navigator) || S.geoDenied || S.locating || IN_PREVIEW) return;
+function locate(explicit){
+  if (!('geolocation' in navigator) || S.geoDenied || S.locating || IN_PREVIEW || (!explicit && S.geoSkip)) return;
   S.locating = true;
   navigator.geolocation.getCurrentPosition(p => {
     S.locating = false; S.here = { latitude: p.coords.latitude, longitude: p.coords.longitude, at: Date.now() };
@@ -2282,7 +2387,7 @@ function locate(){
     if (S.screen === 'radar') { const st = document.getElementById('stage'); if (st && !document.querySelector('.rmap .me')) st.insertAdjacentHTML('beforeend', meDot(coverage(fest()))); }
   }, err => { S.locating = false; if (S.wantHere) { S.wantHere = false; toast(err && err.code === 1 ? 'Location is blocked for this site.' : "Couldn't find your location.", 4000); } if (err && err.code === 1) { S.geoDenied = true; save(); if (S.screen === 'settings') render(); } }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
 }
-function retryLocate(){ S.geoDenied = false; save(); locate(); toast('Asking for your location'); }
+function retryLocate(){ S.geoDenied = false; S.geoSkip = false; save(); locate(true); toast('Asking for your location'); }
 /** A blue dot on the radar square, if you are inside it. */
 /** The flashes behind the code, on the radar square: a dot per flash of the last half hour, fading with age. */
 function flashDots(f, bbox){
@@ -2427,6 +2532,47 @@ async function share(id){
 // stays open. `entering` keeps the animation on a move's follow-up renders in the same turn, until the browser has started it.
 let shown = '', entering = false, enterTimer = null;
 document.addEventListener('animationstart', e => { if (e.animationName === 'rise') entering = false; }, true);
+// ---- the tour: a spotlight on one element of the festival page at a time, a card that says what it is, Next through to Done. Once. ----
+const TOUR = [
+  { sel: '.sky', t: 'The sky right now', s: 'Green is clear. Red means read the one line and move. Tap it for the full alert.' },
+  { sel: '.bolt', t: 'The lightning code', s: 'From the satellite every 20 seconds. Tap it for the four codes and what each asks of you.' },
+  { sel: '.orbrow', t: 'Radar, alerts, forecast', s: 'The radar loop plays with no signal. The forecast shows heat, gusts and thunder by the hour.' },
+  { sel: '.tb.fav', t: 'Warnings find you', s: 'Heart this festival and its warnings reach this phone even with the app closed.' },
+  { sel: '.topbar .side:first-child .tb', t: 'Everything else that is on', s: 'Every festival by lightning code, red at the top. Search is one tap further.' },
+];
+const tour = { on: false, i: 0 };
+const tourSteps = () => TOUR.filter(st => document.querySelector(st.sel));   // a step whose element is not on this page (no tile, no heart for your own spot) is skipped
+function tourStart(){
+  tour.on = true; tour.i = -1;
+  if (!document.getElementById('coach')) document.body.insertAdjacentHTML('beforeend', '<div class="coach" id="coach"><div class="dim" onclick="tourNext()"></div><div class="spot"></div><div class="card glass"></div></div>');
+  tourNext();
+}
+function tourNext(){ tour.i++; if (tour.i >= tourSteps().length) tourEnd(); else tourPlace(); }
+/** Bring the step's element into view, then draw the spotlight and the card around it. */
+function tourPlace(){
+  if (!tour.on) return;
+  const st = tourSteps()[tour.i]; if (!st) { tourEnd(); return; }
+  const el = document.querySelector(st.sel);
+  if (el.closest('.topbar')) window.scrollTo(0, 0); else el.scrollIntoView({ block: 'center', behavior: 'auto' });
+  tourMeasure();
+  setTimeout(tourMeasure, 450);   // the screen's entrance animation moves the page under the spotlight; measure again once it has settled
+}
+function tourMeasure(){
+  const c = document.getElementById('coach'); if (!c || !tour.on) return;
+  const steps = tourSteps(), st = steps[tour.i]; if (!st) return;
+  const r = document.querySelector(st.sel).getBoundingClientRect(), pad = 6;
+  Object.assign(c.querySelector('.spot').style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + 2 * pad}px`, height: `${r.height + 2 * pad}px`, borderRadius: `${Math.min(30, r.height / 2 + pad)}px` });
+  const card = c.querySelector('.card'), last = tour.i === steps.length - 1;
+  card.innerHTML = `<span class="k">${tour.i + 1} of ${steps.length}</span><div class="t">${esc(st.t)}</div><p>${esc(st.s)}</p><div class="acts"><button class="btn small quiet" onclick="tourEnd()">Skip</button><button class="btn small" onclick="tourNext()">${last ? 'Done' : 'Next'}</button></div>`;
+  const below = r.bottom + 16, h = card.offsetHeight;
+  card.style.top = `${below + h + 16 <= window.innerHeight ? below : Math.max(16, r.top - h - 16)}px`;
+}
+function tourEnd(){ tour.on = false; const c = document.getElementById('coach'); if (c) c.remove(); if (!S.toured) { S.toured = true; save(); } }
+let tourFrame = 0;
+const tourFollow = () => { if (tour.on && !tourFrame) tourFrame = requestAnimationFrame(() => { tourFrame = 0; tourMeasure(); }); };
+window.addEventListener('resize', tourFollow); window.addEventListener('scroll', tourFollow, true);
+document.addEventListener('animationend', e => { if (e.animationName === 'rise') tourFollow(); }, true);
+
 function render(rev){
   const app = document.getElementById('app');
   const fn = screens[S.screen] || screens.picker;
@@ -2438,6 +2584,10 @@ function render(rev){
   if (!nav) app.querySelectorAll('details').forEach((d, i) => { if (open[i]) d.open = true; });
   if (S.screen === 'radar') { fitStage(); showFrame(); updatePlay(); updateRadarNote(); }
   if (S.screen === 'weather') { chartHover(); crewHover(); }
+  if (S.screen === 'welcome') walkMount();
+  // The first festival page gives the tour; a page that changes under it is measured again; leaving it ends it.
+  if (S.screen === 'home' && S.welcomed && !S.toured && !tour.on && fest()) tourStart();
+  else if (tour.on) { if (S.screen === 'home') tourPlace(); else tourEnd(); }
 }
 
 async function boot(){
