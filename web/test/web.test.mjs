@@ -755,7 +755,10 @@ test('warnings stay on across a backend redeploy: on open the phone registers ag
 
 test('the festivals list is every festival that is on, organized by code with the worst first; a tap opens one, and a quiet day says so', async () => {
   const { page, context, seen } = await newPage();
-  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  // Three quiet festivals on at the same time, so the list has a Code Green bulk to fold, as a real weekend does.
+  const quietOnes = ['A', 'B', 'C'].map((k, n) => ({ ...FESTS.find(f => f.id === 'hulaween-2026'), id: `quiet-${k.toLowerCase()}-2026`, name: `Quiet Fest ${k}`, location: `Field ${k}, GA`, latitude: 32 + n, longitude: -83 - n, featured: false, source: 'https://quiet.example/' }));
+  const { server, store, base: api } = await fakeBackend([...FESTS, ...quietOnes]);
+  const liveCount = store.list.filter(f => isLive(f)).length;
   try {
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
     await page.click('button:has-text("Use my location")');
@@ -763,7 +766,7 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.match(await page.textContent('.sub'), /^\d+ festivals on now · 1 warning$/);
     const cards = await page.$$eval('.feedfest .fh .t', els => els.map(e => e.textContent));
     assert.equal(cards[0], 'Suwannee Hulaween', 'the warning comes before the advisory');
-    assert.equal(cards.length, FESTS.filter(f => isLive(f)).length, 'every festival that is on is a card');
+    assert.equal(cards.length, liveCount, 'every festival that is on is a card');
     assert.deepEqual(await page.$$eval('.feedfest .alert .t', els => els.map(e => e.textContent)), ['Severe Thunderstorm Warning', 'Heat Advisory']);
     assert.ok(await page.$('button.row:has-text("Search festivals")'), 'the list is one tap away, not the page');
     await shot(page, '20-feed');
@@ -780,14 +783,40 @@ test('the festivals list is every festival that is on, organized by code with th
     await page.click('button:has-text("Festivals")');
     await page.waitForSelector('h1.title:has-text("Festivals")');
     assert.match(await page.textContent('.feedfest .fh .t'), /Suwannee Hulaween/, 'the warning still comes first');
-    assert.equal(await page.$$eval('.feedfest', els => els.length), FESTS.filter(f => isLive(f)).length, 'every festival that is on, nothing added for having been looked at');
+    assert.equal(await page.$$eval('.feedfest', els => els.length), liveCount, 'every festival that is on, nothing added for having been looked at');
     assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Green', 'with its code beside its name, green included');
     assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Code Green', 'No lightning data'], 'headed by code, the graded festival above the rest');
+
+    // Code Green is one bubble: the quiet festivals counted, with what little is going on at them, folded until a tap. A green
+    // festival with a warning stays its own card above it.
+    const greenText = 'No lightning within 20 mi';
+    for (const x of store.list.filter(f => isLive(f))) store.lightning[x.id] = { ...store.lightning['hulaween-2026'] };
+    await page.click('button[aria-label="Refresh"]');
+    await page.waitForSelector('details.codefold');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), [], 'one code on the list: no headers');
+    assert.deepEqual(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).map(e => e.querySelector('.fh .t').textContent)), ['Suwannee Hulaween'], 'the warning stands as a card; the rest fold');
+    assert.equal(await page.textContent('.codefold summary .t'), `${liveCount - 1} festivals`);
+    assert.equal(await page.textContent('.codefold summary .s'), `${greenText} · 1 advisory`, 'the heat advisory inside is counted, not lost');
+    assert.equal(await page.textContent('.codefold summary .pill'), 'Code Green');
+    assert.equal(await page.$$eval('.codefold .feedfest', els => els.length), liveCount - 1, 'every quiet festival is inside');
+    assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.checkVisibility()).length), 0, 'and folded away');
+    await page.click('.codefold summary');
+    await page.waitForFunction(() => document.querySelector('details.codefold')?.open);
+    assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount - 1, 'a tap opens every card');
+    const inside = await page.textContent('.codefold .feedfest:has-text("Heat Advisory") .fh .t');
+    await page.click(`.codefold .feedfest:has-text("Heat Advisory") button.fh`);
+    await page.waitForSelector(`h1.title:has-text("${inside}")`);
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('h1.title:has-text("Festivals")');
+    assert.equal(await page.$eval('details.codefold', d => d.open), false, 'back on the list, folded again');
+    await shot(page, '21-feed-green');
 
     store.feed = [];
     await page.click('button[aria-label="Refresh"]');
     await page.waitForFunction(() => /All clear/.test(document.querySelector('.sub')?.textContent || ''));
     assert.equal(await page.$('.feedfest .alert'), null, 'a quiet day: cards with no alert rows');
+    assert.equal(await page.textContent('.codefold summary .t'), `${liveCount} festivals`, 'nothing loud: every festival is in the bubble');
+    assert.equal(await page.textContent('.codefold summary .s'), greenText);
+    assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), 0);
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
