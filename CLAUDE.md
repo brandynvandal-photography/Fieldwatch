@@ -89,6 +89,16 @@ Hazard categories live in two places on purpose (node must classify offline): `b
 - Emergency alerts from carriers (WEA) are not something we replace; the UI tells users to keep them on.
 - The public sees no plumbing: the backend address, its check and the admin key stay out of Settings until five taps on the credits line, `?staff=1`, `?backend=`, or a saved key (`staffMode` in the web build). A favorite is a festival whose warnings reach this phone (`toggleFavorite`, `follow`, `unfollow`, `ensurePush` re-registers every favorite once an hour on open); the favorite is offered once, on the festival page right after it is picked (`askPush`), and never nagged about again.
 
+## Working in this repo with Claude
+
+The conversation is the most expensive thing here. Keep it lean:
+
+- Reply with the outcome and the next step, not the path taken. No restating of the ask, no narration of each tool call, no summary of what the last message already said.
+- Condense when the thread grows. Once a task has run more than a few exchanges, or before a new batch starts, write a short state note (what shipped with its commit hash, what is open, the decisions made and why, the test counts) and work from that note instead of the history. When the user says "condense", do it then too, and keep the note to a screenful.
+- Do not reprint files or test output. Grep for the anchor, read the lines around it, quote only the line that matters. A test run is reported as its counts and the names of the failures, nothing more.
+- Run the narrow check first: one test by name, a syntax check of the page script, the mirror test. The full suites run once, in the background, before a push.
+- Batch independent work into one step. A plan or a report longer than a screenful goes in `docs/` and is linked, not pasted into the chat.
+
 ## Things to verify early
 
 1. The User-Agent to the weather service is `Fieldwatch/<version> (+the site address)` unless `NWS_USER_AGENT` is set (`backend/src/site.js`; `NWSClient.userAgent` carries the same). Nobody has hit the real API from this code yet: the cloud session's network policy blocked api.weather.gov, so the normalizer is only proven against a fixture, and the first live call also confirms the service takes a website as the contact (its documentation says it does).
