@@ -648,7 +648,7 @@ test('a link opens straight to a festival and its alert, and warnings can be swi
     // Switching the brief off in Settings registers the favorite again with the flag down.
     await page.click('button[aria-label="Settings"]'); await page.waitForSelector('h1.title:has-text("Settings")');
     await page.click('button.row:has-text("Morning brief")');
-    await page.waitForFunction(() => /Off/.test(document.querySelector('button.row:has-text("Morning brief") .pill')?.textContent || '')).catch(() => {});
+    await page.waitForFunction(() => /Off/.test([...document.querySelectorAll('button.row')].find(b => /Morning brief/.test(b.textContent))?.querySelector('.pill')?.textContent || ''));
     for (let i = 0; i < 50 && store.subs[0]?.digest !== false; i++) await new Promise(r => setTimeout(r, 100));
     assert.equal(store.subs[0].digest, false); assert.equal(store.subs.length, 1, 'the same phone, not a second row');
     await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
@@ -882,7 +882,9 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.equal(await page.textContent('.codefold summary .s'), `${greenText} · 1 warning`, 'what is going on inside is counted on the bubble');
     assert.ok(await page.$('.codefold summary .bar.warn'), 'and the bubble wears the warning\'s bar');
     assert.equal(await page.$$eval('.feedfest', els => els.length), liveCount, 'every festival that is on, nothing added for having been looked at');
-    assert.equal(await page.textContent('.codefold .feedfest .fh .pill'), 'Code Green', 'with its code beside its name inside, green included');
+    assert.equal(await page.$('.codefold .feedfest .fh .pill'), null, 'the bubble says the code once; the rows inside carry no pill');
+    assert.ok(await page.$('details.codefold.glass'), 'the bubble is one glass, its rows inside it');
+    assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.classList.contains('glass')).length), 0, 'not a bubble per festival inside the bubble');
     assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['No lightning data'], 'the bubble is its own header; the rest are headed by code');
     assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount - 1, 'the ungraded festivals stay open');
 
@@ -898,6 +900,11 @@ test('the festivals list is every festival that is on, organized by code with th
     await page.click('.codefold summary');
     await page.waitForFunction(() => document.querySelector('details.codefold')?.open);
     assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount, 'a tap opens every card');
+    await shot(page, '21b-feed-open');
+    // Rows the same height, hairlines between them, the place on one line.
+    const rows = await page.$$eval('.codefold .feedfest', els => els.map(e => ({ h: Math.round(e.getBoundingClientRect().height), top: e.children[0].offsetHeight })));
+    assert.ok(rows.every(r => r.h >= 62), `every row at least 62 px: ${rows.map(r => r.h).join(' ')}`);
+    assert.equal(await page.$eval('.codefold .feedfest .fh .s', e => getComputedStyle(e).whiteSpace), 'nowrap', 'the place line never wraps');
     assert.equal(await page.textContent('.codefold .feedfest .fh .t'), 'Suwannee Hulaween', 'worst first inside');
     const inside = await page.textContent('.codefold .feedfest:has-text("Heat Advisory") .fh .t');
     await page.click(`.codefold .feedfest:has-text("Heat Advisory") button.fh`);
@@ -929,7 +936,7 @@ test('the festivals list is every festival that is on, organized by code with th
     await page.click('.codefold.indoor summary');
     await page.waitForFunction(() => document.querySelector('details.codefold.indoor')?.open);
     assert.deepEqual(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).map(e => e.querySelector('.fh .t').textContent)), [indoorOne.name], 'a tap opens the one inside, and only that bubble');
-    assert.equal(await page.textContent('.codefold.indoor .feedfest .fh .pill'), 'Indoors');
+    assert.equal(await page.$('.codefold.indoor .feedfest .fh .pill'), null, 'the bubble says Indoors once; no pill per row inside');
     await shot(page, '22-feed-indoors');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
@@ -1086,7 +1093,7 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     assert.equal(await page.textContent('.codefold.indoor summary .t'), '1 festival', 'an indoor festival starts in the Indoors bubble');
     assert.equal(await page.textContent('.codefold.indoor summary .s'), 'No lightning codes · 1 warning'); assert.ok(await page.$('.codefold.indoor summary .bar.warn'), 'with its warning counted and barred');
     await page.click('.codefold.indoor summary'); await page.waitForFunction(() => document.querySelector('details.codefold.indoor')?.open);
-    assert.equal(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), 'Indoors');
+    assert.equal(await page.textContent('.codefold.indoor summary .pill'), 'Indoors'); assert.equal(await page.$('.feedfest:has-text("Suwannee Hulaween") .fh .pill'), null, 'the bubble says Indoors once; the row inside carries no pill');
     await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
     delete store.ground['hulaween-2026'];
     // A new alert on the stream pulls the whole festival again; one at another festival does not.

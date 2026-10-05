@@ -20,7 +20,7 @@
 <title>Fieldwatch</title>
 <style>
 :root{
-  --bg:#FBFAFF; --ink:#1A1533; --ink-2:#3E3860; --muted:#6F6A8F; --line:rgba(26,21,51,.08);
+  --bg:#FBFAFF; --ink:#1A1533; --ink-2:#3E3860; --muted:#6F6A8F; --line:rgba(26,21,51,.08); --pill:rgba(26,21,51,.08);
   --glass:rgba(255,255,255,.66); --glass-2:rgba(255,255,255,.84); --glass-border:rgba(255,255,255,.85);
   --accent:#7B5CF5; --accent-ink:#FFFFFF; --grad:linear-gradient(135deg,#FF5FA8 0%,#9B7BFF 58%,#4FE3FF 135%);
   --ok:#17B37A; --ok-2:#0E9563; --watch:#FFB03B; --watch-2:#F0951C; --watch-ink:#2A1B00; --warn:#F43F5E; --warn-2:#D8264B;
@@ -34,7 +34,7 @@
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08);
+    --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08); --pill:rgba(255,255,255,.12);
     --glass:rgba(22,18,42,.5); --glass-2:rgba(22,18,42,.78); --glass-border:rgba(255,255,255,.1);
     --accent:#B29CFF; --accent-ink:#0B0A16; --ok:#22C58A; --ok-2:#15A06E; --watch:#FFB847; --watch-2:#E89A22; --warn:#FF4D6D; --warn-2:#D8264B;
     --rain:#2F8FD6; --temp:#E8682F; --wind:#1FA37A; --storm:#8560EA; --orb-opacity:.85;
@@ -43,7 +43,7 @@
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08);
+  --bg:#0B0A16; --ink:#F2EFFF; --ink-2:#CFC9EE; --muted:#A39EC4; --line:rgba(255,255,255,.08); --pill:rgba(255,255,255,.12);
   --glass:rgba(22,18,42,.5); --glass-2:rgba(22,18,42,.78); --glass-border:rgba(255,255,255,.1);
   --accent:#B29CFF; --accent-ink:#0B0A16; --ok:#22C58A; --ok-2:#15A06E; --watch:#FFB847; --watch-2:#E89A22; --warn:#FF4D6D; --warn-2:#D8264B;
   --rain:#2F8FD6; --temp:#E8682F; --wind:#1FA37A; --storm:#8560EA; --orb-opacity:.85;
@@ -52,7 +52,7 @@
 }
 /* Sun mode: for a phone read in full sun. Black on white, no glass, no glow, thicker lines; the colors that mean something stay saturated. */
 :root[data-theme="sun"]{
-  --bg:#FFFFFF; --ink:#000000; --ink-2:#111111; --muted:#333333; --line:rgba(0,0,0,.3);
+  --bg:#FFFFFF; --ink:#000000; --ink-2:#111111; --muted:#333333; --line:rgba(0,0,0,.3); --pill:rgba(0,0,0,.1);
   --glass:#FFFFFF; --glass-2:#FFFFFF; --glass-border:rgba(0,0,0,.45);
   --accent:#2A12C9; --accent-ink:#FFFFFF; --ok:#0A7A4C; --ok-2:#075A38; --watch:#FFB000; --watch-2:#E09A00; --watch-ink:#000000; --warn:#C80029; --warn-2:#A00020;
   --rain:#0B6FBF; --temp:#C84A10; --wind:#0C7A5A; --storm:#5B2BD6; --orb-opacity:0;
@@ -358,7 +358,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .code.now{background:rgba(26,21,51,.05)}
 .code .you{color:var(--ink-2);margin-top:5px}
 .pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)} .pill.green{background:var(--ok);color:#fff}
-.codefold{margin-bottom:18px} .codefold summary{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:14px 16px;border-radius:var(--radius);cursor:pointer;list-style:none} .codefold summary::-webkit-details-marker{display:none} .codefold summary .main{flex:1;min-width:0;text-align:left} .codefold summary .top{display:flex;align-items:center;gap:10px} .codefold summary .t{flex:1;min-width:0;font-weight:600;font-size:17px;line-height:1.25} .codefold summary .s{color:var(--muted);font-size:14px;margin-top:5px;line-height:1.35;text-wrap:pretty} .codefold summary .bar{width:5px;border-radius:3px;flex:none;align-self:stretch} .codefold summary .bar.warn{background:var(--warn)} .codefold summary .fav{color:var(--accent);display:inline-flex;flex:none} .codefold summary .fav svg{width:16px;height:16px} .codefold summary .top>svg:last-child{flex:none;color:var(--muted);transition:transform .2s} .codefold[open] summary .top>svg:last-child{transform:rotate(90deg)} .codefold .inner{margin-top:18px}
+.codefold{margin-bottom:18px;border-radius:var(--radius);overflow:hidden} .codefold summary{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:14px 16px;cursor:pointer;list-style:none} .codefold summary::-webkit-details-marker{display:none} .codefold summary .main{flex:1;min-width:0;text-align:left} .codefold summary .top{display:flex;align-items:center;gap:10px} .codefold summary .t{flex:1;min-width:0;font-weight:600;font-size:17px;line-height:1.25} .codefold summary .s{color:var(--muted);font-size:14px;margin-top:5px;line-height:1.35;text-wrap:pretty} .codefold summary .bar{width:5px;border-radius:3px;flex:none;align-self:stretch} .codefold summary .bar.warn{background:var(--warn)} .codefold summary .fav{color:var(--accent);display:inline-flex;flex:none} .codefold summary .fav svg{width:16px;height:16px} .codefold summary .top>svg:last-child{flex:none;color:var(--muted);transition:transform .2s} .codefold[open] summary .top>svg:last-child{transform:rotate(90deg)} .codefold .inner{border-top:1px solid var(--line)} .codefold .inner .feedfest{position:relative} .codefold .inner .feedfest+.feedfest::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
 .feedfest .fh{display:flex;align-items:center;gap:10px;width:100%} .feedfest .fh .main{flex:1;min-width:0} .feedfest .fh .fav{color:var(--accent);display:inline-flex;flex:none} .feedfest .fh .fav svg{width:16px;height:16px} .feedfest button.fh>svg:last-child{flex:none;color:var(--muted)}
 /* Alerts */
 .alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative;align-items:center}
@@ -510,7 +510,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .btn[disabled]{opacity:.45;pointer-events:none}
 .btn.small{min-height:44px;width:auto;padding:8px 22px;font-size:15px}
 .pend.dim{opacity:.55}
-.feedfest .fh{padding:12px 16px 2px} .feedfest .fh .t{font-weight:700;font-size:15px;letter-spacing:.01em} .feedfest .fh .s{color:var(--muted);font-size:13px;margin-top:2px}
+.feedfest .fh{padding:12px 16px;min-height:62px;text-align:left} .feedfest .fh:not(:last-child){padding-bottom:4px;min-height:0} .feedfest .fh .t{font-weight:700;font-size:15px;letter-spacing:.01em;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden} .feedfest .fh .s{color:var(--muted);font-size:13px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .feedfest .fh .tr{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pill.warn{background:var(--warn);color:#fff}
 .pend{padding:16px;text-align:center}
 .pend+.pend{border-top:1px solid var(--glass-border)}
@@ -538,7 +538,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .ask .acts{margin-top:12px}
 .kv .dim{color:var(--muted);font-size:13px}
 .chip{padding:12px 16px;min-height:44px;border-radius:999px;font-size:14px;font-weight:600;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink)}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
+.pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:var(--pill);color:var(--muted)}
 .pill.on{background:var(--ok);color:#fff}
 
 /* Touch feel: squish on press, spring back on release, and the light behind it flares. */
@@ -1958,12 +1958,13 @@ const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin'
 const feedRank = i => { const l = lightningState(i.lightning, i.alerts); return Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, l && l.code === 'red' ? 3 : l && l.code === 'orange' ? 2 : 0); };
 /** One festival's card on the festivals list: name and place, the lightning code, then each alert as a row. The header opens the festival; a favorite's says Clear, Checking or when gates open when there is nothing louder to say. */
 function feedCard(i, opts){
-  const { fav = false } = opts || {};
+  const { fav = false, inFold = false } = opts || {};
   const f = i.festival, fd = S.feed, on = isLive(f);
   // The code beside the name whenever there is one, green included: the card's own grade, else the feed's for that festival.
   const own = i.lightning && CODE[i.lightning.code] ? i.lightning : null;
   const l = lightningState(own || (fd && fd.codes && fd.codes[f.id]) || i.lightning || null, i.alerts), c = l && CODE[l.code];
-  const pill = c ? `<span class="pill ${esc(l.code)}">${esc(T(c.label))}</span>` : l && l.code === 'indoor' ? `<span class="pill">${esc(T('Indoors'))}</span>` : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
+  // Inside a bubble the bubble's own label says the code once; a row repeating it seven times would only squeeze the names.
+  const pill = inFold ? '' : c ? `<span class="pill ${esc(l.code)}">${esc(T(c.label))}</span>` : l && l.code === 'indoor' ? `<span class="pill">${esc(T('Indoors'))}</span>` : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
   // Lightning is one row, whatever says it: the live grade, the alert the backend stored, or both. The row carries the nearest
   // flash, the code, the protocol line and the end, and opens the standing alert when there is one, else the lightning screen.
   const bolts = i.alerts.filter(a => a.channel === 'lightning'), others = i.alerts.filter(a => a.channel !== 'lightning');
@@ -1974,10 +1975,13 @@ function feedCard(i, opts){
     const end = endAt ? ` · ${l.code === 'red' ? 'all clear' : 'until'} ${fmtWhen(endAt)}` : '';
     boltRow = `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${standing ? esc(standing.id) : ''}')"><span class="bar ${l.code === 'red' ? 'warn' : 'watch'}"></span><div class="main"><div class="t">Lightning ${mi != null ? esc(mi) + ' mi' : 'near'}</div><div class="s">${esc(c.label)} · ${esc(c.text)}${esc(end)}</div></div>${I.chev}</button>`;
   }
-  const main = `<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}${S.here && away(f) != null ? ' · ' + esc(fmtDist(away(f))) : ''}</div></div>${pill}`;
+  // The name (two lines at most) and the place (one line) on the left; the code and the distance in their own column on the right, so every row reads the same.
+  const dist = S.here && away(f) != null ? fmtDist(away(f)) : '';
+  const side = pill || dist ? `<span class="tr">${pill}${dist ? `<span class="num">${esc(dist)}</span>` : ''}</span>` : '';
+  const main = `<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div>${side}`;
   const heart = fav ? `<span class="fav">${I.heartFull}</span>` : '';
   const header = `<button class="fh" onclick="openFeedFest('${esc(f.id)}')">${heart}${main}${I.chev}</button>`;
-  return `<div class="group glass feedfest${fav ? ' fav' : ''}">${header}${boltRow}${others.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
+  return `<div class="${inFold ? 'feedfest inrow' : 'group glass feedfest'}${fav ? ' fav' : ''}">${header}${boltRow}${others.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
 }
 const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'here');
 /** A card's code, as the card shows it: the feed's grade for the festival or its own, lifted by a standing lightning alert. */
@@ -1996,7 +2000,7 @@ function codeFold(kind, items, card){
   const spec = FOLDS[kind], alerts = items.flatMap(i => i.alerts), warnings = alerts.filter(isWarning).length, advisories = alerts.length - warnings;
   const fav = items.some(i => isFav(i.festival.id)), count = (n, one, many) => n ? ` · ${n} ${n === 1 ? one : many}` : '';
   const sub = `${spec.why}${count(warnings, 'warning', 'warnings')}${count(advisories, 'advisory', 'advisories')}`;
-  return `<details class="codefold ${kind}"><summary class="glass">${warnings ? '<span class="bar warn"></span>' : ''}<div class="main"><div class="top">${fav ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="t">${items.length} festival${items.length === 1 ? '' : 's'}</div><span class="pill${spec.cls ? ` ${spec.cls}` : ''}">${esc(T(spec.pill))}</span>${I.chev}</div><div class="s">${esc(sub)}</div></div></summary><div class="inner">${items.map(card).join('')}</div></details>`;
+  return `<details class="codefold ${kind} glass"><summary>${warnings ? '<span class="bar warn"></span>' : ''}<div class="main"><div class="top">${fav ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="t">${items.length} festival${items.length === 1 ? '' : 's'}</div><span class="pill${spec.cls ? ` ${spec.cls}` : ''}">${esc(T(spec.pill))}</span>${I.chev}</div><div class="s">${esc(sub)}</div></div></summary><div class="inner">${items.map(i => card(i, true)).join('')}</div></details>`;
 }
 /** The festivals list: every festival that is on, organized by lightning code, red at the top; within a code the worst alert, then the nearest. Code Green and Indoors are one bubble each (codeFold); the other codes stay open. A favorite not on yet comes last, with when it opens. */
 screens.feed = () => {
@@ -2012,8 +2016,8 @@ screens.feed = () => {
   // Headed by code once there is more than one code on the list; Code Green and Indoors are one bubble each (codeFold), their own headers.
   const groups = [];
   for (const i of cards) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
-  const card = i => feedCard(i, { fav: isFav(i.festival.id) });
-  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'No lightning data'))}</p>` : ''}${g.items.map(card).join('')}`).join('');
+  const card = (i, inFold) => feedCard(i, { fav: isFav(i.festival.id), inFold: Boolean(inFold) });
+  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'No lightning data'))}</p>` : ''}${g.items.map(i => card(i)).join('')}`).join('');
   return topbar(S.stack.length ? backBtn() : '', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
     <h1 class="title">Festivals</h1>
