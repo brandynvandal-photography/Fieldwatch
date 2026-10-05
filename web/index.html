@@ -388,9 +388,10 @@ details.more .inner{padding:0 16px 6px}
 .chart svg{display:block;width:100%;height:auto;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 .chart .tip{position:absolute;left:0;top:0;pointer-events:none;background:var(--ink);color:var(--bg);font-size:12px;font-weight:500;padding:6px 9px;border-radius:9px;white-space:nowrap;transform:translate(-50%,calc(-100% - 8px));display:none;z-index:2}
 .chart .tip b{font-weight:700}
-.hours{display:flex;gap:8px;overflow-x:auto;padding:4px var(--gutter) 12px;margin:0 calc(-1 * var(--gutter)) 6px;scrollbar-width:none;scroll-snap-type:x proximity}
+/* The hour strip lines up with the cards above it, four hours to a view, and scrolls by the view. */
+.hours{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;margin:0 0 6px;scrollbar-width:none;scroll-snap-type:x mandatory}
 .hours::-webkit-scrollbar{display:none}
-.hr{flex:none;width:66px;border-radius:18px;padding:10px 4px;text-align:center;scroll-snap-align:start}
+.hr{flex:0 0 calc((100% - 24px) / 4);border-radius:18px;padding:10px 4px;text-align:center;scroll-snap-align:start}
 .hr.now{background:rgba(155,123,255,.22)}
 .hr .tm{font-size:12px;color:var(--muted)}
 .hr svg{width:24px;height:24px;margin:7px auto 5px;display:block}
