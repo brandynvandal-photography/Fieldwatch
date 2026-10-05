@@ -160,8 +160,8 @@ button.row:active{background:rgba(255,255,255,.35)}
 .walk .nav .dots i{width:7px;height:7px;border-radius:50%;background:var(--line);transition:background .2s,transform .2s}
 .walk .nav .dots i.on{background:var(--accent);transform:scale(1.3)}
 .walk .nav.last .tb{visibility:hidden}
-.walk .cover h1.title{font-size:54px;margin:0 0 8px}
-.walk .cover .sub{font-size:18px;margin:0 0 14px}
+.walk .nav.last{background:transparent;border-color:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+.walk .cover h1.title{font-size:54px;margin:0 0 14px}
 .walk .cover .hint{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0}
 /* The scene: a sun up, clouds in, one bolt, the name. The base rules are the final frame, so with motion off the cover is simply there. */
 .scene{position:relative;width:240px;height:210px;margin:0 auto 10px;isolation:isolate}
@@ -180,8 +180,7 @@ button.row:active{background:rgba(255,255,255,.35)}
   .cover:not(.played) .zap{animation:zap 1s 1.55s ease-out both}
   .cover:not(.played) .flash{animation:flash .55s 1.6s ease-out both}
   .cover:not(.played) h1{animation:fadeup .7s 1.95s ease-out both}
-  .cover:not(.played) .sub{animation:fadeup .7s 2.25s ease-out both}
-  .cover:not(.played) .hint{animation:fadeup .7s 2.7s ease-out both}
+  .cover:not(.played) .hint{animation:fadeup .7s 2.5s ease-out both}
   .skyd .mini.warn{animation:swap 6s 1s ease-in-out infinite}
   .codes .crow .pill{animation:lit 4.8s ease-in-out infinite}
   .codes .crow:nth-child(2) .pill{animation-delay:1.2s} .codes .crow:nth-child(3) .pill{animation-delay:2.4s} .codes .crow:nth-child(4) .pill{animation-delay:3.6s}
@@ -193,7 +192,7 @@ button.row:active{background:rgba(255,255,255,.35)}
   @keyframes zap{0%{opacity:0;transform:scale(.5)}14%{opacity:1;transform:scale(1.12)}24%{opacity:.15}36%{opacity:1;transform:scale(1)}100%{opacity:1;transform:none}}
   @keyframes flash{0%{opacity:0}12%{opacity:.9}100%{opacity:0}}
   @keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-  @keyframes swap{0%,38%{opacity:0}52%,88%{opacity:1}100%{opacity:0}}
+  @keyframes swap{0%,40%{opacity:0}43%,88%{opacity:1}91%,100%{opacity:0}}
   @keyframes lit{0%,100%{transform:scale(1)}12%{transform:scale(1.1)}24%{transform:scale(1)}}
   @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
   @keyframes dropin{from{opacity:0;transform:translateY(-26px) scale(.96)}to{opacity:1;transform:none}}
@@ -223,7 +222,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .coach{position:fixed;inset:0;z-index:40}
 .coach .dim{position:absolute;inset:0}
 .coach .spot{position:fixed;border-radius:28px;box-shadow:0 0 0 200vmax rgba(12,9,28,.62);pointer-events:none;transition:left .35s,top .35s,width .35s,height .35s,border-radius .35s}
-.coach .card{position:fixed;left:16px;right:16px;max-width:528px;margin:0 auto;padding:16px 18px 14px;border-radius:var(--radius);transition:top .35s}
+.coach .card{position:fixed;left:16px;right:16px;max-width:528px;margin:0 auto;padding:16px 18px 14px;border-radius:var(--radius);transition:top .35s;background:var(--bg);-webkit-backdrop-filter:none;backdrop-filter:none}   /* solid: the dimmed page must not show through what explains it */
 .coach .card .k{display:block;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
 .coach .card .t{font-weight:700;font-size:17px;line-height:1.25}
 .coach .card p{color:var(--muted);font-size:14px;line-height:1.45;margin-top:5px}
@@ -1572,10 +1571,10 @@ const screens = {};
 // ---- the walkthrough: the intro scene as a cover, three pages that teach, a start page. Once; Settings replays it. ----
 const WALK = [
   { k: 'cover' },
-  { k: 'sky', h: 'One look at the sky', p: 'The top card is the sky right now. Green is clear. Red means read one line and move. Tap it for the full alert.' },
-  { k: 'code', h: 'The lightning code', p: 'Graded from the satellite every 20 seconds, by the nearest flash. Red means go.' },
-  { k: 'tools', h: 'Radar, forecast, prep', p: 'Twelve hours of radar. The forecast by the hour. What to do before weather arrives. Loaded once, it works with no signal.' },
-  { k: 'start', h: 'Warnings find you', p: 'Heart a festival and its warnings reach this phone even with the app closed. Your location opens the festival you are at.' },
+  { k: 'sky', h: 'Start with the sky', p: "This card sits at the top of your festival's page. Green means you're fine. When it turns red, read the one line under it and do that first. Tap the card whenever you want the whole alert." },
+  { k: 'code', h: 'Know your lightning code', p: "We watch the lightning satellite every 20 seconds and grade your festival by the nearest strike. Red means go, right now." },
+  { k: 'tools', h: 'Radar, forecast, and a plan', p: "Scrub through twelve hours of radar, see the forecast hour by hour, and get a short list of what to do before the weather reaches you. Once it has loaded, it all works without a signal." },
+  { k: 'start', h: 'Warnings come to you', p: "Tap the heart on a festival and its warnings reach this phone even when the app is closed. Share your location and we'll open the festival you're standing at." },
 ];
 // The pages' pictures are the app's own parts: a sky card that turns, the four codes, the three orbs, a notification.
 const miniSky = () => `<div class="illus skyd"><div class="mini ok glass"><span class="k">Right now</span><b>All clear</b><small>Nothing in the next 12 hours</small></div><div class="mini warn"><span class="k">Right now</span><b>Severe Thunderstorm Warning</b><small>Get into a vehicle or building.</small></div></div>`;
@@ -1583,9 +1582,9 @@ const codeRows = () => `<div class="illus codes glass">${['red', 'orange', 'yell
 const trioOrbs = () => `<div class="illus trio">${[['Radar', I.radar, 262], ['Alerts', I.bell, 345], ['Forecast', I.chart, 190]].map(([l, ic, h]) => `<div class="orb" style="--hue:${h}"><i class="glow"></i><span class="glass">${ic}</span><span class="l">${l}</span></div>`).join('')}</div>`;
 const notifMock = () => `<div class="illus"><div class="notif glass"><span class="app">${I.bolt}</span><div class="main"><b>Severe Thunderstorm Warning</b><small>Your festival. Get into a vehicle or building.</small></div><span class="when">now</span></div></div>`;
 function walkPage(pg){
-  if (pg.k === 'cover') return `<section class="page cover${S.introPlayed ? ' played' : ''}"><div class="scene"><i class="sun"></i><i class="cloud c1"></i><i class="cloud c2"></i><span class="zap">${I.bolt}</span><i class="flash"></i></div><h1 class="title">Fieldwatch</h1><p class="sub">The sky, before the crowd knows.</p><p class="hint">Swipe, or tap Next</p></section>`;
+  if (pg.k === 'cover') return `<section class="page cover${S.introPlayed ? ' played' : ''}"><div class="scene"><i class="sun"></i><i class="cloud c1"></i><i class="cloud c2"></i><span class="zap">${I.bolt}</span><i class="flash"></i></div><h1 class="title">Fieldwatch</h1><p class="hint">Swipe to see how it works</p></section>`;
   const illus = pg.k === 'sky' ? miniSky() : pg.k === 'code' ? codeRows() : pg.k === 'tools' ? trioOrbs() : notifMock();
-  const acts = pg.k === 'start' ? `<div class="acts"><button class="btn" onclick="start(true)">${I.pin}Use my location</button><button class="btn quiet" onclick="start(false)">Pick a festival</button></div><p class="note">No account. Nothing tracked.</p>` : '';
+  const acts = pg.k === 'start' ? `<div class="acts"><button class="btn" onclick="start(true)">${I.pin}Use my location</button><button class="btn quiet" onclick="start(false)">I'll pick a festival</button></div><p class="note">No sign-up. No tracking.</p>` : '';
   return `<section class="page">${illus}<h2>${esc(pg.h)}</h2><p>${esc(pg.p)}</p>${acts}</section>`;
 }
 screens.welcome = () => topbar('', '', '') + `
@@ -2270,7 +2269,7 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <p class="note">Empty uses the default. Type none to go without.</p>
   ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : S.geoDenied ? 'Blocked' : 'Off'}</span></button></div>
-  <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">See the walkthrough again</div></div>${I.chev}</button></div>
+  <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">Watch the intro and take the tour again</div></div>${I.chev}</button></div>
   ${staffMode() ? `<p class="h">Admin</p>
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
   ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
@@ -2534,11 +2533,11 @@ let shown = '', entering = false, enterTimer = null;
 document.addEventListener('animationstart', e => { if (e.animationName === 'rise') entering = false; }, true);
 // ---- the tour: a spotlight on one element of the festival page at a time, a card that says what it is, Next through to Done. Once. ----
 const TOUR = [
-  { sel: '.sky', t: 'The sky right now', s: 'Green is clear. Red means read the one line and move. Tap it for the full alert.' },
-  { sel: '.bolt', t: 'The lightning code', s: 'From the satellite every 20 seconds. Tap it for the four codes and what each asks of you.' },
-  { sel: '.orbrow', t: 'Radar, alerts, forecast', s: 'The radar loop plays with no signal. The forecast shows heat, gusts and thunder by the hour.' },
-  { sel: '.tb.fav', t: 'Warnings find you', s: 'Heart this festival and its warnings reach this phone even with the app closed.' },
-  { sel: '.topbar .side:first-child .tb', t: 'Everything else that is on', s: 'Every festival by lightning code, red at the top. Search is one tap further.' },
+  { sel: '.sky', t: 'This is the sky right now', s: "Green means you're fine. If it turns red, read the one line under it and do that first. Tap it any time for the full alert." },
+  { sel: '.bolt', t: 'Your lightning code', s: 'We grade it from the satellite every 20 seconds. Tap it to see the four codes and what each one asks of you.' },
+  { sel: '.orbrow', t: 'Radar, alerts and forecast', s: 'The radar loop keeps playing when you lose signal. The forecast shows heat, gusts and thunder hour by hour.' },
+  { sel: '.tb.fav', t: 'Make this one yours', s: "Tap the heart and this festival's warnings reach your phone even when the app is closed." },
+  { sel: '.topbar .side:first-child .tb', t: "Everything else that's on", s: 'Every festival by lightning code, red at the top. Search is one more tap.' },
 ];
 const tour = { on: false, i: 0 };
 const tourSteps = () => TOUR.filter(st => document.querySelector(st.sel));   // a step whose element is not on this page (no tile, no heart for your own spot) is skipped
@@ -2563,7 +2562,7 @@ function tourMeasure(){
   const r = document.querySelector(st.sel).getBoundingClientRect(), pad = 6;
   Object.assign(c.querySelector('.spot').style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + 2 * pad}px`, height: `${r.height + 2 * pad}px`, borderRadius: `${Math.min(30, r.height / 2 + pad)}px` });
   const card = c.querySelector('.card'), last = tour.i === steps.length - 1;
-  card.innerHTML = `<span class="k">${tour.i + 1} of ${steps.length}</span><div class="t">${esc(st.t)}</div><p>${esc(st.s)}</p><div class="acts"><button class="btn small quiet" onclick="tourEnd()">Skip</button><button class="btn small" onclick="tourNext()">${last ? 'Done' : 'Next'}</button></div>`;
+  card.innerHTML = `<span class="k">${tour.i + 1} of ${steps.length}</span><div class="t">${esc(st.t)}</div><p>${esc(st.s)}</p><div class="acts"><button class="btn small quiet" onclick="tourEnd()">Skip the tour</button><button class="btn small" onclick="tourNext()">${last ? 'Got it' : 'Next'}</button></div>`;
   const below = r.bottom + 16, h = card.offsetHeight;
   card.style.top = `${below + h + 16 <= window.innerHeight ? below : Math.max(16, r.top - h - 16)}px`;
 }

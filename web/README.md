@@ -17,7 +17,7 @@ It installs: on an iPhone, Share then "Add to Home Screen" gives a full-screen a
 
 ## What it does for someone at the grounds
 
-- **A first open that teaches.** An intro scene, three pages (the sky card, the lightning code, radar and forecast and prep), then Use my location or Pick a festival. The first festival page gives a tour, one spotlight per element. Both once; Settings replays them.
+- **A first open that teaches.** An intro scene, three pages (the sky card, the lightning code, radar and forecast and prep), then Use my location or I'll pick a festival. The first festival page gives a tour, one spotlight per element. Both once; Settings replays them.
 - **Opens on your festival.** With location allowed, the picker skips itself when you are within a few miles of a festival that is on, and sorts the rest by distance. A link with `?f=<festival>` (a QR code at the gate, a pushed warning) opens there too, past the walkthrough.
 - **Home page.** With a location, the festival you are standing at, else the weather where you stand. Every other festival that is on is behind the Festivals button, organized by lightning code with red at the top, the worst alert then the nearest within a code; Code Green and Indoors are one bubble each that every festival of theirs starts inside, the line counting the warnings and advisories within, opened with a tap. Without a location the list is the home page.
 - **Diagnostics.** A staff screen (Settings, Diagnostics) for the test in the field: the service worker, the cached shell and storage, what the phone holds for this festival (weather age, alerts, lightning, ground, radar frames), the live stream, the push subscription, location, online. Nothing leaves the phone.

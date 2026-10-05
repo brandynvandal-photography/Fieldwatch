@@ -78,7 +78,7 @@ async function newPage(opts = {}) {
   return { page, context, seen, live };
 }
 // Without a location the festivals list is the home page; the picker is one tap away on it.
-const enter = async page => { await page.goto(`${base}/index.html`); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
+const enter = async page => { await page.goto(`${base}/index.html`); await page.waitForSelector('h1.title'); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 /** Icons that grew past their box: an SVG outside a chart or the radar wider than 70 px is a button swallowed by its icon (Safari does this to an unsized SVG in a flex row). */
 const oversizedIcons = page => page.$$eval('svg', els => els.filter(e => !e.closest('.chart, .rmap, #crew, .scene, .illus') && e.getBoundingClientRect().width > 70).map(e => `${e.parentElement.className || e.parentElement.tagName} ${Math.round(e.getBoundingClientRect().width)}px`));
@@ -91,7 +91,7 @@ test('the walkthrough opens once: an intro scene, pages that teach, a start page
   // The cover is the intro scene; four pages follow, the last with the two ways in. Next and Skip page through; the dots follow.
   assert.equal(await page.$$eval('.walk .page', els => els.length), 5);
   assert.ok(await page.$('.walk .cover .scene .zap'), 'the cover is the intro scene');
-  assert.deepEqual(await page.$$eval('.walk .page h2', els => els.map(e => e.textContent)), ['One look at the sky', 'The lightning code', 'Radar, forecast, prep', 'Warnings find you']);
+  assert.deepEqual(await page.$$eval('.walk .page h2', els => els.map(e => e.textContent)), ['Start with the sky', 'Know your lightning code', 'Radar, forecast, and a plan', 'Warnings come to you']);
   assert.equal(await page.$$eval('.trio .orb', els => els.length), 3);
   assert.deepEqual(await page.$$eval('.codes .crow .pill', els => els.map(e => e.textContent)), ['Code Red', 'Code Orange', 'Code Yellow', 'Code Green'], 'the codes page lists the four, red first');
   await shot(page, '0-welcome');
@@ -100,7 +100,7 @@ test('the walkthrough opens once: an intro scene, pages that teach, a start page
   await page.click('.walk .nav button:has-text("Skip")'); await page.waitForFunction(() => S.walkStep === 4);
   assert.ok(await page.$('.walk .nav.last'), 'on the start page the nav steps aside');
   await shot(page, '0b-start');
-  await page.click('button:has-text("Pick a festival")');
+  await page.click('button:has-text("pick a festival")');
   await page.waitForSelector('span.eyebrow:has-text("Right now")');
   assert.equal(await page.textContent('h1.title'), 'Festivals', 'without a location the festivals list is the home page');
   assert.deepEqual(await page.evaluate(() => [S.geoDenied, S.geoSkip]), [false, true], 'picking a festival is not a denial: location can still be asked for');
@@ -132,7 +132,7 @@ test('the walkthrough opens once: an intro scene, pages that teach, a start page
   // The first festival page gives the tour: a spotlight per element, Next through to Done, remembered after.
   await page.fill('#q', 'hulaween'); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
   await page.waitForSelector('#coach .card .t');
-  const anchors = [['.sky', 'The sky right now'], ['.bolt', 'The lightning code'], ['.orbrow', 'Radar, alerts, forecast'], ['.tb.fav', 'Warnings find you'], ['.topbar .side:first-child .tb', 'Everything else that is on']];
+  const anchors = [['.sky', 'This is the sky right now'], ['.bolt', 'Your lightning code'], ['.orbrow', 'Radar, alerts and forecast'], ['.tb.fav', 'Make this one yours'], ['.topbar .side:first-child .tb', "Everything else that's on"]];
   const steps = []; for (const a of anchors) if (await page.$(a[0])) steps.push(a);
   assert.equal(steps.length, 4, 'with no backend there is no lightning tile, so its step is skipped; the rest stand');
   await page.waitForTimeout(600);   // the page's own rise has ended; the spotlight has been measured against the settled page
@@ -143,7 +143,7 @@ test('the walkthrough opens once: an intro scene, pages that teach, a start page
     const spot = await page.$eval('#coach .spot', e => ({ x: parseFloat(e.style.left), y: parseFloat(e.style.top) })), target = await page.$eval(steps[i][0], e => e.getBoundingClientRect());
     assert.ok(Math.abs(spot.x + 6 - target.x) < 2 && Math.abs(spot.y + 6 - target.y) < 2, `step ${i + 1} spotlights ${steps[i][0]}: ${JSON.stringify(spot)} vs ${target.x},${target.y}`);
     if (i === 0) await shot(page, '0c-tour');
-    assert.equal(await page.textContent('#coach .card .acts .btn:not(.quiet)'), i === steps.length - 1 ? 'Done' : 'Next');
+    assert.equal(await page.textContent('#coach .card .acts .btn:not(.quiet)'), i === steps.length - 1 ? 'Got it' : 'Next');
     await page.click('#coach .card .acts .btn:not(.quiet)');
     if (i < steps.length - 1) await page.waitForFunction(n => (document.querySelector('#coach .card .k') || {}).textContent === n, `${i + 2} of ${steps.length}`);
   }

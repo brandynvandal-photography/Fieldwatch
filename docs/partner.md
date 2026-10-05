@@ -1,7 +1,7 @@
 # For a festival's safety team
 
-Fieldwatch gives the people on your grounds the sky before the crowd knows it, and your words beside it. This is what
-you get, what you do, and what it costs you: nothing, and no accounts.
+Fieldwatch gives the people on your grounds the weather that is coming, and your words beside it. This is what you get,
+what you do, and what it costs you: nothing, and no accounts.
 
 ## What your people get
 
