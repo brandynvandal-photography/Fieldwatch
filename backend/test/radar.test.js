@@ -66,14 +66,17 @@ test('the WMS request asks the archive for exactly our square at exactly that ti
 
 test('refresh fills the window newest first, refetches nothing that exists, and rolls the window forward', async () => {
   requests.length = 0;
+  const { live } = await import('../src/live.js'), heard = [];
+  live.on('change', e => heard.push(e));
   await radar.refreshRadar(festival, { now: NOW });
   assert.equal(requests.length, 72);
+  assert.equal(heard.length, 1); assert.equal(heard[0].festivalId, festival.id); assert.equal(heard[0].kind, 'radar', 'a page on the radar screen hears that frames landed');
   assert.match(requests[0], /TIME=2026-10-24T21%3A00%3A00Z/, 'newest frame first');
   assert.equal(readdirSync(join(process.env.RADAR_DIR, festival.id)).length, 72);
 
   requests.length = 0;
   await radar.refreshRadar(festival, { now: NOW });
-  assert.equal(requests.length, 0, 'frames are immutable; nothing to do');
+  assert.equal(requests.length, 0, 'frames are immutable; nothing to do'); assert.equal(heard.length, 1, 'and nothing to announce');
 
   await radar.refreshRadar(festival, { now: NOW + 10 * 60_000 });
   assert.equal(requests.length, 1, 'one new frame');

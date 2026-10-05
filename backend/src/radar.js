@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, statSync, unlinkSync, w
 import { join, resolve } from 'node:path';
 import { festivalsInWindow } from './poller.js';
 import { iso } from './util.js';
+import { changed } from './live.js';
 import { USER_AGENT as UA } from './site.js';
 
 export const RADAR_DIR = resolve(process.env.RADAR_DIR || 'radar');
@@ -122,6 +123,7 @@ async function fill(f, { now = Date.now() } = {}) {
   // One line per refresh, not one per frame: an archive outage would otherwise flood the log.
   if (failed) { radar.lastError = `${f.id}: ${firstError}`; radar.errorAt = iso(now); console.error(`[${f.id}] radar: ${fetched} frames fetched, ${failed} failed${gaveUp ? ` (${gaveUp} given up)` : ''}: ${firstError}`); }
   else { radar.lastOkAt = iso(now); if (fetched) console.log(`[${f.id}] radar: ${fetched} new frame${fetched === 1 ? '' : 's'}`); }
+  if (fetched) changed(f.id, 'radar');   // a page on the radar screen hears and pulls the new frame
   prune(f.id, wanted[0]);
   for (const key of failures.keys()) if (key.startsWith(`${f.id}/`) && Number(key.split('/')[1]) < wanted[0]) failures.delete(key);
   lastRefresh.set(f.id, now);

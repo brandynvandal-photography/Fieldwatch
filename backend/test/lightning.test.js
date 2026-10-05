@@ -13,7 +13,7 @@ const { default: webpushLib } = await import('web-push');
 const vapid = webpushLib.generateVAPIDKeys();
 process.env.VAPID_PUBLIC_KEY = vapid.publicKey; process.env.VAPID_PRIVATE_KEY = vapid.privateKey;
 
-const { ALL_CLEAR_MS, assess, flashesFor, hourPrefix, keyTime, lightningFor, lightningStatus, lightningTick, milesBetween, parseListing, readFlashes, resetLightning } = await import('../src/lightning.js');
+const { ALL_CLEAR_MS, assess, flashesFor, hourPrefix, keyTime, lightningAt, lightningFor, lightningStatus, lightningTick, milesBetween, motionOf, parseListing, pointsOfInterest, readFlashes, resetLightning } = await import('../src/lightning.js');
 const { q } = await import('../src/db.js');
 const { setWebPushTransport } = await import('../src/webpush.js');
 const { default: h5wasm } = await import('h5wasm/node');
@@ -213,4 +213,42 @@ test('an indoor event gets no code and no alert, whatever the sky does: the buil
   q.upsertFestival({ ...q.festival(club.id), ground: { override: { indoor: false } } });
   await lightningTick({ now: now + MIN, fetchImpl, festivals: [q.festival(club.id)] });
   assert.equal(lightningFor(club.id).code, 'red'); assert.equal(q.activeAlerts(club.id, now + MIN).filter(x => x.channel === 'lightning').length, 1);
+});
+
+test('where the lightning is going: two centers ten minutes apart give a heading, a speed, closing or not, and the minutes to here', () => {
+  const now = Date.UTC(2026, 8, 30, 14, 10), MI_LAT = 1 / 69.172;
+  // A cell 30 miles northeast fifteen minutes ago, 20 miles northeast five minutes ago: moving southwest at about 60 mph, closing, here in twenty minutes.
+  const cell = (mi, agoMin, n = 4) => Array.from({ length: n }, (_, i) => ({ lat: fest.latitude + (mi / Math.SQRT2) * MI_LAT + i * 0.002, lon: fest.longitude + (mi / Math.SQRT2) * MI_LAT / Math.cos(fest.latitude * Math.PI / 180), t: now - agoMin * MIN }));
+  const m = motionOf(fest, [...cell(30, 15), ...cell(20, 5)], now);
+  assert.equal(m.heading, 'SW'); assert.ok(m.speedMph >= 55 && m.speedMph <= 65, `${m.speedMph} mph`); assert.equal(m.closing, true);
+  assert.ok(m.arrivalMinutes >= 18 && m.arrivalMinutes <= 22, `${m.arrivalMinutes} min`); assert.ok(Math.abs(m.distanceMi - 20) < 0.5, `${m.distanceMi} mi`); assert.equal(m.flashes, 8);
+  const away = motionOf(fest, [...cell(20, 15), ...cell(30, 5)], now);
+  assert.equal(away.heading, 'NE'); assert.equal(away.closing, false); assert.equal(away.arrivalMinutes, null); assert.ok(away.awayMph >= 55);
+  assert.equal(motionOf(fest, [...cell(30, 15, 2), ...cell(20, 5, 4)], now), null, 'two flashes are not a center');
+  assert.equal(motionOf(fest, cell(20, 5, 8), now), null, 'one half only: no motion yet');
+  assert.ok(assess(fest, [...cell(30, 15), ...cell(20, 5)], now, now - MIN).motion.closing, 'the grade carries it');
+  assert.equal(assess(fest, [], now, now - MIN).motion, null);
+});
+
+test('a spot, festival or not: asked about, it is in the reader\'s reach for a day and graded after a warm-up, with no alert and no push', async () => {
+  resetLightning();
+  const now = Date.UTC(2026, 8, 30, 15, 0), spot = { latitude: 35.2, longitude: -80.8 };   // Charlotte: no festival anywhere near
+  const first = lightningAt(spot, now);
+  assert.equal(first.code, 'none'); assert.equal(first.warming, true); assert.equal(first.readyAt, new Date(now + 15 * MIN).toISOString().replace('.000Z', 'Z')); assert.equal(first.point, true);
+  assert.equal(pointsOfInterest(now).length, 1);
+  const files = new Map(); const listing = keys => `<ListBucketResult>${keys.map(k => `<Contents><Key>${k}</Key></Contents>`).join('')}</ListBucketResult>`;
+  const fetchImpl = async url => { const u = new URL(String(url)); if (u.hostname === 'noaa-goes18.s3.amazonaws.com' && u.searchParams.get('prefix')) return new Response('<Error><Code>AccessDenied</Code></Error>', { status: 403 }); if (u.searchParams.get('prefix')) { const p = u.searchParams.get('prefix'); return new Response(listing([...files.keys()].filter(k => k.startsWith(p)))); } const k = u.pathname.slice(1); return files.has(k) ? new Response(files.get(k)) : new Response('no', { status: 404 }); };
+  const nearSpot = mi => ({ lat: spot.latitude + mi / 69.172, lon: spot.longitude });
+  files.set(key('G19', now - 2 * MIN), lcfa(now - 2 * MIN, [nearSpot(10), north(3)]));   // one ten miles from the spot, one three miles from the festival nobody is at
+  const r = await lightningTick({ now, fetchImpl, festivals: [] });
+  assert.deepEqual(r, { files: 1, wanted: 1, flashes: 1 }, 'nothing on, but a spot asked: the reader runs and keeps the flash near the spot, not the other');
+  assert.equal(lightningAt(spot, now + 5 * MIN).code, 'none', 'still warming up');
+  files.set(key('G19', now + 14 * MIN), lcfa(now + 14 * MIN, [nearSpot(10)]));
+  await lightningTick({ now: now + 15 * MIN, fetchImpl, festivals: [] });
+  assert.equal(lightningAt(spot, now + 16 * MIN).code, 'orange', 'after the warm-up, the grade for the spot');
+  assert.equal(lightningAt(spot, now + 16 * MIN).nearestMi, 10);
+  assert.equal(q.activeAlerts('here', now).length, 0, 'no alert stored for a spot');
+  assert.equal(pointsOfInterest(now + 25 * 3_600_000).length, 0, 'a day later, forgotten');
+  assert.deepEqual(await lightningTick({ now: now + 25 * 3_600_000, fetchImpl, festivals: [] }), { skipped: 'nothing is on' });
+  resetLightning();
 });

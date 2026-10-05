@@ -269,6 +269,8 @@ test('the radar screen asks the archive for 48 frames, newest first, and plays t
   assert.equal(ticks.length, 5); for (const t of ticks.slice(0, 4)) assert.match(t, /\d/); assert.equal(ticks[4], 'Now', 'the right end of the scrubber is the present');
   assert.deepEqual(await page.evaluate(() => [frameMs(48), frameMs(72), frameMs(6)]), [313, 208, 400], 'a pass over the loop takes about fifteen seconds, whatever the step');
   assert.equal(await page.$eval('#radar-progress', el => el.style.width), '100%');
+  assert.deepEqual(await page.$$eval('.rmap .ring', els => els.map(e => e.textContent)), ['8 mi', '12 mi', '20 mi'], 'the rings around the pin');
+  assert.equal(await page.$('.rmap .arrive'), null, 'nothing is coming: no badge');
   await shot(page, '5-radar');
 
   await page.click('#radar-play');
@@ -377,6 +379,10 @@ function fakeBackend(list) {
       if (m === 'POST' && grr) { const b = JSON.parse(raw); if (!['fine', 'soft', 'mud', 'water'].includes(b.state)) return send(400, { error: 'state' }); store.groundReports[grr[1]] = [{ state: b.state, at: new Date().toISOString() }, ...(store.groundReports[grr[1]] || [])]; return send(200, { ok: true, state: b.state, effective: 0.9, learned: b.state === 'fine' ? null : { threshold: 0.9, samples: store.groundReports[grr[1]].length, at: new Date().toISOString() }, reports: groundOf(grr[1]).reports }); }
       const ncm = path.match(/^\/festivals\/([^/]+)\/nowcast$/);
       if (m === 'GET' && ncm) return send(200, (store.nowcast || {})[ncm[1]] || { at: null, tracked: false, minutes: null });
+      const pl = path.match(/^\/point\/(-?[\d.]+),(-?[\d.]+)\/lightning$/);
+      if (m === 'GET' && pl) return send(200, store.pointLightning || { code: 'none', warming: true, readyAt: new Date(Date.now() + 15 * 60000).toISOString(), at: new Date().toISOString(), source: 'GOES GLM', point: true });
+      const plf = path.match(/^\/point\/(-?[\d.]+),(-?[\d.]+)\/lightning\/flashes$/);
+      if (m === 'GET' && plf) return send(200, { at: new Date().toISOString(), on: true, flashes: store.pointFlashes || [] });
       const fla = path.match(/^\/festivals\/([^/]+)\/lightning\/flashes$/);
       if (m === 'GET' && fla) return send(200, { festivalId: fla[1], at: new Date().toISOString(), on: true, flashes: (store.flashes || {})[fla[1]] || [] });
       const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
@@ -732,6 +738,13 @@ test('right where you are: alerts, forecast, radar and warnings for the phone\'s
     assert.ok(seen.alertUrls.some(u => /point=39\.739\d?,-104\.990\d?/.test(u)), 'the weather service is asked about your spot');
     assert.equal(await page.$('button.row:has-text("Report a hazard")'), null, 'no festival, no festival rows');
     assert.equal(await page.$('button[aria-label="Share"]'), null);
+    // The lightning code for the spot itself: a warm-up first, then the grade, with where the flashes are going.
+    await page.waitForSelector('.bolt.none');
+    assert.match(await page.textContent('.bolt .t'), /^Watching for lightning here$/);
+    assert.ok(store.calls.some(c => /^GET \/point\/39\.7392,-104\.9903\/lightning$/.test(c)), 'asked by where it is, not by a festival id');
+    store.pointLightning = { code: 'yellow', nearestMi: 15, nearestAt: new Date().toISOString(), within: { 8: 0, 12: 0, 20: 3 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: null, held: false, stale: false, motion: { heading: 'SW', speedMph: 25, closing: true, arrivalMinutes: 30, distanceMi: 15, flashes: 9 }, at: new Date().toISOString(), dataAt: new Date().toISOString(), source: 'GOES GLM', point: true };
+    await page.evaluate(() => loadLightning(fest())); await page.waitForSelector('.bolt.yellow');
+    assert.match(await page.textContent('.bolt .s'), /· closing, ~30 min$/);
     await shot(page, '19-here');
     await page.click('button.row:has-text("Warnings on this phone")');
     await page.waitForSelector('.pill.on');
@@ -741,6 +754,8 @@ test('right where you are: alerts, forecast, radar and warnings for the phone\'s
     await page.waitForSelector('.rmap .me');
     const dot = await page.$eval('.rmap .me', el => ({ left: parseFloat(el.style.left), top: parseFloat(el.style.top) }));
     assert.ok(Math.abs(dot.left - 256) < 2 && Math.abs(dot.top - 256) < 2, 'the radar square is centered on you');
+    assert.equal(await page.$$eval('.rmap .ring', els => els.length), 3, 'the protocol\'s rings around you');
+    assert.equal(await page.textContent('.rmap .arrive'), 'Lightning closing SW · ~30 min');
     await page.click('button[aria-label="Back"]');
     await page.waitForSelector('.sky');
     await page.goto(`${base}/index.html?here=1`);

@@ -18,7 +18,7 @@ import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './i
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
-import { flashesFor, lightningFor, lightningOn, lightningStatus } from './lightning.js';
+import { flashesFor, lightningAt, lightningFor, lightningOn, lightningStatus } from './lightning.js';
 import { GROUND_STATES, groundFor, groundStatus, lookupGround, reportGround, reportSummary, validOverride } from './ground.js';
 import { nowcastFor } from './nowcast.js';
 import { snapToGrounds } from './grounds.js';
@@ -261,6 +261,16 @@ app.post('/festivals/:id/ground/lookup', requireStaff, loadFestival, wrap(async 
 /** The flashes behind the code, for the radar map: within twenty miles, the last half hour, newest first. */
 app.get('/festivals/:id/lightning/flashes', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json({ festivalId: req.festival.id, at: iso(), on: lightningOn(), flashes: flashesFor(req.festival) }));
 app.get('/festivals/:id/lightning', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(lightningFor(req.festival.id) || { code: 'none', at: iso(), on: lightningOn(), source: 'GOES GLM' }));
+
+// A spot, festival or not: the lightning grade and the flashes for wherever a phone is standing. Asking keeps the spot in the reader's reach for a day.
+const pointParam = (req, res, next) => {
+  const m = /^(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)$/.exec(String(req.params.at || ''));
+  const lat = m ? Number(m[1]) : NaN, lon = m ? Number(m[2]) : NaN;
+  if (!(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return res.status(400).json({ error: 'lat,lon' });
+  req.point = { latitude: lat, longitude: lon }; next();
+};
+app.get('/point/:at/lightning', pointParam, (req, res) => res.set('Cache-Control', 'no-store').json(lightningAt(req.point)));
+app.get('/point/:at/lightning/flashes', pointParam, (req, res) => res.set('Cache-Control', 'no-store').json({ at: iso(), on: lightningOn(), flashes: flashesFor(req.point) }));
 
 /** Where the rain on the radar is going and when it gets here, from the frames on disk (nowcast.js). */
 app.get('/festivals/:id/nowcast', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(nowcastFor(req.festival) || { at: null, tracked: false, minutes: null, reason: 'no radar frames yet' }));

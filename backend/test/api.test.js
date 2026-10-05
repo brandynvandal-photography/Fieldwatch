@@ -704,3 +704,11 @@ test('the admin key the server makes: made once, kept hashed, never shown again;
   assert.equal((await api('GET', '/admin/stats', { headers: admin })).status, 200, 'ADMIN_KEY back: the environment wins again');
   assert.equal((await api('GET', '/health')).json.adminKey, 'environment');
 });
+
+test('a spot, festival or not: the lightning grade and the flashes for wherever a phone stands', async () => {
+  assert.equal((await api('GET', '/point/nope/lightning')).status, 400); assert.equal((await api('GET', '/point/91,0/lightning')).status, 400);
+  const r = await api('GET', '/point/35.2271,-80.8431/lightning');
+  assert.equal(r.status, 200); assert.equal(r.json.code, 'none'); assert.equal(r.json.point, true); assert.ok(r.json.warming === true || r.json.on === false, 'the first fifteen minutes are a warm-up');
+  const fl = await api('GET', '/point/35.2271,-80.8431/lightning/flashes');
+  assert.equal(fl.status, 200); assert.deepEqual(fl.json.flashes, []);
+});

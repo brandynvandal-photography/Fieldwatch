@@ -409,6 +409,11 @@ details.more .inner{padding:0 16px 6px}
 @media (prefers-reduced-motion:reduce){.rmap .frame{transition:none}}
 .rmap .pin{position:absolute;left:256px;top:256px;width:12px;height:12px;margin:-6px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px #FF5FA8,0 0 0 10px rgba(255,95,168,.28)}
 .rmap .flash{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#ffd166;box-shadow:0 0 8px 2px rgba(255,209,102,.7);pointer-events:none}
+.rmap .ring{position:absolute;left:256px;top:256px;transform:translate(-50%,-50%);border-radius:50%;border:1.5px dashed rgba(255,255,255,.78);box-shadow:0 0 0 1px rgba(0,0,0,.18);pointer-events:none}
+.rmap .ring.red{border-color:#ff5f7e} .rmap .ring.orange{border-color:#ff9f43} .rmap .ring.yellow{border-color:#ffd166}
+.rmap .ring span{position:absolute;left:50%;top:0;transform:translate(-50%,-55%);font-size:10px;font-weight:600;color:#1A1533;background:rgba(255,255,255,.88);padding:1px 6px;border-radius:999px;white-space:nowrap}
+.rmap .arrive{position:absolute;left:12px;top:74px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:999px;font-size:12px;font-weight:600;padding:6px 11px}
+.rmap .arrive.warn{background:var(--warn);color:#fff}
 .rmap .me{position:absolute;width:14px;height:14px;margin:-7px;border-radius:50%;background:#2F7BFF;border:3px solid #fff;box-shadow:0 0 0 7px rgba(47,123,255,.28)}
 .rmap .pinlabel{position:absolute;left:256px;top:272px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#1A1533;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
 .rmap .stamp{position:absolute;left:12px;top:12px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:16px;padding:8px 12px 7px;line-height:1.1;text-align:left}
@@ -688,7 +693,7 @@ async function refresh(f){
     b ? getJSON(`${b}/festivals/${f.id}/posts`) : Promise.resolve(data(f).posts || []),
     b ? getJSON(`${b}/festivals/${f.id}/incidents`) : Promise.resolve(null),
     loadGrid(f), loadDaily(f),
-    b ? getJSON(`${b}/festivals/${f.id}/lightning`) : Promise.resolve(null),
+    b ? getJSON(lightningURL(f)) : Promise.resolve(null),
     b ? getJSON(`${b}/festivals/${f.id}/ground`) : Promise.resolve(null),
     b ? getJSON(`${b}/festivals/${f.id}/nowcast`) : Promise.resolve(null),
   ]);
@@ -1146,7 +1151,7 @@ function connectLive(){
 }
 function onLive(d){
   const f = fest();
-  if (f && d.festivalId === f.id) { if (d.kind === 'lightning') loadLightning(f); else if (!S.busy) refresh(f); }
+  if (f && d.festivalId === f.id) { if (d.kind === 'lightning') loadLightning(f); else if (d.kind === 'radar') { if (S.screen === 'radar') startRadar(f); } else if (!S.busy) refresh(f); }
   if (S.screen === 'feed' && !S.feedBusy) loadFeed();
 }
 // ---- warnings, asked once: right after a festival opens, one card offers the push for it ----
@@ -1186,10 +1191,12 @@ const CODE = {
             you: 'Not an all-clear. Your safety team calls that.' },
 };
 /** Lightning moves faster than the five-minute refresh: the grade is read every minute while a festival is open. A turn to red pulls the alerts too, and the new warning buzzes. */
+/** The grade for a festival by its id; for your own spot, by where it is (a point route; asking keeps the spot in the reader's reach). */
+const lightningURL = f => { const b = backend(); return !b || !f ? '' : f.id === 'here' ? `${b}/point/${f.latitude.toFixed(4)},${f.longitude.toFixed(4)}/lightning` : `${b}/festivals/${encodeURIComponent(f.id)}/lightning`; };
 async function loadLightning(f){
   const b = backend(); if (!b || !f) return;
   try{
-    const l = await getJSON(`${b}/festivals/${f.id}/lightning`), was = data(f).lightning;
+    const l = await getJSON(lightningURL(f)), was = data(f).lightning;
     S.cache[f.id] = { ...data(f), lightning: l }; save();
     codeMoved(was, l);
     const changed = !was || was.code !== l.code || was.nearestMi !== l.nearestMi || was.allClearAt !== l.allClearAt || Boolean(was.held) !== Boolean(l.held) || Boolean(was.allClearHeld) !== Boolean(l.allClearHeld);
@@ -1209,11 +1216,15 @@ function lightningState(l, alerts){
 }
 const liveLightning = f => lightningState(data(f).lightning, data(f).alerts);
 /** The tile under the sky: the nearest flash, the code, and the all-clear countdown when it is red. */
+/** Where the flashes are going, for the tile: closing with the minutes at this rate, or moving away. */
+const motionWords = l => (!l || !l.motion ? '' : l.motion.closing ? ` · closing${l.motion.arrivalMinutes != null ? `, ~${l.motion.arrivalMinutes} min` : ''}` : l.motion.heading ? ` · moving ${esc(l.motion.heading)}, away` : '');
 function lightningTile(f){
   const l = liveLightning(f), g = data(f).ground;
   if ((l && l.code === 'indoor') || (g && g.indoor === true)) return `<button class="bolt glass indoor" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Indoors · No lightning codes</div><div class="s">Inside is shelter. The codes are for outdoor grounds.</div></div>${I.chev}</button>`;
   const c = l && CODE[l.code];
   if (!c) {
+    // A spot asked about moments ago: the mapper's last quarter hour is still being read for it. Said, so the blank is not a green.
+    if (l && l.warming) return `<button class="bolt glass none" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Watching for lightning here</div><div class="s">The mapper's last fifteen minutes are being read for this spot${l.readyAt ? `. A code by ${esc(fmtTime(l.readyAt))}` : ''}.</div></div>${I.chev}</button>`;
     // The mapper has gone quiet: said, with how long, rather than a tile that vanishes. Nothing when it never reported at all.
     if (!l || !l.dataAt) return '';
     return `<button class="bolt glass none" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">No lightning data · ${esc(dataAge(l))} min</div><div class="s">The mapper has not reported. The last code is not known.</div></div>${I.chev}</button>`;
@@ -1221,7 +1232,7 @@ function lightningTile(f){
   const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 20 mi';
   const n = l.within ? l.within[c.within] || 0 : 0, age = l.dataAt ? dataAge(l) : null, old = age != null && age >= 3 ? `data ${age} min old` : '';
   const sub = l.code === 'red' ? (l.allClearHeld ? `${esc(c.text)} · all-clear waits for data${old ? ` (${esc(old)})` : ''}` : `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`)
-    : `${esc(c.text)} · ${l.code === 'green' ? 'nothing in the last 15 min' : `${n} flash${n === 1 ? '' : 'es'} within ${c.within} mi in 15 min`}${l.held && old ? ` · ${esc(old)}` : ''}`;
+    : `${esc(c.text)} · ${l.code === 'green' ? 'nothing in the last 15 min' : `${n} flash${n === 1 ? '' : 'es'} within ${c.within} mi in 15 min`}${l.held && old ? ` · ${esc(old)}` : ''}${motionWords(l)}`;
   return `<button class="bolt glass ${esc(l.code)}" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(head)} · ${esc(c.label)}</div><div class="s">${sub}</div></div>${I.chev}</button>`;
 }
 
@@ -2001,9 +2012,10 @@ screens.radar = () => {
     : `<div class="rmap" id="rmap"><div class="stage" id="stage">
         ${tiles(bbox).map(t => `<img class="tile" alt="" src="${t.url}" style="left:${t.left}px;top:${t.top}px;width:${t.size}px;height:${t.size}px" onerror="this.remove()">`).join('')}
         ${loop.frames.map((fr, i) => `<img class="frame" id="fr${i}" alt="">`).join('')}
-        <div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}${flashDots(f, bbox)}
+        ${rings(f)}<div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}${flashDots(f, bbox)}
       </div>
       <div class="stamp"><span id="radar-now" class="nowtag">Now</span><b id="radar-time" class="num">Loading</b><span id="radar-ago">&nbsp;</span></div>
+      ${arrivalBadge(f)}
       <div class="legend"><i></i>light to heavy</div>
       <div class="progress" id="radar-progress"></div>
     </div>
@@ -2095,17 +2107,18 @@ screens.prep = () => {
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
   const l = liveLightning(f), c = l && CODE[l.code], live = Boolean(c), indoor = (l && l.code === 'indoor') || Boolean(data(f).ground && data(f).ground.indoor === true);
-  const head = indoor ? 'Indoors' : live ? c.label : backend() ? 'No lightning data' : 'Needs the Fieldwatch backend';
+  const head = indoor ? 'Indoors' : live ? c.label : backend() ? (l && l.warming ? 'Watching this spot' : 'No lightning data') : 'Needs the Fieldwatch backend';
+  const mo = live && l.motion ? (l.motion.closing ? `Flashes moving ${l.motion.heading || 'this way'} at ${l.motion.speedMph} mph, closing${l.motion.arrivalMinutes != null ? `: here in about ${l.motion.arrivalMinutes} minutes at this rate` : ''}.` : `Flashes moving ${l.motion.heading || 'off'} at ${l.motion.speedMph} mph, away from here.`) : '';
   const line = indoor ? 'The lightning protocol is for outdoor grounds. Inside a building with wiring and plumbing you are in shelter. The line and the lot outside are not.'
     : live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi at ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
-    : backend() ? (l && l.on === false ? 'Lightning is switched off on this backend' : 'Nothing read from the mapper yet') : 'Lightning codes come from the backend';
+    : backend() ? (l && l.warming ? 'The mapper\'s last fifteen minutes are being read for this spot. A code comes in a few minutes.' : l && l.on === false ? 'Lightning is switched off on this backend' : 'Nothing read from the mapper yet') : 'Lightning codes come from the backend';
   const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
   const codeRow = k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(CODE[k].ring)}</div><div class="s">${esc(CODE[k].protocol)}</div><div class="s you">${esc(CODE[k].you)}</div></div></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Lightning</h1>
     <p class="sub">${indoor ? 'No codes for this event' : live ? esc(c.text) : esc(statusLine(f))}</p>
-    <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>
+    <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>${mo ? `<p class="motion">${esc(mo)}</p>` : ''}
       ${live && l.code === 'red' && l.allClearAt ? (l.allClearHeld ? `<b class="num">Waiting for data</b><span class="s">thirty minutes have passed since the last close flash, but the mapper has not reported for ${esc(l.dataAt ? dataAge(l) : '?')} min, so nobody can call it clear</span>` : `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">to the all-clear unless it strikes again</span>`) : ''}</div>
     ${indoor ? '' : thunderButton() + thunderRow()}
     ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}</div>` : ''}
@@ -2549,12 +2562,26 @@ function flashDots(f, bbox){
     return `<div class="flash" style="left:${((c.x - x0) / (x1 - x0) * SIZE).toFixed(1)}px;top:${((y1 - c.y) / (y1 - y0) * SIZE).toFixed(1)}px;opacity:${Math.max(0.25, 1 - (x.ageSeconds || 0) / 1800).toFixed(2)}" title="${esc(x.mi)} mi"></div>`; }).join('');
 }
 async function loadFlashes(f){
-  const b = backend(); if (!b || !f || f.id === 'here') return;
+  const b = backend(); if (!b || !f) return;
   try{
-    const r = await getJSON(`${b}/festivals/${encodeURIComponent(f.id)}/lightning/flashes`);
+    const r = await getJSON(`${lightningURL(f)}/flashes`);
     S.cache[f.id] = { ...data(f), flashes: r }; save();
     const st = document.getElementById('stage'); if (st && S.screen === 'radar') { st.querySelectorAll('.flash').forEach(e => e.remove()); st.insertAdjacentHTML('beforeend', flashDots(f, coverage(f))); }
   }catch(e){}
+}
+/** The protocol's rings around the pin, 8, 12 and 20 miles, in the square's own meters per pixel. None indoors, where there are no codes. */
+function rings(f){
+  if (insideOf(f)) return '';
+  const px = mi => (mi * 1609.344) / (2 * HALF_M / SIZE);
+  return [[8, 'red'], [12, 'orange'], [20, 'yellow']].map(([mi, k]) => `<div class="ring ${k}" style="width:${(2 * px(mi)).toFixed(1)}px;height:${(2 * px(mi)).toFixed(1)}px"><span>${mi} mi</span></div>`).join('');
+}
+/** What is coming at the square, said once: lightning closing (the mapper's own motion) before rain on the radar (the nowcast). */
+function arrivalBadge(f){
+  const l = liveLightning(f), m = l && l.motion, nc = data(f).nowcast;
+  if (m && m.closing && m.arrivalMinutes != null) return `<div class="arrive warn">Lightning closing${m.heading ? ` ${esc(m.heading)}` : ''} · ~${m.arrivalMinutes} min</div>`;
+  if (m && m.heading && !m.closing) return `<div class="arrive">Lightning moving ${esc(m.heading)}, away</div>`;
+  if (nc && nc.tracked && nc.minutes != null) return `<div class="arrive">${nc.minutes <= 0 ? 'Rain on the grounds' : `Rain in ~${nc.minutes} min${nc.heading ? `, moving ${esc(nc.heading)}` : ''}`}</div>`;
+  return '';
 }
 function meDot(bbox){
   if (!S.here) return '';

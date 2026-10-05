@@ -82,6 +82,25 @@ export async function readFlashes(bytes) {
  * `carry` is a red or orange alert already standing (issued before a restart, while the files are read again, newest first): the
  * flash it was issued on keeps its say until the alert's own end, so the grade never falls below an alert that is still out.
  */
+const COMPASS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+/**
+ * Where the lightning is going: the flashes of the last ten minutes against the ten before, as two centers, within forty miles.
+ * Heading is where they are moving to, speed how fast, closing whether the center is nearer than it was, and the minutes until
+ * it would be here at that rate. Null until there are three flashes in each half: a single cell is not a motion.
+ */
+export function motionOf(f, flashes, now = Date.now()) {
+  const near = flashes.filter(x => now - x.t <= 2 * RECENT_MS / 1.5 && milesBetween(f.latitude, f.longitude, x.lat, x.lon) <= REACH_MI);   // the last twenty minutes
+  const fresh = near.filter(x => now - x.t <= 10 * MIN), older = near.filter(x => now - x.t > 10 * MIN);
+  if (fresh.length < 3 || older.length < 3) return null;
+  const kx = 69.172 * Math.cos(f.latitude * Math.PI / 180), ky = 69.172;   // miles per degree here
+  const center = g => ({ x: g.reduce((s, x) => s + (x.lon - f.longitude) * kx, 0) / g.length, y: g.reduce((s, x) => s + (x.lat - f.latitude) * ky, 0) / g.length, t: g.reduce((s, x) => s + x.t, 0) / g.length });
+  const a = center(older), b = center(fresh), dx = b.x - a.x, dy = b.y - a.y, hours = Math.max(MIN, b.t - a.t) / 3_600_000;
+  const moved = Math.hypot(dx, dy), speedMph = Math.round(moved / hours), distA = Math.hypot(a.x, a.y), distB = Math.hypot(b.x, b.y);
+  const heading = moved < 0.5 ? null : COMPASS[Math.round((((Math.atan2(dx, dy) * 180 / Math.PI) % 360) + 360) % 360 / 45) % 8];
+  const closing = distB < distA - 0.5, rate = (distA - distB) / hours;
+  const arrivalMinutes = closing && rate > 3 ? Math.min(180, Math.max(1, Math.round(distB / rate * 60))) : null;
+  return { heading, speedMph, closing, awayMph: closing ? null : Math.round(-rate), arrivalMinutes, distanceMi: Math.round(distB * 10) / 10, flashes: near.length };
+}
 export function assess(f, flashes, now = Date.now(), lastFileAt = null, carry = null, prev = null) {
   const near = flashes.map(x => ({ ...x, mi: milesBetween(f.latitude, f.longitude, x.lat, x.lon) })).filter(x => x.mi <= RINGS.yellow);
   const recent = near.filter(x => now - x.t <= RECENT_MS);
@@ -105,7 +124,21 @@ export function assess(f, flashes, now = Date.now(), lastFileAt = null, carry = 
   return { code, nearestMi: nearest ? mi(nearest) : null, nearestAt: nearest ? iso(nearest.t) : null, within: { [RINGS.red]: within(RINGS.red), [RINGS.orange]: within(RINGS.orange), [RINGS.yellow]: within(RINGS.yellow) },
     lastNearMi: lastNear ? mi(lastNear) : null, lastNearAt: lastNear ? iso(lastNear.t) : null, allClearAt: red ? iso(lastNear.t + ALL_CLEAR_MS + (held ? HOLD_MS : 0)) : null, allClearHeld: held,
     orangeUntil: code === 'orange' && lastMid ? iso(lastMid.t + RECENT_MS) : hold && hold.code === 'orange' ? hold.orangeUntil || null : null,
-    held: Boolean(hold), stale, dataAgeSeconds: Number.isFinite(age) ? Math.round(age / 1000) : null, at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
+    held: Boolean(hold), stale, dataAgeSeconds: Number.isFinite(age) ? Math.round(age / 1000) : null, motion: motionOf(f, flashes, now), at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
+}
+
+// A spot someone is standing on, festival or not: asked about, it is kept in reach of the reader for a day, and graded on demand.
+// The first fifteen minutes after it is first asked about are a warm-up: the buffer has nothing for it yet, and a green nobody
+// could see would be a lie. No alert and no push for a spot; the grade is for the phone that asked.
+const interest = new Map();
+const pointKey = (lat, lon) => `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`;
+export function notePoint(lat, lon, now = Date.now()) { const k = pointKey(lat, lon), had = interest.get(k); if (!had) interest.set(k, { latitude: Number(lat), longitude: Number(lon), since: now, at: now }); else had.at = now; return interest.get(k); }
+export function pointsOfInterest(now = Date.now()) { for (const [k, p] of interest) if (now - p.at > 24 * 3_600_000) interest.delete(k); return [...interest.values()]; }
+export function lightningAt(p, now = Date.now()) {
+  const seen = notePoint(p.latitude, p.longitude, now);
+  if (!lightningOn()) return { code: 'none', on: false, at: iso(now), source: 'GOES GLM', point: true };
+  if (now - seen.since < RECENT_MS) return { code: 'none', warming: true, readyAt: iso(seen.since + RECENT_MS), at: iso(now), dataAt: state.lastFileAt ? iso(state.lastFileAt) : null, source: 'GOES GLM', point: true };
+  return { ...assess({ latitude: p.latitude, longitude: p.longitude }, state.flashes, now, state.lastFileAt), point: true };
 }
 
 const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, duplicates: 0, lastFileAt: null, lastTickAt: null };
@@ -124,13 +157,14 @@ export const flashesFor = (f, now = Date.now(), limit = 300) => state.flashes
 export const lightningStatus = () => ({ on: lightningOn(), lastTickAt: state.lastTickAt ? iso(state.lastTickAt) : null, lastFileAt: state.lastFileAt ? iso(state.lastFileAt) : null,
   files: state.files, flashes: state.flashes.length, duplicates: state.duplicates, buckets: buckets().map(b => ({ bucket: b, files: 0, lastFileAt: null, lastError: null, ...state.buckets[b] })) });
 /** Tests start from nothing. */
-export function resetLightning() { state.flashes = []; state.seen.clear(); state.per.clear(); state.buckets = {}; state.episodes.clear(); state.files = 0; state.duplicates = 0; state.lastFileAt = state.lastTickAt = null; }
+export function resetLightning() { state.flashes = []; state.seen.clear(); state.per.clear(); state.buckets = {}; state.episodes.clear(); state.files = 0; state.duplicates = 0; state.lastFileAt = state.lastTickAt = null; interest.clear(); }
 const errorText = e => `${e?.message || e}${e?.cause?.code ? ` (${e.cause.code})` : ''}`;
 
 /** One pass: list, fetch what is new, trim the buffer, grade every festival that is on, announce a turn to red. */
 export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.fetch, festivals = festivalsInWindow(now), maxFiles = 30 } = {}) {
   state.lastTickAt = now;
-  if (!festivals.length) { state.flashes = []; state.per.clear(); state.episodes.clear(); return { skipped: 'nothing is on' }; }
+  const points = pointsOfInterest(now);   // spots phones asked about: read for them too, with no festival on
+  if (!festivals.length && !points.length) { state.flashes = []; state.per.clear(); state.episodes.clear(); return { skipped: 'nothing is on' }; }
   const prefixes = [...new Set([hourPrefix(now - ALL_CLEAR_MS), hourPrefix(now)])];
   const wanted = [];
   for (const bucket of buckets()) {
@@ -156,7 +190,7 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
       // Where both satellites see a festival, a flash both saw is one flash: the second copy, within two seconds and the
       // mapper's footprint of one already held from the other satellite, is dropped. Each kept flash names its satellite.
       for (const x of flashes) {
-        if (!festivals.some(f => milesBetween(f.latitude, f.longitude, x.lat, x.lon) <= REACH_MI)) continue;
+        if (!festivals.some(f => milesBetween(f.latitude, f.longitude, x.lat, x.lon) <= REACH_MI) && !points.some(p => milesBetween(p.latitude, p.longitude, x.lat, x.lon) <= REACH_MI)) continue;
         if (state.flashes.some(y => y.sat !== w.bucket && Math.abs(y.t - x.t) <= 2000 && milesBetween(y.lat, y.lon, x.lat, x.lon) <= 6.2)) { state.duplicates++; continue; }
         state.flashes.push({ ...x, sat: w.bucket });
       }
