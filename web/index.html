@@ -434,6 +434,12 @@ details.more .inner{padding:0 16px 6px}
 .rmap .arrive{position:absolute;left:12px;top:74px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:999px;font-size:12px;font-weight:600;padding:6px 11px}
 .rmap .arrive.warn{background:var(--warn);color:#fff}
 .rmap .me{position:absolute;width:14px;height:14px;margin:-7px;border-radius:50%;background:#2F7BFF;border:3px solid #fff;box-shadow:0 0 0 7px rgba(47,123,255,.28)}
+.rmap .lsr{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;transform:rotate(45deg);background:#fff;border:2px solid #7C3AED;box-shadow:0 0 0 2px rgba(124,58,237,.28);pointer-events:none}
+.rmap .poly{position:absolute;left:0;top:0;width:512px;height:512px;pointer-events:none;overflow:visible}
+.rmap .poly path{fill:rgba(244,63,94,.14);stroke:#ff5f7e;stroke-width:2.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.rmap .poly path.watch{fill:rgba(255,176,59,.14);stroke:#ffb03b}
+.codehead .motion.staffed{font-weight:600}
+.lsr-row .s{white-space:normal}
 .rmap .pinlabel{position:absolute;left:256px;top:272px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#1A1533;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
 .rmap .stamp{position:absolute;left:12px;top:12px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:16px;padding:8px 12px 7px;line-height:1.1;text-align:left}
 .rmap .stamp b{display:block;font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -590,12 +596,12 @@ const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, ba
   fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
   staffScope: null, hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
   post: { title: '', body: '', severity: 'minor', kind: 'notice', minutes: 60, error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false,
-  sound: true, digest: true, thunder: null, takeover: null, offline: navigator.onLine === false, theme: 'auto', text: 'normal', saver: false, battery: null };
+  sound: true, digest: true, thunder: null, takeover: null, offline: navigator.onLine === false, theme: 'auto', text: 'normal', saver: false, battery: null, lang: 'en' };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff, thunder: d.thunder && d.thunder.at ? d.thunder : null, sound: d.sound !== false, digest: d.digest !== false, theme: d.theme === 'sun' ? 'sun' : 'auto', text: ['large', 'larger'].includes(d.text) ? d.text : 'normal', saver: d.saver === true }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff, thunder: d.thunder && d.thunder.at ? d.thunder : null, sound: d.sound !== false, digest: d.digest !== false, theme: d.theme === 'sun' ? 'sun' : 'auto', text: ['large', 'larger'].includes(d.text) ? d.text : 'normal', saver: d.saver === true, lang: d.lang === 'es' ? 'es' : 'en' }); }catch(e){}
 }
 /** What survives a reload: the chosen festival, the favorites and your own spot. Flashes are a minute of satellite and are fetched again. */
 function keepCache(){
@@ -604,7 +610,7 @@ function keepCache(){
   return out;
 }
 function save(){
-  const body = { fest: S.fest, cache: keepCache(), backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope, thunder: S.thunder, sound: S.sound !== false, digest: S.digest !== false, theme: S.theme, text: S.text, saver: S.saver === true };
+  const body = { fest: S.fest, cache: keepCache(), backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope, thunder: S.thunder, sound: S.sound !== false, digest: S.digest !== false, theme: S.theme, text: S.text, saver: S.saver === true, lang: S.lang === 'es' ? 'es' : 'en' };
   try{ localStorage.setItem(STORE, JSON.stringify(body)); S.saveError = null; }
   catch(e){
     // Out of room: the settings matter more than the weather copy. Keep them, let the copy go, and say so in Diagnostics.
@@ -667,7 +673,7 @@ const pt = f => `${f.latitude.toFixed(4)},${f.longitude.toFixed(4)}`;
 const normalizeAlert = ft => { const p = ft.properties; return {
   id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null,
   severity: String(p.severity || 'Unknown').toLowerCase(), area: p.areaDesc ?? '', source: p.senderName ?? 'National Weather Service',
-  issuedAt: p.effective, onset: p.onset ?? null, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0 }; };
+  issuedAt: p.effective, onset: p.onset ?? null, expiresAt: p.ends ?? p.expires ?? null, channel: 'weather', relayCount: 0, geometry: keepGeometry(ft.geometry) }; };
 const isWarning = a => a.severity === 'severe' || a.severity === 'extreme';
 const isActive = a => !a.expiresAt || Date.parse(a.expiresAt) > Date.now();
 /** One row per warning: what says the same thing twice (one event, one end) is one, the newest kept. */
@@ -678,11 +684,18 @@ const level = f => { const al = skyAlerts(f); return al.some(isWarning) ? 'warn'
 // A heads-up names its hour in the festival's own clock; the line under it counts down instead of saying the hour again in the phone's.
 const alertSub = a => a.channel === 'headsup' ? (a.onset ? (c => c === 'now' ? 'Now' : `In ${c}`)(countdownText(a.onset, true)) : 'On the way') : `${isWarning(a) ? 'Warning' : a.channel === 'official' ? 'Festival staff' : 'Advisory'} · ${a.expiresAt ? `Until ${fmtWhen(a.expiresAt)}` : (a.area || '')}`;   // the word beside the color, for anyone who cannot tell red from orange
 
-async function loadAlerts(f){
+async function loadAlerts(f, opts){
   const b = backend();
   if (b) { try { return await getJSON(`${b}/festivals/${f.id}/alerts`); } catch(e) {} }   // fall back to NWS, like the app
-  const fc = await getJSON(`${NWS}/alerts/active?point=${pt(f)}`, GEO);
-  return (fc.features || []).map(normalizeAlert);
+  // Without the backend, the same question it asks: the county and forecast zone the grounds sit in (one /points call the forecast
+  // needs anyway), so a watch for the whole county and a warning drawn across the edge of the grounds are both listed; a polygon has
+  // to reach within about a mile (reaches, condense: the shared block). Your own spot asks by point, and so does the festivals list's
+  // glance at a dozen festivals (quick) unless the zones are already known: the glance is not worth a lookup per festival.
+  let zones = [];
+  if (f.id !== 'here' && (!(opts && opts.quick) || POINTS[pt(f)])) { try { zones = zonesOf(await pointFor(f)); } catch(e) {} }
+  if (!zones.length) { const fc = await getJSON(`${NWS}/alerts/active?point=${pt(f)}`, GEO); return (fc.features || []).map(normalizeAlert); }
+  const fc = await getJSON(`${NWS}/alerts/active?zone=${zones.join(',')}`, GEO);
+  return condense((fc.features || []).filter(ft => reaches(ft.geometry, f.latitude, f.longitude)), zones).map(normalizeAlert);
 }
 // /points rarely changes; one request per festival per session feeds the hourly, the grid and the days.
 const POINTS = {};
@@ -700,7 +713,7 @@ async function loadHourly(f){
 // The grid behind the forecast (/gridpoints/{wfo}/{x},{y}), raw: the shared block below spreads it hour by hour once the hourly forecast is in.
 async function loadGrid(f){
   const g = (await getJSON((await pointFor(f)).forecastGridData, GEO)).properties;
-  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder, quantitativePrecipitation: g.quantitativePrecipitation, temperature: g.temperature, relativeHumidity: g.relativeHumidity, windSpeed: g.windSpeed, skyCover: g.skyCover, windDirection: g.windDirection, apparentTemperature: g.apparentTemperature };
+  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder, quantitativePrecipitation: g.quantitativePrecipitation, temperature: g.temperature, relativeHumidity: g.relativeHumidity, windSpeed: g.windSpeed, skyCover: g.skyCover, windDirection: g.windDirection, apparentTemperature: g.apparentTemperature, snowfallAmount: g.snowfallAmount };
 }
 async function loadDaily(f){
   const point = await pointFor(f), fc = await getJSON(point.forecast, GEO);
@@ -718,14 +731,15 @@ async function refresh(f){
   if (!f || S.busy) return;
   S.busy = true; render();
   const b = backend();
-  const [al, hr, po, inc, gr, dy, lt, gd, nc] = await Promise.allSettled([
+  const [al, hr, po, inc, gr, dy, lt, gd, nc, sr] = await Promise.allSettled([
     loadAlerts(f), loadHourly(f),
     b ? getJSON(`${b}/festivals/${f.id}/posts`) : Promise.resolve(data(f).posts || []),
     b ? getJSON(`${b}/festivals/${f.id}/incidents`) : Promise.resolve(null),
     loadGrid(f), loadDaily(f),
     b ? getJSON(lightningURL(f)) : Promise.resolve(null),
-    b ? getJSON(`${b}/festivals/${f.id}/ground`) : Promise.resolve(null),
+    b ? getJSON(f.id === 'here' ? `${b}/point/${pt(f)}/ground` : `${b}/festivals/${f.id}/ground`) : Promise.resolve(null),   // your own spot gets the ground too: a point route, looked up once a day per cell
     b ? getJSON(`${b}/festivals/${f.id}/nowcast`) : Promise.resolve(null),
+    b && f.id !== 'here' ? getJSON(`${b}/festivals/${f.id}/storm-reports`) : Promise.resolve(null),
   ]);
   const next = { ...data(f) };
   let ok = false;
@@ -750,6 +764,7 @@ async function refresh(f){
   if (gr.status === 'fulfilled') next.grid = spreadGrid(gr.value, next.hourly || data(f).hourly || []);
   if (gd.status === 'fulfilled') next.ground = gd.value;
   if (nc.status === 'fulfilled') next.nowcast = nc.value;
+  if (sr.status === 'fulfilled' && sr.value) next.stormReports = sr.value;
   if (dy.status === 'fulfilled') next.daily = dy.value;
   if (lt.status === 'fulfilled') { codeMoved(data(f).lightning, lt.value); next.lightning = lt.value; }
   next.checkedAt = new Date().toISOString();
@@ -1262,7 +1277,7 @@ const liveLightning = f => lightningState(data(f).lightning, data(f).alerts);
 const motionWords = l => (!l || !l.motion ? '' : l.motion.closing ? ` · closing${l.motion.arrivalMinutes != null ? `, ~${l.motion.arrivalMinutes} min` : ''}` : l.motion.heading ? ` · moving ${esc(l.motion.heading)}, away` : '');
 function lightningTile(f){
   const l = liveLightning(f), g = data(f).ground;
-  if ((l && l.code === 'indoor') || (g && g.indoor === true)) return `<button class="bolt glass indoor" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Indoors · No lightning codes</div><div class="s">Inside is shelter. The codes are for outdoor grounds.</div></div>${I.chev}</button>`;
+  if ((l && l.code === 'indoor') || (g && g.indoor === true)) return `<button class="bolt glass indoor" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(T('Indoors · No lightning codes'))}</div><div class="s">Inside is shelter. The codes are for outdoor grounds.</div></div>${I.chev}</button>`;
   const c = l && CODE[l.code];
   if (!c) {
     // A spot asked about moments ago: the mapper's last quarter hour is still being read for it. Said, so the blank is not a green.
@@ -1271,11 +1286,11 @@ function lightningTile(f){
     if (!l || !l.dataAt) return '';
     return `<button class="bolt glass none" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">No lightning data · ${esc(dataAge(l))} min</div><div class="s">The mapper has not reported. The last code is not known.</div></div>${I.chev}</button>`;
   }
-  const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 20 mi';
+  const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : T('No lightning within 20 mi');
   const n = l.within ? l.within[c.within] || 0 : 0, age = l.dataAt ? dataAge(l) : null, old = age != null && age >= 3 ? `data ${age} min old` : '';
-  const sub = l.code === 'red' ? (l.allClearHeld ? `${esc(c.text)} · all-clear waits for data${old ? ` (${esc(old)})` : ''}` : `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`)
-    : `${esc(c.text)} · ${l.code === 'green' ? 'nothing in the last 15 min' : `${n} flash${n === 1 ? '' : 'es'} within ${c.within} mi in 15 min`}${l.held && old ? ` · ${esc(old)}` : ''}${motionWords(l)}`;
-  return `<button class="bolt glass ${esc(l.code)}" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(head)} · ${esc(c.label)}</div><div class="s">${sub}</div></div>${I.chev}</button>`;
+  const sub = l.code === 'red' ? (l.allClearHeld ? `${esc(T(c.text))} · all-clear waits for data${old ? ` (${esc(old)})` : ''}` : `${esc(T(c.text))} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`)
+    : `${esc(T(c.text))} · ${l.code === 'green' ? 'nothing in the last 15 min' : `${n} flash${n === 1 ? '' : 'es'} within ${c.within} mi in 15 min`}${l.held && old ? ` · ${esc(old)}` : ''}${motionWords(l)}`;
+  return `<button class="bolt glass ${esc(l.code)}" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(head)} · ${esc(T(c.label))}</div><div class="s">${sub}${l.staff ? ` · ${esc(T('set by staff'))}` : ''}</div></div>${I.chev}</button>`;
 }
 
 // ==== shared: start ====
@@ -1352,7 +1367,7 @@ function allocate(series, hourly = []) {
 const cToF = c => c * 9 / 5 + 32, kmhToMph = k => k / 1.609;
 /** The grid's hour-by-hour numbers the model reads: heat index (°F), gusts (mph), chance of thunder (%), rain (inches in the hour), what the heat estimate needs, where the wind comes from (degrees) and what it feels like (°F). */
 const spreadGrid = (g, hourly = []) => ({ heat: spread(g?.heatIndex, cToF), gust: spread(g?.windGust, kmhToMph), thunder: spread(g?.probabilityOfThunder), rain: allocate(g?.quantitativePrecipitation, hourly),
-  temp: spread(g?.temperature, cToF), rh: spread(g?.relativeHumidity), wind: spread(g?.windSpeed, kmhToMph), sky: spread(g?.skyCover), dir: spread(g?.windDirection), feels: spread(g?.apparentTemperature, cToF) });
+  temp: spread(g?.temperature, cToF), rh: spread(g?.relativeHumidity), wind: spread(g?.windSpeed, kmhToMph), sky: spread(g?.skyCover), dir: spread(g?.windDirection), feels: spread(g?.apparentTemperature, cToF), snow: allocate(g?.snowfallAmount, hourly) });
 // Heat by exertion: the heat index is a shade number for someone at rest. An estimated wet-bulb globe temperature (Stull's wet
 // bulb, a globe warmed by the sun less cloud and wind, the standard 0.7/0.2/0.1 blend) is what work-rest guidance uses, and it
 // earns a flag. Red or black is a heat hazard on its own, whatever the heat index says.
@@ -1379,14 +1394,14 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
       const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
-      const wind = grid.wind?.[k] ?? null, dir = grid.dir?.[k] ?? null, feels = grid.feels?.[k] ?? null;
+      const wind = grid.wind?.[k] ?? null, dir = grid.dir?.[k] ?? null, feels = grid.feels?.[k] ?? null, snow = grid.snow?.[k] ?? null;
       const wbgt = wbgtF(grid.temp?.[k] ?? null, grid.rh?.[k] ?? null, wind ?? 0, grid.sky?.[k] ?? 0);
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
       if (!indoor && gust >= gustLine) hazards.push('wind');
       if (!indoor && (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF)) hazards.push('heat');
       if (!indoor && feels != null && feels <= THRESHOLDS.coldF) hazards.push('cold');   // a wet tent on a cold night is how people get hurt
-      return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wind, dir, feels, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
+      return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wind, dir, feels, snow, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
   // A run of wet hours is rain when it adds up: a drizzle that never reaches rainIn is not worth a heads-up.
   for (let i = 0; !indoor && i < marks.length; i++) {
@@ -1414,7 +1429,8 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
     const rainIn = win.some(m => m.rain != null) ? Math.round(win.reduce((s, m) => s + (m.rain || 0), 0) * 100) / 100 : null;
     forecast = { hazard: PRIORITY.find(p => all.has(p)), startsAt: new Date(Math.max(now, marks[i].t)).toISOString(), endsAt: new Date(marks[j].t + HOUR).toISOString(),
       source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), wbgt: peakOf('wbgt'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100,
-        wind: peakOf('wind'), dir: gustHour ? dirWords(gustHour.dir) : null, feels: lowOf('feels') == null ? null : Math.round(lowOf('feels')) } };
+        wind: peakOf('wind'), dir: gustHour ? dirWords(gustHour.dir) : null, feels: lowOf('feels') == null ? null : Math.round(lowOf('feels')),
+        snowIn: win.some(m => m.snow != null) ? Math.round(win.reduce((s, m) => s + (m.snow || 0), 0) * 10) / 10 : null } };
     if (forecast.peak.wbgt != null) forecast.flag = heatFlag(forecast.peak.wbgt);
     if (rainIn != null && (all.has('rain') || all.has('flood'))) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
     if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)), odds: gustOdds(forecast.peak.gust, forecast.peak.wind, gustLine) };
@@ -1439,7 +1455,7 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
   return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)), ...(indoor ? { indoor: true } : {}) } : null;
 }
 /** Rain in a sentence: "0.6 in of rain" when the grid says how much, "a 70% chance of rain" when it only says how likely. */
-const rainWords = p => p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.rainIn.toFixed(1)} in of rain` : p.precip != null ? `a ${Math.round(p.precip)}% chance of rain` : '';
+const rainWords = p => p.snowIn >= 0.1 ? `${p.snowIn.toFixed(1)} in of snow` : p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.rainIn.toFixed(1)} in of rain` : p.precip != null ? `a ${Math.round(p.precip)}% chance of rain` : '';
 // Mud: inches of rain before trampled grass on this soil goes soft (USDA hydrologic group A drains fast, D is clay), and how
 // the surface changes that. Sand and blacktop never make mud; they puddle, run off or turn slick instead.
 const MUD_IN = { A: 1.5, B: 0.75, C: 0.5, D: 0.3 };
@@ -1561,6 +1577,44 @@ function timing(hazard, m, hour) {
   return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes. Head for shelter with fifteen to spare.'
     : m <= 180 ? 'Secure camp now. Charge phones, fill water and pick your shelter.' : 'Secure what you would hate to lose. Check back in an hour.';
 }
+// Which alerts are this grounds' alerts, the same on the backend and on a phone with no backend: everything active for the
+// point's county and forecast zones, a polygon warning only where its polygon reaches the grounds, a zone-wide alert where it
+// names the grounds' own zone, one message per warning (an update replaces what it references; one event with one end is one).
+/** The zone ids a /points answer names: the county, the forecast zone, the fire weather zone. */
+const zonesOf = p => [...new Set([p && p.county, p && p.forecastZone, p && p.fireWeatherZone].map(u => String(u || '').split('/').pop()).filter(z => /^[A-Z]{2}[CZ]\d{3}$/.test(z)))];
+/** Does this alert's polygon reach the grounds: a 3 km square around the point, tested at nine points, and the polygon's own corners inside it. Zone-wide alerts (no polygon) always do. */
+function reaches(geometry, lat, lon, km = 1.5) {
+  if (!geometry) return true;
+  const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.type === 'MultiPolygon' ? geometry.coordinates : null;
+  if (!polys) return true;
+  const dLat = km / 111.195, dLon = km / (111.195 * Math.cos(lat * Math.PI / 180));
+  const samples = []; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) samples.push([lon + j * dLon, lat + i * dLat]);
+  const inRing = (ring, x, y) => { let inside = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; } return inside; };
+  for (const poly of polys) {
+    const ring = (poly && poly[0]) || [];
+    if (samples.some(([x, y]) => inRing(ring, x, y))) return true;
+    if (ring.some(([x, y]) => Math.abs(x - lon) <= dLon && Math.abs(y - lat) <= dLat)) return true;
+  }
+  return false;
+}
+/** One message per warning, from the features the weather service listed for these zones. */
+function condense(features, zones = []) {
+  const ids = new Set(features.map(ft => ft.properties.id));
+  const superseded = new Set(features.flatMap(ft => (ft.properties.references || []).map(r => r.identifier)).filter(id => ids.has(id)));
+  const sentAt = ft => Date.parse(ft.properties.sent || ft.properties.effective || '') || 0;
+  const out = [], seen = new Set();
+  for (const ft of features.slice().sort((a, b) => sentAt(b) - sentAt(a))) {
+    const p = ft.properties, ugc = (p.geocode && p.geocode.UGC) || [];
+    if (superseded.has(p.id) || p.messageType === 'Cancel') continue;
+    if (!ft.geometry && zones.length && ugc.length && !zones.some(z => ugc.includes(z))) continue;
+    const key = `${p.event}|${p.ends || p.expires || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(ft);
+  }
+  return out;
+}
+/** A polygon small enough to keep with the alert and draw on the radar square; nothing for a zone-wide alert or a huge one. */
+const keepGeometry = g => (g && (g.type === 'Polygon' || g.type === 'MultiPolygon') && JSON.stringify(g).length <= 24000 ? g : null);
 // One line to act on and one line of what not to do, for every alert: a person in a panic reads the first line and nothing
 // else, so the push opens with it and so does the alert screen. An imperative under eight words, then what not to do.
 const ACTION = {
@@ -1773,6 +1827,49 @@ function statusLine(f){
   return 'Not checked yet';
 }
 
+// ---- Spanish for the lines people act on: the two lines of every alert, the holds, the lightning codes, the hazards and the words
+// around them (T). The rest of the page stays in English until a translator reads it; a line with no translation shows in English, never blank. ----
+const ES = {
+  'Get to the shelter now': 'Vaya al refugio ahora', 'Lowest floor of a solid building. Not a tent or a car.': 'Piso más bajo de un edificio sólido. No una carpa ni un carro.',
+  'Know where the shelter is': 'Sepa dónde está el refugio', 'Keep the phone on and charged.': 'Mantenga el teléfono encendido y cargado.',
+  'Get into a vehicle or building': 'Entre a un vehículo o un edificio', 'Not a tent, canopy or stage.': 'No una carpa, un toldo ni un escenario.',
+  'Know your shelter': 'Sepa cuál es su refugio', 'A hard-topped vehicle or a building. Not a tent.': 'Un vehículo de techo duro o un edificio. No una carpa.',
+  'Get under a solid roof': 'Métase bajo un techo sólido', 'Not a tent or canopy.': 'No una carpa ni un toldo.', 'Lay canopies flat before it comes.': 'Baje los toldos antes de que llegue.',
+  'Stay clear of tents and stages': 'Aléjese de carpas y escenarios', 'Get into a vehicle or building if it turns dangerous.': 'Entre a un vehículo o un edificio si se pone peligroso.',
+  'Tie everything down': 'Amarre todo', 'Drop pop-up canopies.': 'Baje los toldos plegables.',
+  'Move to high ground now': 'Suba a terreno alto ahora', 'Never walk or drive through moving water.': 'Nunca camine ni maneje por agua en movimiento.',
+  'Know the route to high ground': 'Sepa la ruta a terreno alto', 'Move the tent off low ground.': 'Mueva la carpa fuera del terreno bajo.', 'Move the tent off low ground': 'Mueva la carpa fuera del terreno bajo',
+  'Shade and water now': 'Sombra y agua ahora', 'Medical tent at confusion or no sweat.': 'A la carpa médica si hay confusión o deja de sudar.',
+  'Water every twenty minutes': 'Agua cada veinte minutos', 'Shade at midday. Check on neighbors.': 'Sombra al mediodía. Revise a sus vecinos.',
+  'Get dry and off low ground': 'Séquese y salga del terreno bajo', 'A vehicle or a building keeps you dry.': 'Un vehículo o un edificio lo mantiene seco.', 'Bins and bags off the floor.': 'Cajas y bolsas fuera del suelo.',
+  'Get warm and dry now': 'Caliéntese y séquese ahora', 'A vehicle or a building with heat. Not a wet tent.': 'Un vehículo o un edificio con calefacción. No una carpa mojada.',
+  'Dry layers before you turn in': 'Capas secas antes de acostarse', 'Something between you and the ground.': 'Algo entre usted y el suelo.',
+  'Shelter now': 'Refúgiese ahora', 'Full work stoppage. Not a tent, canopy or stage.': 'Paro total del trabajo. No una carpa, un toldo ni un escenario.', 'Head for shelter': 'Diríjase al refugio', 'Evacuation procedures. Staff hold posts.': 'Procedimientos de evacuación. El personal mantiene sus puestos.',
+  'Shelter in place now': 'Refúgiese donde está ahora', 'Festival staff say so. A vehicle or a building. Not a tent, canopy or stage.': 'Lo indica el personal del festival. Un vehículo o un edificio. No una carpa, un toldo ni un escenario.',
+  'Leave the grounds now': 'Salga del recinto ahora', 'As staff direct. Take only what you carry.': 'Como indique el personal. Lleve solo lo que pueda cargar.',
+  'Hold where you are': 'Quédese donde está', 'The show is paused. Wait for staff before moving.': 'El show está en pausa. Espere al personal antes de moverse.',
+  'All clear': 'Todo despejado', 'Festival staff lifted the hold. Back to normal operations.': 'El personal del festival levantó la alerta. Vuelve la operación normal.',
+  'Take shelter now': 'Busque refugio ahora', 'Stages and tents are not safe shelter.': 'Los escenarios y las carpas no son refugio seguro.', 'Take shelter now. Stages and tents are not safe shelter.': 'Busque refugio ahora. Los escenarios y las carpas no son refugio seguro.',
+  'Code Red': 'Código Rojo', 'Code Orange': 'Código Naranja', 'Code Yellow': 'Código Amarillo', 'Code Green': 'Código Verde',
+  'Under 8 miles': 'A menos de 8 millas', '8 to 12 miles': 'De 8 a 12 millas', '12 to 20 miles': 'De 12 a 20 millas', 'None within 20 miles': 'Ninguno a menos de 20 millas',
+  'Rapid evacuation, full work stoppage': 'Evacuación rápida, paro total del trabajo', 'Evacuation procedures, staff hold posts': 'Procedimientos de evacuación, el personal mantiene sus puestos', 'Pay attention, prepare for orange': 'Atención, prepárese para naranja', 'Normal operations': 'Operación normal',
+  'Lightning has been detected in less than an 8 mile radius. Rapid evacuation required. Non-essential personnel should prioritize exit and do not need to maintain posts. Full work stoppage.': 'Se detectaron rayos a menos de 8 millas. Se requiere evacuación rápida. El personal no esencial debe priorizar la salida y no necesita mantener su puesto. Paro total del trabajo.',
+  'Lightning within 8 to 12 miles. Execute evacuation procedures while maintaining assigned posts to assist attendees.': 'Rayos entre 8 y 12 millas. Ejecute los procedimientos de evacuación manteniendo los puestos asignados para asistir al público.',
+  'Weather 12 to 20 miles from site. Pay attention and get things prepared for orange and a potential work stoppage.': 'Tormenta a entre 12 y 20 millas del sitio. Preste atención y prepare todo para naranja y un posible paro del trabajo.',
+  'No lightning within 20 miles in the last 15 minutes.': 'Sin rayos a menos de 20 millas en los últimos 15 minutos.',
+  'Get to a hard-topped vehicle or a building with wiring and plumbing. Tents, canopies and stages are not shelter. The all-clear is thirty minutes after the last flash within 8 miles.': 'Vaya a un vehículo de techo duro o a un edificio con instalación eléctrica y plomería. Carpas, toldos y escenarios no son refugio. El despeje llega treinta minutos después del último rayo a menos de 8 millas.',
+  'Head for shelter or the exits as staff direct. Pack what you will carry.': 'Diríjase al refugio o a las salidas como indique el personal. Empaque lo que va a cargar.',
+  'Pick your shelter and secure camp now.': 'Elija su refugio y asegure el campamento ahora.', 'Not an all-clear. Your safety team calls that.': 'No es un despeje. Eso lo decide su equipo de seguridad.',
+  'No lightning within 20 mi': 'Sin rayos a menos de 20 mi', 'No lightning data': 'Sin datos de rayos', 'Indoors': 'Bajo techo', 'Indoors · No lightning codes': 'Bajo techo · Sin códigos de rayos', 'Favorites not on yet': 'Favoritos que aún no empiezan',
+  'set by staff': 'fijado por el personal', 'Set by staff': 'Fijado por el personal', 'GOES lightning mapper': 'Mapeador de rayos GOES', 'until': 'hasta las',
+  'Tornado': 'Tornado', 'Storms': 'Tormentas', 'Hail': 'Granizo', 'Strong wind': 'Viento fuerte', 'Flooding': 'Inundación', 'Heavy rain': 'Lluvia fuerte', 'Dangerous heat': 'Calor peligroso', 'Cold night': 'Noche fría',
+  'Right now': 'Ahora mismo', 'Festival staff': 'Personal del festival', 'No weather data': 'Sin datos del clima', 'Warning': 'Aviso', 'Advisory': 'Advertencia', 'Heads-up': 'Atención', 'Lightning': 'Rayos',
+  'What to do': 'Qué hacer', 'Solidify camp': 'Asegure el campamento', 'Shelter here': 'Refugio aquí', 'Warn people near you': 'Avise a la gente cerca de usted', 'Open the alert': 'Abrir la alerta', 'Got it': 'Entendido',
+  'Radar': 'Radar', 'Alerts': 'Alertas', 'Forecast': 'Pronóstico', 'Storm reports': 'Reportes de tormenta', 'Its area on the radar': 'Su área en el radar', 'The warning is drawn around the grounds, with the rain': 'El aviso está dibujado alrededor del recinto, con la lluvia',
+  'Ground now': 'Suelo ahora', 'Paths are soft and muddy': 'Los caminos están blandos y con lodo', 'Deep mud. Fields will not hold vehicles': 'Lodo profundo. Los campos no aguantan vehículos', 'Standing water on low ground': 'Agua estancada en el terreno bajo',
+};
+const T = s => (S.lang === 'es' && ES[s]) || s;
+
 const screens = {};
 
 // ---- the walkthrough: the intro scene as a cover, three pages that teach, a start page. Once; Settings replays it. ----
@@ -1828,7 +1925,7 @@ async function loadFeed(){
     if (b) { try{ const r = await getJSON(`${b}/alerts`); feed = { at: r.at || new Date().toISOString(), on: r.on, items: r.items || [], codes: r.codes || {} }; }catch(e){} }
     if (!feed) {
       const on = live().sort((a, b) => (S.here ? away(a) - away(b) : 0) || Date.parse(a.startDate) - Date.parse(b.startDate)).slice(0, 12);
-      const got = await Promise.allSettled(on.map(f => loadAlerts(f).then(alerts => ({ festival: f, alerts }))));
+      const got = await Promise.allSettled(on.map(f => loadAlerts(f, { quick: true }).then(alerts => ({ festival: f, alerts }))));
       if (on.length && got.every(r => r.status === 'rejected')) throw new Error('no signal');   // the last feed stays up, marked as old
       feed = { at: new Date().toISOString(), on: live().length, items: got.filter(r => r.status === 'fulfilled').map(r => r.value), partial: on.length < live().length };
     }
@@ -1866,7 +1963,7 @@ function feedCard(i, opts){
   // The code beside the name whenever there is one, green included: the card's own grade, else the feed's for that festival.
   const own = i.lightning && CODE[i.lightning.code] ? i.lightning : null;
   const l = lightningState(own || (fd && fd.codes && fd.codes[f.id]) || i.lightning || null, i.alerts), c = l && CODE[l.code];
-  const pill = c ? `<span class="pill ${esc(l.code)}">${esc(c.label)}</span>` : l && l.code === 'indoor' ? '<span class="pill">Indoors</span>' : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
+  const pill = c ? `<span class="pill ${esc(l.code)}">${esc(T(c.label))}</span>` : l && l.code === 'indoor' ? `<span class="pill">${esc(T('Indoors'))}</span>` : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
   // Lightning is one row, whatever says it: the live grade, the alert the backend stored, or both. The row carries the nearest
   // flash, the code, the protocol line and the end, and opens the standing alert when there is one, else the lightning screen.
   const bolts = i.alerts.filter(a => a.channel === 'lightning'), others = i.alerts.filter(a => a.channel !== 'lightning');
@@ -1899,7 +1996,7 @@ function codeFold(kind, items, card){
   const spec = FOLDS[kind], alerts = items.flatMap(i => i.alerts), warnings = alerts.filter(isWarning).length, advisories = alerts.length - warnings;
   const fav = items.some(i => isFav(i.festival.id)), count = (n, one, many) => n ? ` · ${n} ${n === 1 ? one : many}` : '';
   const sub = `${spec.why}${count(warnings, 'warning', 'warnings')}${count(advisories, 'advisory', 'advisories')}`;
-  return `<details class="codefold ${kind}"><summary class="glass">${warnings ? '<span class="bar warn"></span>' : ''}<div class="main"><div class="top">${fav ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="t">${items.length} festival${items.length === 1 ? '' : 's'}</div><span class="pill${spec.cls ? ` ${spec.cls}` : ''}">${esc(spec.pill)}</span>${I.chev}</div><div class="s">${esc(sub)}</div></div></summary><div class="inner">${items.map(card).join('')}</div></details>`;
+  return `<details class="codefold ${kind}"><summary class="glass">${warnings ? '<span class="bar warn"></span>' : ''}<div class="main"><div class="top">${fav ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="t">${items.length} festival${items.length === 1 ? '' : 's'}</div><span class="pill${spec.cls ? ` ${spec.cls}` : ''}">${esc(T(spec.pill))}</span>${I.chev}</div><div class="s">${esc(sub)}</div></div></summary><div class="inner">${items.map(card).join('')}</div></details>`;
 }
 /** The festivals list: every festival that is on, organized by lightning code, red at the top; within a code the worst alert, then the nearest. Code Green and Indoors are one bubble each (codeFold); the other codes stay open. A favorite not on yet comes last, with when it opens. */
 screens.feed = () => {
@@ -1916,7 +2013,7 @@ screens.feed = () => {
   const groups = [];
   for (const i of cards) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
   const card = i => feedCard(i, { fav: isFav(i.festival.id) });
-  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(CODE_GROUP[g.k] || 'No lightning data')}</p>` : ''}${g.items.map(card).join('')}`).join('');
+  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'No lightning data'))}</p>` : ''}${g.items.map(card).join('')}`).join('');
   return topbar(S.stack.length ? backBtn() : '', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
     <h1 class="title">Festivals</h1>
@@ -1978,8 +2075,8 @@ screens.home = () => {
   const strip = (d.hourly || []).slice(0, 6), over = lv === 'ok' ? endedRecently(f)[0] : null;   // a warning that ended in the last half hour: the all-clear is said, with what to do now
   const top = lv === 'warn' ? al.find(isWarning) : lv === 'watch' ? al[0] : null, hold = Boolean(top && top.channel === 'official');   // the safety team's own call wears its own color
   const stale = S.offline || Boolean(d.error && d.at && Date.now() - Date.parse(d.at) > 15 * 60000);
-  const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories`) : lv === 'ok' ? 'All clear' : lv === 'none' ? 'No weather data' : '';
-  const line = lv === 'warn' ? (act => act ? `${act[0]}. ${act[1]}` : 'Take shelter now. Stages and tents are not safe shelter.')(actionFor(al.find(isWarning)))
+  const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories`) : lv === 'ok' ? T('All clear') : lv === 'none' ? T('No weather data') : '';
+  const line = lv === 'warn' ? (act => act ? `${act[0]}. ${act[1]}` : T('Take shelter now. Stages and tents are not safe shelter.'))(actionFor(al.find(isWarning)))
              : lv === 'watch' ? (al[0].expiresAt ? `Until ${fmtWhen(al[0].expiresAt)}` : 'Tap for details')
              : over ? `${over.event} ended ${fmtTime(over.endedAt)}. ${afterLine(over)}`
              : lv === 'ok' ? outlook(f) || `No alerts for ${f.county || 'this spot'}`
@@ -1989,7 +2086,7 @@ screens.home = () => {
   const sky = lv === 'loading'
     ? `<div class="sky none" style="--c:var(--violet)" aria-busy="true"><i class="glow"></i><span class="glass"><div class="sk" style="width:38%;height:12px;margin:0 auto 12px"></div><div class="sk" style="width:72%;height:32px;margin:0 auto 10px"></div><div class="sk" style="width:60%;height:15px;margin:0 auto 18px"></div><div class="strip">${'<div class="sk" style="flex:1;height:66px"></div>'.repeat(6)}</div></span></div>`
     : `<button class="sky ${lv}${over ? ' ended' : ''}${stale ? ' stale' : ''}${hold ? ' hold' : ''}" style="--c:${glow}" onclick="later(function(){ ${target} })"><i class="glow"></i><span class="glass">
-        <span class="eyebrow">${hold ? 'Festival staff' : 'Right now'}</span>
+        <span class="eyebrow">${esc(T(hold ? 'Festival staff' : 'Right now'))}</span>
         <h2>${esc(head)}</h2><p>${esc(line)}</p>
         ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h, f)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
         <span class="foot">${esc(statusLine(f))}</span>
@@ -2004,9 +2101,9 @@ screens.home = () => {
     ${thunderRow()}
     ${headsUpCard(f)}
     <div class="orbrow">
-      ${orb('Radar', I.radar, 262, "go('radar')")}
-      ${orb('Alerts', I.bell, 345, "go('weather')", activeAlerts(f).length || '')}
-      ${orb('Forecast', I.chart, 190, "go('weather')")}
+      ${orb(T('Radar'), I.radar, 262, "go('radar')")}
+      ${orb(T('Alerts'), I.bell, 345, "go('weather')", activeAlerts(f).length || '')}
+      ${orb(T('Forecast'), I.chart, 190, "go('weather')")}
     </div>
     ${askPush(f)}
     <div class="group glass">
@@ -2015,6 +2112,7 @@ screens.home = () => {
       ${backend() ? `<button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">County dispatch and reports</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>` : ''}
       ${canStaff(f) && backend() ? `<button class="row" onclick="later(function(){ go('ground') })"><span class="lead">${I.ground}</span><div class="main"><div class="t">Ground and what is standing</div><div class="s">${esc(groundLine(d.ground) || 'What the rain and wind advice assumes')}</div></div>${I.chev}</button>` : ''}`}
+      ${groundNowRow(f)}
       ${pushRow()}
     </div>
     ${listingNote(f)}`;
@@ -2047,6 +2145,7 @@ screens.weather = () => {
     <h1 class="title">Weather</h1>
     <p class="sub">${esc(outlook(f) || statusLine(f))}</p>
     ${alerts}
+    ${stormReportsRows(f)}
     <p class="h">Forecast</p>
     ${chart}
     ${sunLine(f)}
@@ -2065,7 +2164,7 @@ screens.radar = () => {
     : `<div class="rmap" id="rmap"><div class="stage" id="stage">
         ${tiles(bbox).map(t => `<img class="tile" alt="" src="${t.url}" style="left:${t.left}px;top:${t.top}px;width:${t.size}px;height:${t.size}px" onerror="this.remove()">`).join('')}
         ${loop.frames.map((fr, i) => `<img class="frame" id="fr${i}" alt="">`).join('')}
-        ${rings(f)}<div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}${flashDots(f, bbox)}
+        ${polygons(f, bbox)}${rings(f)}<div class="pin"></div><div class="pinlabel">${esc(f.name)}</div>${meDot(bbox)}${flashDots(f, bbox)}${reportDots(f, bbox)}
       </div>
       <div class="stamp"><span id="radar-now" class="nowtag">Now</span><b id="radar-time" class="num">Loading</b><span id="radar-ago">&nbsp;</span></div>
       ${arrivalBadge(f)}
@@ -2078,6 +2177,7 @@ screens.radar = () => {
     </div>
     <div class="ticks" aria-hidden="true"><span>${tickAt(0)}</span><span>${tickAt(.25)}</span><span>${tickAt(.5)}</span><span>${tickAt(.75)}</span><span class="now">Now</span></div>
     <p class="note" id="radar-loaded"></p>
+    ${radarKey(f)}
     <p class="note">${esc(loop.attribution)} · Map © OpenStreetMap contributors</p>`;
   return topbar(backBtn(), '', '') + `<span class="eyebrow">${esc(f.county)}</span><h1 class="title">Radar</h1><p class="sub">Last ${HOURS} hours, 160 km around ${esc(f.name)}</p>${body}`;
 };
@@ -2103,17 +2203,18 @@ screens.alert = id => {
   const when = hu && a.onset ? `Expected ${fmtTime(a.onset)} · <span data-countdown="${esc(a.onset)}">${esc(countdownText(a.onset))}</span>`
     : endedAt ? `Ended ${esc(fmtTime(endedAt))}`
     : a.expiresAt ? `Until ${esc(fmtTime(a.expiresAt))} · <span data-countdown="${esc(a.expiresAt)}" data-left="1">${esc(leftText(a.expiresAt))}</span>` : esc(a.area);
-  const todo = instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${hu ? 'Solidify camp' : 'What to do'}</div><p>${esc(instruction)}</p></div></div>` : '';
+  const todo = instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${esc(T(hu ? 'Solidify camp' : 'What to do'))}</div><p>${esc(instruction)}</p></div></div>` : '';
   return topbar(backBtn(), '', `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>`) + `
-    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : a.channel === 'official' ? 'Festival staff' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p class="num">${when}</p></div>
+    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${esc(T(hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : a.channel === 'official' ? 'Festival staff' : warn ? 'Warning' : 'Advisory'))}</span><h2>${esc(a.event)}</h2><p class="num">${when}</p></div>
     ${!listed ? `<p class="note">From the notification. The festival's own list has not loaded${endedAt ? ', and this one has ended' : ''}.</p>` : ''}
     ${act ? `<div class="donow ${warn ? 'warn' : ''}"><div class="t">${esc(act[0])}</div><div class="s">${esc(act[1])}</div></div>` : ''}
-    ${f && f.shelter && (warn || a.channel === 'official') ? `<div class="todo glass shelter"><span class="ic">${I.shield}</span><div><div class="t">Shelter here</div><p>${esc(f.shelter)}</p></div></div>` : ''}
+    ${f && f.shelter && (warn || a.channel === 'official') ? `<div class="todo glass shelter"><span class="ic">${I.shield}</span><div><div class="t">${esc(T('Shelter here'))}</div><p>${esc(f.shelter)}</p></div></div>` : ''}
     ${ours ? todo : ''}
     ${!hu && alertHazard(a.event) === 'storms' && f && !insideOf(f) ? thunderButton() + thunderRow() : ''}
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
     ${a.channel === 'lightning' ? `<div class="group glass"><button class="row" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Lightning right now</div><div class="s">The code, the nearest flash, the all-clear</div></div>${I.chev}</button></div>` : ''}
-    ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'Works with no signal. They need AirDrop set to Everyone.' : 'Works with no signal. Or text it.'}</p>` : ''}
+    ${a.geometry && f ? `<div class="group glass"><button class="row" onclick="later(function(){ go('radar') })"><span class="lead">${I.radar}</span><div class="main"><div class="t">${esc(T('Its area on the radar'))}</div><div class="s">${esc(T('The warning is drawn around the grounds, with the rain'))}</div></div>${I.chev}</button></div>` : ''}
+    ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>${esc(T('Warn people near you'))}</span></button><p class="note">${IOS ? 'Works with no signal. They need AirDrop set to Everyone.' : 'Works with no signal. Or text it.'}</p>` : ''}
     ${sections.length ? `<div class="group glass secs">${sections.map(s => section(s.label, bullets(s.text))).join('')}</div>` : ''}
     ${!ours && (instruction || paragraphs.length) ? `<details class="more glass"><summary>Full alert${I.chev}</summary><div class="inner secs">${instruction ? section('What to do', bullets(instruction)) : ''}${paragraphs.length ? section('From the weather service', paragraphs) : ''}</div></details>` : ours ? paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('') : ''}
     <div class="group glass">
@@ -2123,7 +2224,7 @@ screens.alert = id => {
 };
 
 // ---- the one line to act on (ACTION, actionLines in the shared block): the lines for this festival's own setup, camping, day lot or crew, inside or out ----
-function actionFor(a){ const f = fest(); return actionLines(a, { setup: f ? setupFor(f) : 'day', indoor: f ? insideOf(f) : false, hour: a.onset ? new Date(a.onset).getHours() : null }); }
+function actionFor(a){ const f = fest(), act = actionLines(a, { setup: f ? setupFor(f) : 'day', indoor: f ? insideOf(f) : false, hour: a.onset ? new Date(a.onset).getHours() : null }); return act ? act.map(T) : act; }
 /** How long an alert has left, for the head: "42 min left", or nothing once it is ending. */
 const leftText = t => { const c = fmtCountdown(Date.parse(t) - Date.now()); return c === 'now' ? 'ending' : `${c} left`; };
 /** Shelter, camp, a timeline you are somewhere on, and what to pack, for whatever is on the way. */
@@ -2160,24 +2261,25 @@ screens.prep = () => {
 };
 screens.lightning = () => {
   const f = fest(); if (!f) return screens.picker();
-  const l = liveLightning(f), c = l && CODE[l.code], live = Boolean(c), indoor = (l && l.code === 'indoor') || Boolean(data(f).ground && data(f).ground.indoor === true);
+  const l = liveLightning(f), c = l && CODE[l.code], live = Boolean(c), indoor = (l && l.code === 'indoor') || Boolean(data(f).ground && data(f).ground.indoor === true), st = l && l.staff && Date.parse(l.staff.until) > Date.now() ? l.staff : null;
   const head = indoor ? 'Indoors' : live ? c.label : backend() ? (l && l.warming ? 'Watching this spot' : 'No lightning data') : 'Needs the Fieldwatch backend';
   const mo = live && l.motion ? (l.motion.closing ? `Flashes moving ${l.motion.heading || 'this way'} at ${l.motion.speedMph} mph, closing${l.motion.arrivalMinutes != null ? `: here in about ${l.motion.arrivalMinutes} minutes at this rate` : ''}.` : `Flashes moving ${l.motion.heading || 'off'} at ${l.motion.speedMph} mph, away from here.`) : '';
   const line = indoor ? 'The lightning protocol is for outdoor grounds. Inside a building with wiring and plumbing you are in shelter. The line and the lot outside are not.'
     : live ? (l.nearestMi != null ? `Nearest flash ${l.nearestMi} mi at ${fmtTime(l.nearestAt)}` : l.code === 'red' ? `Last flash within 8 mi at ${fmtTime(l.lastNearAt)}` : 'No flash within 20 miles in the last 15 minutes')
     : backend() ? (l && l.warming ? 'The mapper\'s last fifteen minutes are being read for this spot. A code comes in a few minutes.' : l && l.on === false ? 'Lightning is switched off on this backend' : 'Nothing read from the mapper yet') : 'Lightning codes come from the backend';
   const kv = (k, v) => `<div class="kv"><span class="k">${k}</span><span class="v num">${v}</span></div>`;
-  const codeRow = k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(CODE[k].label)} · ${esc(CODE[k].ring)}</div><div class="s">${esc(CODE[k].protocol)}</div><div class="s you">${esc(CODE[k].you)}</div></div></div>`;
+  const codeRow = k => `<div class="code ${k} ${live && l.code === k ? 'now' : ''}"><span class="dot"></span><div class="main"><div class="t">${esc(T(CODE[k].label))} · ${esc(T(CODE[k].ring))}</div><div class="s">${esc(T(CODE[k].protocol))}</div><div class="s you">${esc(T(CODE[k].you))}</div></div></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Lightning</h1>
-    <p class="sub">${indoor ? 'No codes for this event' : live ? esc(c.text) : esc(statusLine(f))}</p>
-    <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>${mo ? `<p class="motion">${esc(mo)}</p>` : ''}
+    <p class="sub">${indoor ? 'No codes for this event' : live ? esc(T(c.text)) : esc(statusLine(f))}</p>
+    <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">${esc(T(st ? 'Set by staff' : 'GOES lightning mapper'))}</span><h2>${esc(T(head))}</h2><p>${esc(line)}</p>${st ? `<p class="motion staffed">${esc(staffLine(st))}</p>` : ''}${mo ? `<p class="motion">${esc(mo)}</p>` : ''}
       ${live && l.code === 'red' && l.allClearAt ? (l.allClearHeld ? `<b class="num">Waiting for data</b><span class="s">thirty minutes have passed since the last close flash, but the mapper has not reported for ${esc(l.dataAt ? dataAge(l) : '?')} min, so nobody can call it clear</span>` : `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">to the all-clear unless it strikes again</span>`) : ''}</div>
     ${indoor ? '' : thunderButton() + thunderRow()}
-    ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}</div>` : ''}
+    ${live && l.within ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}</div>` : ''}   <!-- a code staff set over no data has no counts -->
     ${live ? `<p class="h">This code</p><div class="group glass">${codeRow(l.code)}</div><details class="correct"><summary>The other codes${I.chev}</summary><div class="inner"><div class="group glass">${Object.keys(CODE).filter(k => k !== l.code).map(codeRow).join('')}</div></div></details>`
       : `<p class="h">The codes</p><div class="group glass">${Object.keys(CODE).map(codeRow).join('')}</div>`}
+    ${canStaff(f) && backend() && !indoor ? staffCodeBox(f, l) : ''}
     <p class="note">GOES lightning mapper, read every 20 seconds. It can miss flashes under a thick anvil. The festival's own detection and safety staff are the authority.</p>`;
 };
 screens.ground = () => {
@@ -2568,8 +2670,11 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <div class="group glass"><button class="row" onclick="toggleSun()"><span class="lead">${I.sun}</span><div class="main"><div class="t">Sun mode</div><div class="s">Black on white, no glass, for a screen in full sun</div></div><span class="pill ${S.theme === 'sun' ? 'on' : ''}">${S.theme === 'sun' ? 'On' : 'Off'}</span></button><button class="row" onclick="toggleSaver()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Battery saver</div><div class="s">${S.battery ? `${Math.round(S.battery.level * 100)}%${S.battery.charging ? ', charging' : ''} · ` : ''}Fewer checks, the radar paused. On by itself under 20%</div></div><span class="pill ${saving() ? 'on' : ''}">${saving() ? 'On' : 'Off'}</span></button></div>
   <p class="h">Text size</p>
   <div class="chips">${[['normal', 'Normal'], ['large', 'Large'], ['larger', 'Larger']].map(([v, l]) => `<button class="chip ${(S.text || 'normal') === v ? 'on' : ''}" onclick="setText('${v}')">${l}</button>`).join('')}</div>
+  <p class="h">Language · Idioma</p>
+  <div class="chips">${[['en', 'English'], ['es', 'Español']].map(([v, l]) => `<button class="chip ${(S.lang || 'en') === v ? 'on' : ''}" onclick="setLang('${v}')">${l}</button>`).join('')}</div>
+  <p class="note">${S.lang === 'es' ? 'Las líneas para actuar, los códigos de rayos y las palabras de cada alerta, en español. Lo demás sigue en inglés por ahora.' : 'The lines to act on, the lightning codes and the words on every alert, in Spanish. The rest stays in English for now.'}</p>
   ${staffMode() ? `<p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">${S.queue && S.queue.length ? `${S.queue.length} waiting` : 'Before they go out'}</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('record') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Shelter and medical</div><div class="s">${fest().shelter || fest().medical ? 'On the record' : 'Where to go, in your words'}</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">${S.queue && S.queue.length ? `${S.queue.length} waiting` : 'Before they go out'}</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('record') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Shelter and medical</div><div class="s">${fest().shelter || fest().medical ? 'On the record' : 'Where to go, in your words'}</div></div>${I.chev}</button><button class="row" onclick="downloadRecord()" ${S.recordDl ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Download the record</div><div class="s">${S.recordDl ? 'Fetching' : 'Every alert, hold, post and code of the last 30 days, as a sheet'}</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
   ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
   ${S.issued ? `<div class="card glass"><h3>Staff key for ${esc(S.issued.name)}</h3><p>Shown once. Send it and the link to the safety team; they put the key in Settings here.</p><p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.key)}</p>${S.issued.qr ? `<div class="qr glass handoff">${S.issued.qr}</div><p>Or have each staff phone scan this once: it opens the app on the festival with the key in place.</p>` : ''}<p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.link)}</p><div class="acts"><button class="btn small" onclick="copyText('${esc(S.issued.key)}\\n${esc(S.issued.link)}')">Copy</button><button class="btn small quiet" onclick="S.issued = null; render()">Done</button></div></div>` : ''}` : ''}
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen with an icon. Works with no signal.</p></div>` : ''}
@@ -2722,6 +2827,103 @@ function meDot(bbox){
   return `<div class="me" title="You" style="left:${((c.x - x0) / (x1 - x0) * SIZE).toFixed(1)}px;top:${((y1 - c.y) / (y1 - y0) * SIZE).toFixed(1)}px"></div>`;
 }
 
+/** The warning's own area, drawn on the square: only a storm-based warning carries one; a zone-wide alert draws nothing, and nothing is said. */
+function polygons(f, bbox){
+  const al = activeAlerts(f).filter(a => a.geometry && a.channel === 'weather'); if (!al.length) return '';
+  const [x0, y0, x1, y1] = bbox, px = ([lon, lat]) => { const c = mercator(lat, lon); return `${((c.x - x0) / (x1 - x0) * SIZE).toFixed(1)},${((y1 - c.y) / (y1 - y0) * SIZE).toFixed(1)}`; };
+  const outer = g => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates || []).map(poly => (poly && poly[0]) || []).filter(r => r.length > 2);
+  const paths = al.flatMap(a => outer(a.geometry).map(r => `<path class="${isWarning(a) ? 'warn' : 'watch'}" d="M${r.map(px).join('L')}Z"><title>${esc(a.event)}</title></path>`));
+  return paths.length ? `<svg class="poly" viewBox="0 0 ${SIZE} ${SIZE}" aria-hidden="true">${paths.join('')}</svg>` : '';
+}
+// Local Storm Reports: what the weather service's offices placed near the grounds in the last three hours (the backend reads them from the Iowa Mesonet).
+const LSR_WORDS = { HAIL: 'Hail', 'TSTM WND DMG': 'Wind damage', 'TSTM WND GST': 'Wind gust', 'NON-TSTM WND DMG': 'Wind damage', 'NON-TSTM WND GST': 'Wind gust', 'MARINE TSTM WIND': 'Wind gust', 'FLASH FLOOD': 'Flash flooding', FLOOD: 'Flooding', 'HEAVY RAIN': 'Heavy rain', TORNADO: 'Tornado', 'FUNNEL CLOUD': 'Funnel cloud', 'WALL CLOUD': 'Wall cloud', LIGHTNING: 'Lightning', DOWNBURST: 'Downburst', 'DEBRIS FLOW': 'Debris flow', 'EXTREME HEAT': 'Extreme heat', 'DUST STORM': 'Dust storm', WILDFIRE: 'Wildfire', SNOW: 'Snow', SLEET: 'Sleet', 'FREEZING RAIN': 'Freezing rain', 'DENSE FOG': 'Dense fog', 'COASTAL FLOOD': 'Coastal flooding', 'STORM SURGE': 'Storm surge' };
+const lsrWords = k => LSR_WORDS[String(k || '').toUpperCase()] || String(k || 'Report').toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+const lsrUnit = u => { const x = String(u || '').toLowerCase(); return x === 'in' ? ' in' : x === 'mph' ? ' mph' : x === 'kts' ? ' kt' : x === 'f' ? '°' : x ? ` ${x}` : ''; };
+const lsrLine = r => [r.magnitude != null ? `${r.magnitude}${lsrUnit(r.unit)}` : '', r.place, `${r.mi} mi ${r.heading}`, r.at ? ago(r.at) : ''].filter(Boolean).join(' · ');
+const stormReports = f => ((data(f).stormReports && data(f).stormReports.reports) || []);
+function stormReportsRows(f){
+  const list = stormReports(f); if (!list.length) return '';
+  return `<p class="h">${esc(T('Storm reports'))}, last three hours</p><div class="group glass">${list.slice(0, 6).map(r => `<div class="row lsr-row"><span class="lead">${I.flag}</span><div class="main"><div class="t">${esc(lsrWords(r.kind))}</div><div class="s">${esc(lsrLine(r))}${r.remark ? `<br>${esc(r.remark)}` : ''}</div></div></div>`).join('')}</div>
+    <p class="note">What people saw and measured, placed by the weather service's offices within 40 miles. Not a forecast.</p>`;
+}
+/** A diamond per storm report on the radar square, where it was seen. */
+function reportDots(f, bbox){
+  const list = stormReports(f); if (!list.length) return '';
+  const [x0, y0, x1, y1] = bbox;
+  return list.map(r => { const c = mercator(r.latitude, r.longitude); if (!Number.isFinite(c.x) || c.x < x0 || c.x > x1 || c.y < y0 || c.y > y1) return '';
+    return `<div class="lsr" style="left:${((c.x - x0) / (x1 - x0) * SIZE).toFixed(1)}px;top:${((y1 - c.y) / (y1 - y0) * SIZE).toFixed(1)}px" title="${esc(lsrWords(r.kind))} · ${esc(r.mi)} mi"></div>`; }).join('');
+}
+/** What the marks on the square mean, only the ones on it. */
+function radarKey(f){
+  const parts = [];
+  if (activeAlerts(f).some(a => a.geometry && a.channel === 'weather')) parts.push('Outline: the warning\'s own area');
+  if (backend() && !insideOf(f)) parts.push('Yellow dots: flashes of the last half hour');
+  if (stormReports(f).length) parts.push('Diamonds: storm reports of the last three hours');
+  if (S.here) parts.push('Blue dot: you');
+  return parts.length ? `<p class="note">${esc(parts.join(' · '))}.</p>` : '';
+}
+/** The code the safety team set, in a line for the head of the lightning screen. */
+const staffLine = st => `${T(CODE[st.code] ? CODE[st.code].label : st.code)} ${T('set by staff')} ${T('until')} ${fmtTime(st.until)}${st.note ? `: ${st.note}` : ''}`;
+/** Staff confirm or raise the code with the festival's key: the mapper's grade never goes down, and the code lifts on its own at the end. */
+function staffCodeBox(f, l){
+  const st = l && l.staff && Date.parse(l.staff.until) > Date.now() ? l.staff : null;
+  const e = S.staffCode || (S.staffCode = { code: (st && st.code) || 'orange', minutes: 60, note: (st && st.note) || '' });
+  return `<details class="correct"${st ? ' open' : ''}><summary>Set the code as staff${I.chev}</summary><div class="inner">
+    <p class="h">Code</p><div class="chips">${['green', 'yellow', 'orange', 'red'].map(k => `<button class="chip ${e.code === k ? 'on' : ''}" onclick="setStaffCodeField('code', '${k}')">${esc(CODE[k].label.replace('Code ', ''))}</button>`).join('')}</div>
+    <p class="h">For</p><div class="chips">${[[30, '30 min'], [60, '1 hour'], [120, '2 hours'], [180, '3 hours']].map(([m, w]) => `<button class="chip ${e.minutes === m ? 'on' : ''}" onclick="setStaffCodeField('minutes', ${m})">${w}</button>`).join('')}</div>
+    <div class="group glass"><label class="field"><span class="k">Why</span><input id="staff-note" value="${esc(e.note)}" placeholder="Vendor detection shows a cell building to the west" maxlength="200" oninput="S.staffCode.note = this.value"></label></div>
+    <button class="btn" id="staff-set" onclick="setStaffCode()" ${S.staffCodeBusy ? 'disabled' : ''}>${S.staffCodeBusy ? 'Setting' : st ? 'Change it' : 'Set it'}</button>
+    ${st ? `<div class="acts"><button class="btn quiet small" id="staff-release" onclick="releaseStaffCode()" ${S.staffCodeBusy ? 'disabled' : ''}>Release it</button></div>` : ''}
+    <p class="note">For everyone looking at ${esc(f.name)}, for up to three hours, on the record. It confirms or raises the mapper's grade and never lowers it: the mapper's own code wins when it is higher.</p>
+  </div></details>`;
+}
+function setStaffCodeField(k, v){ const e = S.staffCode; if (!e) return; e[k] = v; render(); }
+async function setStaffCode(){
+  const f = fest(), b = backend(), e = S.staffCode; if (!f || !b || !e || S.staffCodeBusy || !canStaff(f)) return;
+  S.staffCodeBusy = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}/lightning`, { method: 'PUT', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ code: e.code, minutes: e.minutes, note: e.note.trim() }) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const l = await r.json(), was = data(f).lightning; S.cache[f.id] = { ...data(f), lightning: l }; save(); codeMoved(was, l);
+    toast(`${CODE[l.code] ? CODE[l.code].label : 'The code'} stands until ${fmtTime(l.staff.until)}`);
+  }catch(err){ toast(staffFail(err)); }
+  S.staffCodeBusy = false; render();
+}
+async function releaseStaffCode(){
+  const f = fest(), b = backend(); if (!f || !b || S.staffCodeBusy || !canStaff(f)) return;
+  S.staffCodeBusy = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}/lightning`, { method: 'DELETE', headers: adminHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const { ok, released, ...l } = await r.json(); S.cache[f.id] = { ...data(f), lightning: l.code ? l : null }; S.staffCode = null; save();
+    toast('Released. The mapper\'s grade stands.');
+  }catch(err){ toast(staffFail(err)); }
+  S.staffCodeBusy = false; render();
+}
+/** The record, as a sheet: fetched with the key (a plain link could not carry it) and handed to the phone as a file. */
+async function downloadRecord(){
+  const f = fest(), b = backend(); if (!f || !b || !canStaff(f) || S.recordDl) return;
+  S.recordDl = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}/log?format=csv&days=30`, { headers: adminHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+    a.href = url; a.download = `${f.id}-record.csv`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('The record is on its way to your files');
+  }catch(e){ toast(staffFail(e)); }
+  S.recordDl = false; render();
+}
+/** The ground right now, from the rain already down (the same tiers the heads-up uses, with nothing ahead): a day visitor deciding on boots, a driver deciding on the field. Said only when it is not fine. */
+const NOW_WORDS = { soft: 'Paths are soft and muddy', deep: 'Deep mud. Fields will not hold vehicles', water: 'Standing water on low ground' };
+function groundNowRow(f){
+  const g = data(f).ground; if (!g || g.indoor === true || !g.past || g.past.in48 == null) return '';
+  const m = mudTier(g, 0, 0); if (!m || !NOW_WORDS[m.tier]) return '';
+  const rep = g.reports && g.reports.last, said = rep && Date.now() - Date.parse(rep.at) < 6 * 3600000 ? ` · reported ${(GROUND_STATE_LABEL[rep.state] || rep.state).toLowerCase()} ${ago(rep.at)}` : '';
+  const inner = `<span class="lead">${I.ground}</span><div class="main"><div class="t">${esc(T('Ground now'))}: ${esc(T(NOW_WORDS[m.tier]))}</div><div class="s">${esc(`${g.past.in48.toFixed(1)} in of rain in the last two days${said}`)}</div></div>`;
+  return f.id === 'here' ? `<div class="row">${inner}</div>` : `<button class="row" onclick="later(function(){ go('ground') })">${inner}${I.chev}</button>`;
+}
+
 // ---- warnings on this phone: Web Push through the service worker -----------------------------------------
 const PUSH_OK = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window && !IN_PREVIEW;
 const isFav = id => Boolean(id && (S.favorites || {})[id]);
@@ -2828,18 +3030,18 @@ function applyLink(){
 let toastTimer;
 function toast(msg, ms, onTap){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); t.classList.toggle('tap', Boolean(onTap)); t.onclick = onTap ? () => { t.classList.remove('show'); onTap(); } : null; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2200); }
 // ---- a warning that lands while the page is open takes the screen: the line to act on, a buzz, a tone, and the screen stays lit ----
-function alarm(a){ buzz([300, 100, 300, 100, 600]); chime('warn'); S.takeover = { id: a.id, alert: a, at: Date.now() }; const act = actionFor(a); announce(`Warning: ${a.event}. ${act ? act[0] : 'Take shelter now'}.`); render(); }
+function alarm(a){ buzz([300, 100, 300, 100, 600]); chime('warn'); S.takeover = { id: a.id, alert: a, at: Date.now() }; const act = actionFor(a); announce(`${T('Warning')}: ${a.event}. ${act ? act[0] : T('Take shelter now')}.`); render(); }
 function takeover(){
   const t = S.takeover, f = fest(); if (!t || !f) return '';
   const listed = (data(f).alerts || []).find(x => x.id === t.id);   // the alert itself rides along: it lands in the cache a moment after the alarm
   if (listed) t.seen = true; else if (t.seen) { S.takeover = null; return ''; }   // and once it has left the list, so does the screen
   const a = listed || t.alert;
   if (!a || !isActive(a)) { S.takeover = null; return ''; }
-  const act = actionFor(a) || ['Take shelter now', 'Stages and tents are not safe shelter.'];
+  const act = actionFor(a) || [T('Take shelter now'), T('Stages and tents are not safe shelter.')];
   return `<div class="takeover" role="alertdialog" aria-modal="true" aria-label="${esc(a.event)}"><div class="box">
-    <span class="eyebrow">${a.channel === 'lightning' ? 'Lightning' : 'Warning'} · ${esc(f.name)}</span><h2>${esc(a.event)}</h2>
+    <span class="eyebrow">${esc(T(a.channel === 'lightning' ? 'Lightning' : 'Warning'))} · ${esc(f.name)}</span><h2>${esc(a.event)}</h2>
     <div class="do">${esc(act[0])}</div><p>${esc(act[1])}</p>${a.expiresAt ? `<p class="num until">Until ${esc(fmtTime(a.expiresAt))}</p>` : ''}
-    <div class="acts"><button class="btn" onclick="openTakeover()">Open the alert</button><button class="btn quiet" onclick="dismissTakeover()">Got it</button></div></div></div>`;
+    <div class="acts"><button class="btn" onclick="openTakeover()">${esc(T('Open the alert'))}</button><button class="btn quiet" onclick="dismissTakeover()">${esc(T('Got it'))}</button></div></div></div>`;
 }
 function openTakeover(){ const t = S.takeover; S.takeover = null; if (t) go('alert', t.id); else render(); }
 function dismissTakeover(){ S.takeover = null; render(); }
@@ -2867,7 +3069,9 @@ function applyPrefs(){
   if (S.theme === 'sun') r.dataset.theme = 'sun'; else if (r.dataset.theme === 'sun') delete r.dataset.theme;
   if (S.text === 'large' || S.text === 'larger') r.dataset.text = S.text; else delete r.dataset.text;
   if (saving()) r.dataset.saver = '1'; else delete r.dataset.saver;
+  r.lang = S.lang === 'es' ? 'es' : 'en';
 }
+function setLang(v){ S.lang = v === 'es' ? 'es' : 'en'; save(); applyPrefs(); render(); }
 function toggleSun(){ S.theme = S.theme === 'sun' ? 'auto' : 'sun'; save(); applyPrefs(); render(); }
 function setText(v){ S.text = v; save(); applyPrefs(); render(); }
 function toggleSaver(){ S.saver = S.saver !== true; save(); applyPrefs(); render(); }

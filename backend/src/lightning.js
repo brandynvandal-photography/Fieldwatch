@@ -149,7 +149,21 @@ function carried(f, now) {
   if (!al || (al.code !== 'red' && al.code !== 'orange') || !al.expiresAt || Date.parse(al.expiresAt) <= now || !Number.isFinite(Number(al.nearestMi))) return null;
   return { code: al.code, t: Date.parse(al.expiresAt) - (al.code === 'red' ? ALL_CLEAR_MS : RECENT_MS), mi: Number(al.nearestMi) };
 }
-export const lightningFor = id => state.per.get(id) || null;
+// Staff confirm or raise a code with the festival's key: it stands over the live grade until its end, never under it (the
+// mapper's red is not theirs to lower), and the phones hear the change on the stream.
+const RANK = { red: 4, orange: 3, yellow: 2, green: 1, none: 0, indoor: 0 };
+export function staffCode(id, now = Date.now()) { const s = JSON.parse(q.setting(`lightning-staff:${id}`) || 'null'); return s && Date.parse(s.until) > now ? s : null; }
+export function setStaffCode(id, { code, minutes = 60, note = '' }, now = Date.now()) {
+  const s = { code, until: iso(now + Math.min(180, Math.max(5, Number(minutes) || 60)) * MIN), note: String(note || '').slice(0, 200), at: iso(now) };
+  q.setSetting(`lightning-staff:${id}`, JSON.stringify(s)); changed(id, 'lightning'); return s;
+}
+export function clearStaffCode(id) { const had = Boolean(q.setting(`lightning-staff:${id}`)); q.deleteSetting(`lightning-staff:${id}`); if (had) changed(id, 'lightning'); return had; }
+export function lightningFor(id, now = Date.now()) {
+  const live = state.per.get(id) || null, s = staffCode(id, now);
+  if (!s) return live;
+  const base = live || { code: 'none', at: iso(now), source: 'GOES GLM' };
+  return { ...base, code: (RANK[s.code] || 0) > (RANK[base.code] || 0) ? s.code : base.code, staff: s };
+}
 /** The flashes of the last half hour within twenty miles of a festival, newest first, for a map: where, how far, how old. */
 export const flashesFor = (f, now = Date.now(), limit = 300) => state.flashes
   .map(x => ({ latitude: x.lat, longitude: x.lon, at: iso(x.t), ageSeconds: Math.max(0, Math.round((now - x.t) / 1000)), mi: Math.round(milesBetween(f.latitude, f.longitude, x.lat, x.lon) * 10) / 10, sat: x.sat || null }))
@@ -260,7 +274,7 @@ async function announce(f, prev, a, now) {
     // The code came down past orange: the alert that stood is lifted, and the phones that heard it hear that too, quietly.
     if (prev && (prev.code === 'red' || prev.code === 'orange')) {
       console.log(`[${f.id}] lightning: ${a.code}`);
-      if (was) { const lift = liftWords(prev.code, a); const r = await pushEnded(q.tokensFor(f.id), f, was, lift), w = await pushEndedWeb(f, was, lift); console.log(`[${f.id}] lightning lifted: ${lift.title} push=${JSON.stringify(r)} web=${JSON.stringify(w)}`); }
+      if (was) { const lift = liftWords(prev.code, a); q.log(f.id, 'lightning-lift', { from: prev.code, to: a.code, event: lift.title }); const r = await pushEnded(q.tokensFor(f.id), f, was, lift), w = await pushEndedWeb(f, was, lift); console.log(`[${f.id}] lightning lifted: ${lift.title} push=${JSON.stringify(r)} web=${JSON.stringify(w)}`); }
     }
     return;
   }
@@ -271,6 +285,7 @@ async function announce(f, prev, a, now) {
   const alert = codeAlert(f, a, tz, now);
   if (q.alert(f.id, alert.id)) q.updateAlert(f.id, alert); else q.insertAlert(f.id, alert);
   q.count(f.id, 'lightning.alert');
+  q.log(f.id, 'lightning', { code: a.code, event: alert.event, nearestMi: alert.nearestMi, expiresAt: alert.expiresAt });
   state.episodes.set(f.id, { code: a.code, id: alert.id });
   const r = await pushAlert(q.tokensFor(f.id), f, alert), w = await pushWeb(f, alert);
   console.log(`[${f.id}] lightning: ${a.code}, ${alert.nearestMi} mi push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);

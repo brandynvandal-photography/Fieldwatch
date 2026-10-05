@@ -36,6 +36,9 @@ sets, watches and tries, in order. `node backend/scripts/shakedown.mjs https://y
    was pushed while the phone was out opens from the notification even before the list loads. Back online, the page catches
    up within a minute without a reload.
 10. **Battery.** Note the percentage at the start and after four hours with the app open, and after four with it closed.
+8c. **Storm reports and the warning's area.** During a storm day, open the weather screen: Storm reports lists what the offices placed within forty miles, with the distance and the side; the radar square shows them as diamonds and a storm-based warning as an outline around the grounds, with the key under the square naming only what is drawn. Compare the outline with the warning's own map on weather.gov.
+8d. **The staff code.** With the staff key, on the lightning screen, Set the code as staff to Orange for 30 minutes with a reason: every phone on the festival shows Code Orange with set by staff within seconds; Release it hands the grade back. Then Settings, Download the record: the sheet has the set and the release as `lightning-staff` rows.
+8e. **Spanish.** Settings, Idioma, Español: the sky card's two lines, the orbs and the alert's words switch; the weather service's text stays in English; English again on the way back.
 11. **Ground.** After rain, tap How is the ground. Staff: Correct it on the Ground screen if the lookup read the surface wrong, and
     Pin it here if the pin is not on the grounds.
 12. **Relay** (iOS, later): airplane mode on one phone, Bluetooth on, a warning on the other.

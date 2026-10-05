@@ -242,4 +242,12 @@ export async function groundFor(f, { now = Date.now(), fetchImpl = globalThis.fe
   }
   return { ...effectiveGround(f), past, ...(pastError && !past ? { pastError } : {}), at: iso(now) };
 }
+// The ground under a spot, festival or not: the lookups once a day per cell of about a kilometer, the rain every three hours through groundFor.
+const pointGrounds = new Map();
+export async function pointGround(p, { now = Date.now(), fetchImpl = globalThis.fetch } = {}) {
+  const id = `pt:${Number(p.latitude).toFixed(2)},${Number(p.longitude).toFixed(2)}`, f = { id, name: 'Where you are', latitude: Number(p.latitude), longitude: Number(p.longitude) };
+  let c = pointGrounds.get(id);
+  if (!c || now - c.at > DAY) { c = { at: now, ground: await lookupGround(f, { now, fetchImpl }) }; pointGrounds.set(id, c); for (const [k, v] of pointGrounds) if (now - v.at > 2 * DAY) pointGrounds.delete(k); }
+  return groundFor({ ...f, ground: c.ground }, { now, fetchImpl });
+}
 export const groundStatus = () => ({ cached: cache.size, errors: [...cache.values()].filter(c => c.pastError).length, lookups: { ...lookups } });

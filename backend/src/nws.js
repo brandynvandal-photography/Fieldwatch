@@ -5,6 +5,7 @@ import { USER_AGENT as UA } from './site.js';
 // or a 5xx, so a hiccup never stalls the poll loop or reads as a change in the weather.
 const TIMEOUT_MS = Number(process.env.NWS_TIMEOUT_MS || 10_000), RETRY_MS = Number(process.env.NWS_RETRY_MS ?? 1000);
 export const nwsStats = { calls: 0, retries: 0 };
+import { condense, reaches, zonesOf, keepGeometry } from './incoming.js';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function nws(url, attempt = 0) {
   nwsStats.calls++;
@@ -38,6 +39,7 @@ export function normalizeAlert(feature) {
     channel: 'weather',
     relayCount: 0,
     replaces: (p.references || []).map(r => r.identifier || '').filter(Boolean),   // the messages this one updates: the same warning, worded again
+    geometry: keepGeometry(feature.geometry),   // the polygon, when there is one small enough, for the radar square
   };
 }
 
@@ -46,43 +48,8 @@ export async function activeAlerts(lat, lon) {
   return condense(fc.features || []).map(normalizeAlert);
 }
 
-/**
- * One message per warning. The weather service lists a warning once per update it has sent and once per zone segment it
- * covers, and a county query brings in every segment in the county. An update replaces what it references; a zone-wide
- * segment counts only where it names the grounds' own zone or county; and what still says the same thing twice (one event,
- * one end) is one message, the newest. A phone reading three Extreme Heat Warnings learns nothing from the second.
- */
-export function condense(features, zones = []) {
-  const ids = new Set(features.map(ft => ft.properties.id));
-  const superseded = new Set(features.flatMap(ft => (ft.properties.references || []).map(r => r.identifier)).filter(id => ids.has(id)));
-  const sentAt = ft => Date.parse(ft.properties.sent || ft.properties.effective || '') || 0;
-  const out = [], seen = new Set();
-  for (const ft of features.slice().sort((a, b) => sentAt(b) - sentAt(a))) {
-    const p = ft.properties, ugc = (p.geocode && p.geocode.UGC) || [];
-    if (superseded.has(p.id) || p.messageType === 'Cancel') continue;
-    if (!ft.geometry && zones.length && ugc.length && !zones.some(z => ugc.includes(z))) continue;
-    const key = `${p.event}|${p.ends || p.expires || ''}`;
-    if (seen.has(key)) continue;
-    seen.add(key); out.push(ft);
-  }
-  return out;
-}
+export { condense, reaches };
 
-/** Does this alert's polygon reach the grounds: a 3 km square around the point, tested at nine points, and the polygon's own corners inside it. Zone-wide alerts (no polygon) always do. */
-export function reaches(geometry, lat, lon, km = 1.5) {
-  if (!geometry) return true;
-  const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.type === 'MultiPolygon' ? geometry.coordinates : null;
-  if (!polys) return true;
-  const dLat = km / 111.195, dLon = km / (111.195 * Math.cos(lat * Math.PI / 180));
-  const samples = []; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) samples.push([lon + j * dLon, lat + i * dLat]);
-  const inRing = (ring, x, y) => { let inside = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; } return inside; };
-  for (const poly of polys) {
-    const ring = poly?.[0] || [];
-    if (samples.some(([x, y]) => inRing(ring, x, y))) return true;
-    if (ring.some(([x, y]) => Math.abs(x - lon) <= dLon && Math.abs(y - lat) <= dLat)) return true;
-  }
-  return false;
-}
 /**
  * The alerts that apply to a festival's grounds, not just one point on them: everything active for the point's county and
  * forecast zones, then a polygon warning only where its polygon reaches the grounds, a zone-wide alert as it is. A storm
@@ -91,10 +58,32 @@ export function reaches(geometry, lat, lon, km = 1.5) {
  */
 export async function alertsFor(lat, lon) {
   let zones = [];
-  try { const p = await point(lat, lon); zones = [...new Set([p.county, p.forecastZone, p.fireWeatherZone].map(u => String(u || '').split('/').pop()).filter(z => /^[A-Z]{2}[CZ]\d{3}$/.test(z)))]; } catch {}
+  try { zones = zonesOf(await point(lat, lon)); } catch {}
   if (!zones.length) return activeAlerts(lat, lon);
   const fc = await nws(`https://api.weather.gov/alerts/active?zone=${zones.join(',')}`);
   return condense((fc.features || []).filter(ft => reaches(ft.geometry, lat, lon)), zones).map(normalizeAlert);
+}
+/**
+ * The same for every festival that is on, in as few calls as there are chunks of forty zones: one answer from the service,
+ * handed to each festival by the zones its messages name and, for a polygon, whether it reaches the grounds. A festival
+ * whose zones are not known gets null, and the caller asks for it by point.
+ */
+export async function alertsForAll(festivals) {
+  const zonesBy = new Map(), all = new Set();
+  for (const f of festivals) { try { const z = zonesOf(await point(f.latitude, f.longitude)); if (z.length) { zonesBy.set(f.id, z); z.forEach(x => all.add(x)); } } catch {} }
+  const list = [...all], features = [], seen = new Set();
+  for (let i = 0; i < list.length; i += 40) {
+    const fc = await nws(`https://api.weather.gov/alerts/active?zone=${list.slice(i, i + 40).join(',')}`);
+    for (const ft of fc.features || []) { const id = ft.properties && ft.properties.id; if (id && !seen.has(id)) { seen.add(id); features.push(ft); } }
+  }
+  const byFestival = new Map();
+  for (const f of festivals) {
+    const zones = zonesBy.get(f.id);
+    if (!zones) { byFestival.set(f.id, null); continue; }
+    const mine = features.filter(ft => { const ugc = (ft.properties.geocode && ft.properties.geocode.UGC) || []; return (!ugc.length || ugc.some(z => zones.includes(z))) && reaches(ft.geometry, f.latitude, f.longitude); });
+    byFestival.set(f.id, condense(mine, zones).map(normalizeAlert));
+  }
+  return { byFestival, calls: Math.ceil(list.length / 40), zones: list.length };
 }
 
 // /points rarely changes, so cache it for the life of the process.
@@ -110,7 +99,7 @@ export async function gridpoint(lat, lon) {
   const p = await point(lat, lon);
   const g = (await nws(p.forecastGridData)).properties;
   return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder, quantitativePrecipitation: g.quantitativePrecipitation,
-    temperature: g.temperature, relativeHumidity: g.relativeHumidity, windSpeed: g.windSpeed, skyCover: g.skyCover, windDirection: g.windDirection, apparentTemperature: g.apparentTemperature };
+    temperature: g.temperature, relativeHumidity: g.relativeHumidity, windSpeed: g.windSpeed, skyCover: g.skyCover, windDirection: g.windDirection, apparentTemperature: g.apparentTemperature, snowfallAmount: g.snowfallAmount };
 }
 
 export async function hourly(lat, lon) {

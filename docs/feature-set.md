@@ -47,6 +47,7 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - The operator's side: one rate limit for everything a stranger can write, bodies checked against a shape before they are stored, push subscriptions only from the push services browsers use, a cap on live streams per address, daily housekeeping with its counts on `/health`, ground lookups counted and warned about, CI on every push, a nightly contract check against the weather service, a lightning bucket and the radar archive, and a shakedown that exits with a code.
 - Hard conditions: Sun mode (black on white, no glass, no glow, thicker lines, the colors that mean something kept saturated), three text sizes that scale the whole page, and a battery saver, by choice or by itself under twenty percent (no orbs, the radar opens on the present paused, lightning checked every three minutes and the rest every fifteen). All from Settings, kept across opens.
 - Reachable: every tappable thing is at least 44 px tall; the phone's own back (a swipe, the Android button) pops the screen it came from, since every move is a history entry; a redraw never takes focus away; a warning landing, a code moving and the thunder clock are said out loud to a screen reader; the tour is a dialog that hands focus to Next and ends on Escape; every alert row carries its severity as a word beside its color.
+- The later tier, done: one zone question a pass for every festival that is on (`alertsForAll`) and the home page feed built once per twenty seconds or stream event; storm reports from the weather service's offices on the weather screen and as diamonds on the radar square (`lsr.js`, `/festivals/:id/storm-reports`); a storm-based warning's own area outlined on the radar square, with a key that names only what is drawn; the code the safety team sets with the festival's key, never lower than the mapper's, on the record (`PUT /festivals/:id/lightning`); the record itself, every alert, hold, post, incident, ground change and code, as rows or a sheet to download from Settings (`/festivals/:id/log`); the ground under your own spot (`/point/:lat,:lon/ground`) and a Ground now row when the rain already down made it soft; snow in the grid (`snowfallAmount`, said before rain); and Spanish for the lines people act on (`ES`, `T`), chosen in Settings.
 - Works from the cached pack when signal drops.
 - iOS app with a Bluetooth relay: written, never compiled.
 
@@ -72,7 +73,7 @@ Needs: disk on the Railway volume (mounted). Prefetch only cells with subscriber
 
 **4. Warning polygon and storm line**
 How: keep geometry and eventMotionDescription in normalizeAlert (backend, web, Swift in step). Outline active warning polygons on the radar square beside your dot. Alert screen adds "Storm 18 mi west, moving toward you at 35 mph, about 30 min".
-Needs: nothing. Only storm-based warnings carry it; zone alerts draw nothing and the line hides. Turns "your county" into "is it us".
+Needs: nothing. Only storm-based warnings carry it; zone alerts draw nothing and the line hides. Turns "your county" into "is it us". Done so far: the polygon rides with the alert (`geometry`, `keepGeometry`) and is drawn on the radar square from both the backend and the direct path. Still to do: the storm line from `eventMotionDescription`.
 
 **6. Measured wind and your thresholds**
 How: a "Now" gauge above the gust panel: sustained, gust, direction, station, distance, age, from NWS stations/observations/latest (CORS, no key), every 5 minutes. Per-phone thresholds (presets: tents 25/40, lift 28, inflatables 15/25, roof from its letter) drawn on the gauge and the forecast. Push "gusts over 40 forecast from 3 pm" an hour before the crossing.
@@ -150,7 +151,7 @@ Needs: the staff key; category and level on the publish route; a confirm endpoin
 
 **23. Log export**
 How: one button on the staff screens: every NWS alert, hold, post, incident and report for the festival as CSV and JSON with UTC and local times, through the share sheet. What the promoter, insurer or regulator asks for afterward.
-Needs: the staff key, one GET route. An afternoon, and the reason an officer runs holds through the app instead of a chat.
+Needs: the staff key, one GET route. An afternoon, and the reason an officer runs holds through the app instead of a chat. Done: `GET /festivals/:id/log` as rows or CSV, and Download the record in Settings. Still to do: local times beside UTC, and JSON through the share sheet.
 
 **24. Morning brief**
 How: on demand or at a chosen hour: alerts in effect, SPC category and any watch, peak gust and the thunder window, peak heat hour, rain timing, sunrise and dark. Rendered as a PNG for AirDrop and pushed to phones that opted in. The 7 a.m. toolbox talk on one card. Done so far: the push at seven with the high, the first window and the first thing to do, and sunset (`digest.js`). Still to do: the card, SPC, on demand.
@@ -187,7 +188,7 @@ Decode dBZ from the cached IEM frames, cross-correlate the last few for motion, 
 Needs: the radar path run against the real archive first (roadmap 3). Unproven; the NWS motion line (Next 4) answers the same question for the warnings that matter.
 
 **4. Lightning and the storm line on the radar loop**
-The codes are live (`backend/src/lightning.js` reads the GLM files in Node with h5wasm, no second service) and the nowcast tracks the rain frame to frame (`backend/src/nowcast.js`). Still to do: the flashes as dots on the radar square with 8, 12 and 20-mile rings, the bearing of the nearest one, and the tracked motion drawn as an arrow on the loop.
+The codes are live (`backend/src/lightning.js` reads the GLM files in Node with h5wasm, no second service) and the nowcast tracks the rain frame to frame (`backend/src/nowcast.js`). Done since: the flashes as dots on the radar square with the 8, 12 and 20-mile rings, the heading and the minutes of the flashes' own motion on the badge, the warning's area and the storm reports on the same square. Still to do: the tracked rain motion drawn as an arrow on the loop. Not doing now: a lightning probability from the MRMS grids, which would need a GRIB2 decoder in Node for a number the flashes and their motion already say better; the importer widening (a wider Wikidata pass, more ticket sites) until the list's duplicates are watched for a season; drying time after rain, which needs the venue's own soak reports to be more than a guess; coarse-then-fine radar loading, which the shell cache and the backend's frames already cover.
 Needs: the first real run against the buckets (roadmap 15). 8 km footprint; a wrong all-clear is a liability, so red never clears on stale data.
 
 **5. Offline grounds map**

@@ -39,6 +39,7 @@ globalThis.fetch = async (url, opts = {}) => {
   nwsState.calls.push(url);
   assert.equal(opts.headers?.['User-Agent'], process.env.NWS_USER_AGENT, 'every NWS call carries our User-Agent');
   if (url.includes('/alerts/active')) return jsonResponse({ type: 'FeatureCollection', features: nwsState.features });
+  if (url.includes('mesonet.agron.iastate.edu/geojson/lsr.php')) return jsonResponse(nwsState.lsr || { type: 'FeatureCollection', features: [] });
   if (url.includes('/points/')) return jsonResponse(points);
   if (url.includes('/forecast/hourly')) return jsonResponse(hourly);
   if (/gridpoints\/[^/]+\/[\d,]+$/.test(url)) return jsonResponse(nwsState.grid || grid);
@@ -833,4 +834,82 @@ test('the morning brief: once a day at the festival\'s own hour, to the phones t
   assert.deepEqual(await sendDigests({ now: seven + 600_000, festivals: [q.festival(FEST)] }), [], 'once a day');
   assert.deepEqual(await sendDigests({ now: seven, hour: 'off', festivals: [q.festival(FEST)] }), [], 'or never');
   for (const n of ['brief-on', 'brief-off']) await api('DELETE', '/push/subscribe', { body: { endpoint: `https://push.example.test/${n}` } });
+});
+
+test('one zone query a pass: every festival that is on shares one answer from the weather service, handed out by zone and polygon', async () => {
+  const { alertsForAll } = await import('../src/nws.js');
+  const { normalizeFestival } = await import('../src/festivals.js');
+  const day = n => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  const { festival: other } = normalizeFestival({ name: 'Zone Test Fest', location: 'Live Oak, FL', latitude: 30.31, longitude: -82.91, startDate: day(1), endDate: day(3) }, { origin: 'community', id: 'zone-test-2026' });
+  q.upsertFestival(other);
+  const before = nwsState.calls.length, was = nwsState.features;
+  const box = [[-83.2, 30.2], [-82.7, 30.2], [-82.7, 30.5], [-83.2, 30.5], [-83.2, 30.2]];
+  nwsState.features = [
+    alertFeature({ id: 'urn:oid:zone-1', '@id': 'https://api.weather.gov/alerts/urn:oid:zone-1', event: 'Wind Advisory', severity: 'Minor' }),
+    { ...alertFeature({ id: 'urn:oid:poly-1', '@id': 'https://api.weather.gov/alerts/urn:oid:poly-1', event: 'Severe Thunderstorm Warning', severity: 'Severe' }), geometry: { type: 'Polygon', coordinates: [box] } },
+    { ...alertFeature({ id: 'urn:oid:poly-far', '@id': 'https://api.weather.gov/alerts/urn:oid:poly-far', event: 'Tornado Warning', severity: 'Extreme' }), geometry: { type: 'Polygon', coordinates: [[[-90, 35], [-89, 35], [-89, 36], [-90, 36], [-90, 35]]] } },
+  ];
+  const r = await alertsForAll([q.festival(FEST), other]);
+  assert.equal(r.calls, 1, 'two festivals in the same zones: one call'); assert.equal(nwsState.calls.filter(u => u.includes('/alerts/active')).length - nwsState.calls.slice(0, before).filter(u => u.includes('/alerts/active')).length, 1);
+  assert.deepEqual(r.byFestival.get(FEST).map(a => a.id).sort(), ['urn:oid:poly-1', 'urn:oid:zone-1'], 'the polygon over the grounds and the zone-wide advisory; the far polygon is not ours');
+  assert.deepEqual(r.byFestival.get('zone-test-2026').map(a => a.id).sort(), ['urn:oid:poly-1', 'urn:oid:zone-1']);
+  assert.equal(r.byFestival.get(FEST).find(a => a.id === 'urn:oid:poly-1').geometry.type, 'Polygon', 'the polygon rides with the alert for the radar square');
+  assert.equal(r.byFestival.get(FEST).find(a => a.id === 'urn:oid:zone-1').geometry, null);
+  nwsState.features = was; q.deleteFestival('zone-test-2026');
+});
+
+test('the home page feed is built once and served for twenty seconds, or until the stream says something changed', async () => {
+  const { lastEventId, changed } = await import('../src/live.js');
+  const a = await api('GET', '/alerts'), b = await api('GET', '/alerts');
+  assert.equal(a.json.at, b.json.at, 'the same answer within twenty seconds');
+  changed(FEST, 'posts');
+  await new Promise(r => setTimeout(r, 5));
+  const c = await api('GET', '/alerts');
+  assert.ok(c.status === 200 && lastEventId() > 0); assert.ok(c.json.seq > a.json.seq, 'a change on the stream builds it again');
+  assert.equal(c.json.seq, lastEventId(), 'the feed says where the stream was when it was built');
+});
+
+test('storm reports: what the weather service\'s offices placed near the grounds in the last three hours, with the distance and the side', async () => {
+  const { resetStormReports } = await import('../src/lsr.js'); resetStormReports();
+  const valid = new Date(Date.now() - 20 * 60_000).toISOString();
+  nwsState.lsr = { type: 'FeatureCollection', features: [
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [-82.9395, 30.549] }, properties: { typetext: 'HAIL', magnitude: '1.00', unit: 'IN', city: 'Live Oak', county: 'Suwannee', valid, remark: 'Quarter size hail reported by the public.' } },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [-81.5, 30.4] }, properties: { typetext: 'TSTM WND DMG', magnitude: '', unit: '', city: 'Far away', valid, remark: '' } },
+  ] };
+  const r = await api('GET', `/festivals/${FEST}/storm-reports`);
+  assert.equal(r.status, 200); assert.equal(r.json.reports.length, 1, 'eighty miles out is not near');
+  const h = r.json.reports[0];
+  assert.equal(h.kind, 'HAIL'); assert.equal(h.magnitude, 1); assert.equal(h.unit, 'IN'); assert.equal(h.place, 'Live Oak'); assert.equal(h.heading, 'N'); assert.ok(h.mi >= 9.5 && h.mi <= 10.5, `${h.mi} mi`);
+  assert.ok(nwsState.calls.some(u => /lsr\.php\?inc_ap=yes&sts=.*&wfos=JAX$/.test(u)), 'asked by the office that covers the grounds');
+  nwsState.lsr = { type: 'FeatureCollection', features: [] };
+  assert.equal((await api('GET', `/festivals/${FEST}/storm-reports`)).json.reports.length, 1, 'cached ten minutes');
+  nwsState.lsr = null;
+});
+
+test('staff confirm or raise the lightning code with the festival\'s key, never lower it, and release it; the record keeps it all', async () => {
+  const issued = await api('POST', `/festivals/${FEST}/partner-key`, { headers: admin }), staff = { 'x-admin-key': issued.json.key };
+  assert.equal((await api('PUT', `/festivals/${FEST}/lightning`, { body: { code: 'red' } })).status, 401);
+  assert.equal((await api('PUT', `/festivals/${FEST}/lightning`, { headers: staff, body: { code: 'purple' } })).status, 400);
+  const set = await api('PUT', `/festivals/${FEST}/lightning`, { headers: staff, body: { code: 'orange', minutes: 45, note: 'Vendor detection shows a cell building to the west' } });
+  assert.equal(set.status, 200); assert.equal(set.json.code, 'orange'); assert.equal(set.json.staff.note, 'Vendor detection shows a cell building to the west');
+  assert.ok(Math.abs(Date.parse(set.json.staff.until) - (Date.now() + 45 * 60_000)) < 5000);
+  assert.equal((await api('GET', `/festivals/${FEST}/lightning`)).json.code, 'orange', 'the grade carries the staff code over no data');
+  assert.equal((await api('GET', '/alerts')).json.codes[FEST]?.code, undefined, 'a festival weeks out is not on the home page');
+  const rel = await api('DELETE', `/festivals/${FEST}/lightning`, { headers: staff });
+  assert.equal(rel.json.released, true); assert.equal((await api('GET', `/festivals/${FEST}/lightning`)).json.code, 'none');
+  const log = await api('GET', `/festivals/${FEST}/log`, { headers: staff });
+  assert.equal(log.status, 200); assert.ok(log.json.rows.length > 5, `${log.json.rows.length} rows`);
+  const kinds = new Set(log.json.rows.map(r => r.kind));
+  for (const k of ['alert', 'ended', 'headsup', 'post', 'retract', 'ground', 'lightning-staff']) assert.ok(kinds.has(k), `the record has ${k}`);
+  assert.equal((await api('GET', `/festivals/${FEST}/log`)).status, 401);
+  const csv = await fetchReal(`${base}/festivals/${FEST}/log?format=csv&days=7`, { headers: staff });
+  assert.match(csv.headers.get('content-type'), /text\/csv/); assert.match(csv.headers.get('content-disposition'), /record\.csv/);
+  const text = await csv.text(); assert.match(text, /^at,kind,what,detail\n/); assert.ok(text.split('\n').length > 5);
+  await api('DELETE', `/festivals/${FEST}/partner-key`, { headers: admin });
+});
+
+test('the ground under a spot, festival or not: the lookups once a day per cell, the rain with them', async () => {
+  const r = await api('GET', '/point/30.4040,-82.9395/ground');
+  assert.equal(r.status, 200); assert.equal(r.json.surface, 'grass'); assert.equal(r.json.surfaceSource, 'OpenStreetMap: leisure=park'); assert.equal(r.json.soil, 'A');
+  assert.equal((await api('GET', '/point/nope/ground')).status, 400);
 });

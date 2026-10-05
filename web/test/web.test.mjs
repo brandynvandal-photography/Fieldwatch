@@ -338,7 +338,10 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
   const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], retracted: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {}, partnerKeys: {} };
-  store.groundReports = {}; store.alerts = {}; store.radar = {};
+  store.groundReports = {}; store.alerts = {}; store.radar = {}; store.staff = {}; store.lsr = {};
+  const CODE_RANK = { red: 4, orange: 3, yellow: 2, green: 1, none: 0 };
+  // The lightning the page sees: the mapper's grade, raised to the code staff set while it stands (backend/src/lightning.js lightningFor).
+  const lightningOf = id => { const base = store.lightning[id] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' }, st = store.staff[id]; return st ? { ...base, code: (CODE_RANK[st.code] || 0) > (CODE_RANK[base.code] || 0) ? st.code : base.code, staff: st } : base; };
   // The live stream: open responses, and a way for a test to push a change to every page on it (backend/src/live.js).
   store.live = [];
   store.emit = e => store.live.forEach(r => r.write(`event: change\ndata: ${JSON.stringify(e)}\n\n`));
@@ -388,7 +391,11 @@ function fakeBackend(list) {
       const fla = path.match(/^\/festivals\/([^/]+)\/lightning\/flashes$/);
       if (m === 'GET' && fla) return send(200, { festivalId: fla[1], at: new Date().toISOString(), on: true, flashes: (store.flashes || {})[fla[1]] || [] });
       const bolt = path.match(/^\/festivals\/([^/]+)\/lightning$/);
-      if (m === 'GET' && bolt) return send(200, store.lightning[bolt[1]] || { code: 'none', at: new Date().toISOString(), on: true, source: 'GOES GLM' });
+      if (m === 'GET' && bolt) return send(200, lightningOf(bolt[1]));
+      const lsr = path.match(/^\/festivals\/([^/]+)\/storm-reports$/);
+      if (m === 'GET' && lsr) return send(200, { at: new Date().toISOString(), reports: store.lsr[lsr[1]] || [] });
+      const pg = path.match(/^\/point\/(-?[\d.]+),(-?[\d.]+)\/ground$/);
+      if (m === 'GET' && pg) return send(200, { ...groundOf(`pt:${pg[1]},${pg[2]}`), ...(store.pointGround || {}), point: true });
       if (m === 'GET' && path === '/push/vapid') return send(200, { key: 'BPUBLICKEY' });
       if (m === 'GET' && path === '/health') return send(200, { ok: true, at: '2026-10-23T09:00:00Z', build: '4356d78', uptimeSeconds: 61, database: { path: '/data/fieldwatch.db', onVolume: true }, festivals: 14, push: { web: true }, adminKey: 'database', nwsUserAgent: 'default', userAgent: 'Fieldwatch/0.1.0 (+https://fieldwatch.test/)', sources: { ticketmaster: false, seatgeek: false, edmtrain: true, wikidata: 'WIKIDATA_IMPORT=false', feeds: false }, imports: { running: false, lastStartedAt: '2026-10-23T09:00:00Z', lastFinishedAt: '2026-10-23T09:01:00Z' } });
       const sameFollow = (s, b) => s.subscription.endpoint === b.endpoint && (b.festivalId ? s.festivalId === b.festivalId : !s.festivalId);
@@ -402,6 +409,10 @@ function fakeBackend(list) {
       const pk = path.match(/^\/festivals\/([^/]+)\/partner-key$/);
       if (m === 'POST' && pk) { if (key !== 'k-admin') return send(401, { error: 'x-admin-key required' }); const issued = `k-${pk[1]}`; store.partnerKeys[issued] = pk[1]; return send(200, { festivalId: pk[1], key: issued, link: `https://example.test/?f=${pk[1]}&staff=1` }); }
       if (key !== 'k-admin' && !(partnerOf && partnerOf === keyedFest)) return send(401, { error: 'x-admin-key required' });
+      if (m === 'PUT' && bolt) { const b = JSON.parse(raw); if (!['green', 'yellow', 'orange', 'red'].includes(b.code)) return send(400, { error: 'code' }); store.staff[bolt[1]] = { code: b.code, until: new Date(Date.now() + Math.min(180, Math.max(5, Number(b.minutes) || 60)) * 60000).toISOString(), note: String(b.note || '').slice(0, 200), at: new Date().toISOString() }; return send(200, lightningOf(bolt[1])); }
+      if (m === 'DELETE' && bolt) { const had = Boolean(store.staff[bolt[1]]); delete store.staff[bolt[1]]; return send(200, { ok: true, released: had, ...lightningOf(bolt[1]) }); }
+      const lg = path.match(/^\/festivals\/([^/]+)\/log$/);
+      if (m === 'GET' && lg) { const u = new URL(req.url, 'http://x'), rows = [['2026-10-23T14:02:00Z', 'alert', 'Severe Thunderstorm Warning', '{}'], ['2026-10-23T15:10:00Z', 'lightning-staff', 'orange', '{}']]; if (u.searchParams.get('format') !== 'csv') return send(200, { festivalId: lg[1], days: 30, rows: [] }); res.writeHead(200, { ...cors, 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${lg[1]}-record.csv"` }); return res.end(['at,kind,what,detail', ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n') + '\n'); }
       const fe = path.match(/^\/festivals\/([^/]+)$/);
       if (m === 'PUT' && fe) { const b = JSON.parse(raw), f = store.list.find(x => x.id === fe[1]); if (!f) return send(404, { error: 'no such festival' }); Object.assign(f, b); return send(200, f); }
       if (m === 'PUT' && gr) { const b = JSON.parse(raw); store.ground[gr[1]] = { ...(store.ground[gr[1]] || {}), ...b, surfaceSource: b.surface ? 'staff' : 'assumed', override: b }; return send(200, groundOf(gr[1])); }
@@ -1659,4 +1670,94 @@ test('hard conditions: sun mode, text size and battery saver from Settings, the 
     await page.click('.takeover button:has-text("Got it")');
     assert.deepEqual(seen.errors, []);
   } finally { await context.close(); }
+});
+
+test('the later tier: storm reports and the warning\'s own area on the radar square, a code the safety team sets, the record as a sheet, the ground under your own spot, the lines to act on in Spanish, and the zone question without a backend', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS.map(f => (f.id === 'hulaween-2026' ? { ...f, isPartner: true } : f))]);
+  store.partnerKeys['k-partner-hula'] = 'hulaween-2026';
+  const valid = new Date(Date.now() - 20 * 60000).toISOString(), p = alertFeature().properties;
+  store.lsr['hulaween-2026'] = [{ kind: 'HAIL', magnitude: 1, unit: 'IN', place: 'Live Oak', at: valid, latitude: 30.549, longitude: -82.9395, mi: 10, heading: 'N', remark: 'Quarter size hail reported by the public.' }];
+  // The warning drawn by the forecaster, around the grounds; the other alert names the whole zone and draws nothing.
+  const poly = { type: 'Polygon', coordinates: [[[-83.1, 30.3], [-82.8, 30.3], [-82.8, 30.5], [-83.1, 30.5], [-83.1, 30.3]]] };
+  const shape = { headline: p.headline, body: p.description, instruction: p.instruction, area: p.areaDesc, source: p.senderName, issuedAt: p.effective, onset: p.onset, expiresAt: new Date(Date.now() + 3600000).toISOString(), channel: 'weather', relayCount: 0 };
+  store.alerts['hulaween-2026'] = [{ ...shape, id: p.id, event: p.event, severity: 'severe', geometry: poly }, { ...shape, id: 'urn:oid:zone-wide', event: 'Wind Advisory', severity: 'minor', geometry: null }];
+  await page.route(/nominatim\.openstreetmap\.org\/reverse/, r => r.fulfill(json({ name: 'Live Oak', address: { city: 'Live Oak', county: 'Suwannee County', state: 'Florida' } })));
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026&staff=1&key=k-partner-hula`);
+    await page.waitForSelector('.sky.warn'); await page.waitForFunction(() => S.staffScope && S.staffScope.scope === 'partner');
+    // Storm reports under the alerts, in words, with the distance and the side.
+    await page.click('button.orb:has-text("Forecast")'); await page.waitForSelector('h1.title:has-text("Weather")');
+    await page.waitForSelector('.lsr-row');
+    assert.equal(await page.textContent('.lsr-row .t'), 'Hail');
+    assert.match(await page.textContent('.lsr-row .s'), /^1 in · Live Oak · 10 mi N · 20 min agoQuarter size hail/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    // On the radar square: the warning's outline, a diamond where the hail fell, and a key that names only what is drawn.
+    await page.click('button.orb:has-text("Radar")'); await page.waitForSelector('#radar-play');
+    assert.equal(await page.$$eval('.rmap .poly path.warn', els => els.length), 1, 'the warning\'s own area');
+    assert.equal(await page.$$eval('.rmap .poly path', els => els.length), 1, 'the zone-wide advisory draws nothing');
+    assert.equal(await page.$$eval('.rmap .lsr', els => els.length), 1, 'the report where it was seen');
+    assert.match(await page.textContent('.note:has-text("Outline")'), /^Outline: the warning's own area · Yellow dots: flashes of the last half hour · Diamonds: storm reports of the last three hours\.$/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    await page.click('.sky'); await page.waitForSelector('.alerthead');
+    assert.equal(await page.textContent('button.row:has-text("Its area on the radar") .t'), 'Its area on the radar');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    // The safety team raises the code with the festival's key, with why; the page says so everywhere; releasing it hands the grade back to the mapper.
+    await page.evaluate(() => go('lightning')); await page.waitForSelector('h1.title:has-text("Lightning")');
+    await page.click('summary:has-text("Set the code as staff")');
+    await page.click('button.chip:has-text("Orange")'); await page.click('button.chip:has-text("2 hours")');
+    await page.fill('#staff-note', 'Vendor detection shows a cell building to the west');
+    await page.click('#staff-set'); await page.waitForSelector('.toast.show:has-text("Code Orange stands until")');
+    assert.equal(store.staff['hulaween-2026'].code, 'orange'); assert.equal(store.staff['hulaween-2026'].note, 'Vendor detection shows a cell building to the west');
+    assert.ok(Math.abs(Date.parse(store.staff['hulaween-2026'].until) - Date.now() - 120 * 60000) < 10000, 'two hours');
+    await page.waitForSelector('.codehead.orange');
+    assert.equal(await page.textContent('.codehead .eyebrow'), 'Set by staff');
+    assert.match(await page.textContent('.codehead .motion.staffed'), /^Code Orange set by staff until \d+:\d\d [AP]M: Vendor detection shows a cell building to the west$/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.bolt.orange');
+    assert.match(await page.textContent('.bolt .s'), /· set by staff$/);
+    await page.evaluate(() => go('lightning')); await page.waitForSelector('#staff-release');
+    await page.click('#staff-release'); await page.waitForSelector('.toast.show:has-text("Released")');
+    assert.deepEqual(store.staff, {}); await page.waitForSelector('.codehead.none');
+    assert.equal(await page.textContent('.codehead .eyebrow'), 'GOES lightning mapper');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    // The record comes down as a sheet, fetched with the key.
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button.row:has-text("Download the record")');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button.row:has-text("Download the record")')]);
+    assert.equal(dl.suggestedFilename(), 'hulaween-2026-record.csv');
+    assert.match(readFileSync(await dl.path(), 'utf8'), /^at,kind,what,detail\n"2026-10-23T14:02:00Z","alert"/);
+    assert.ok(store.calls.includes('GET /festivals/hulaween-2026/log'));
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    // Your own spot gets the ground too, and a row says what the rain already down made of it.
+    store.pointGround = { past: { in24: 2.0, in48: 2.6, source: 'IEM' } };
+    await page.evaluate(() => { S.here = { latitude: 30.4, longitude: -82.94, at: Date.now() }; goHere(); });
+    await page.waitForSelector('.row:has-text("Ground now")');
+    assert.ok(store.calls.includes('GET /point/30.4000,-82.9400/ground'), 'asked by where it is');
+    assert.equal(await page.textContent('.row:has-text("Ground now") .t'), 'Ground now: Paths are soft and muddy');
+    assert.equal(await page.textContent('.row:has-text("Ground now") .s'), '2.6 in of rain in the last two days');
+    await page.evaluate(() => pick('hulaween-2026')); await page.waitForSelector('.sky.warn'); await page.waitForFunction(() => !S.busy);   // the refresh the pick started has landed, so Settings is not redrawn under the tap
+    // Spanish: the sky's two lines, the orbs and the alert's words; the rest of the page stays as it was. Kept across a reload.
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button.chip:has-text("Español")'); await page.waitForFunction(() => !S.queueBusy);
+    await page.click('button.chip:has-text("Español")');
+    assert.equal(await page.evaluate(() => document.documentElement.lang), 'es');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('.sky .eyebrow'), 'Ahora mismo');
+    assert.equal(await page.textContent('.sky p'), 'Entre a un vehículo o un edificio. No una carpa, un toldo ni un escenario.');
+    assert.deepEqual(await page.$$eval('.orbrow .orb .l', els => els.map(e => e.textContent)), ['Radar', 'Alertas', 'Pronóstico']);
+    await page.click('.sky'); await page.waitForSelector('.alerthead');
+    assert.equal(await page.textContent('.alerthead .eyebrow'), 'Aviso'); assert.equal(await page.textContent('.donow .t'), 'Entre a un vehículo o un edificio');
+    assert.equal(await page.textContent('.alerthead h2'), 'Severe Thunderstorm Warning', 'the weather service\'s own words stay');
+    await page.reload(); await page.waitForSelector('.feedfest:has-text("Suwannee Hulaween") .alert');   // without a location the festivals list is the home page
+    assert.equal(await page.evaluate(() => S.lang), 'es');
+    await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead');
+    assert.equal(await page.textContent('.alerthead .eyebrow'), 'Aviso', 'kept across a reload');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+  // Without a backend the page asks the weather service the backend's question: by the county and forecast zone the grounds sit in.
+  const second = await newPage();
+  try {
+    await pickHulaween(second.page);
+    assert.ok(second.seen.alertUrls.some(u => /alerts\/active\?zone=FLC121,FLZ024$/.test(u)), `asked by zone: ${second.seen.alertUrls.join(' ')}`);
+    assert.ok(second.seen.alertUrls.some(u => /point=/.test(u)), 'the festivals list\'s glance at the others still asks by point: no lookup per festival for a glance');
+    assert.deepEqual(second.seen.errors, []);
+  } finally { await second.context.close(); }
 });

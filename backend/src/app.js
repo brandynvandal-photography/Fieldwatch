@@ -21,11 +21,12 @@ import { INCIDENT_WINDOW_MS, classify, redact, summarize, transcribe } from './i
 import { isLive, normalizeFestival, slug, validIso } from './festivals.js';
 import { imports, runImports } from './importers/index.js';
 import { skipReason as wikidataSkipped } from './importers/wikidata.js';
-import { flashesFor, lightningAt, lightningFor, lightningOn, lightningStatus } from './lightning.js';
-import { GROUND_STATES, groundFor, groundStatus, lookupGround, reportGround, reportSummary, validOverride } from './ground.js';
+import { clearStaffCode, flashesFor, lightningAt, lightningFor, lightningOn, lightningStatus, setStaffCode, staffCode } from './lightning.js';
+import { stormReportsFor } from './lsr.js';
+import { GROUND_STATES, groundFor, groundStatus, lookupGround, reportGround, reportSummary, validOverride, pointGround } from './ground.js';
 import { nowcastFor } from './nowcast.js';
 import { snapToGrounds } from './grounds.js';
-import { changed, liveCount, sse } from './live.js';
+import { changed, liveCount, sse, lastEventId } from './live.js';
 import { iso } from './util.js';
 
 export const app = express();
@@ -159,15 +160,20 @@ app.get('/events', sse);
 // The home page: every current alert at every festival that is on, grouped by festival, the worst first. Lightning within
 // 15 miles (code red or orange) puts a festival on the page too; red is an alert already, orange is its own row.
 const RANK = { extreme: 4, severe: 3, moderate: 2, minor: 1 };
+// One answer for every page: the feed is built once and served for twenty seconds, or until something changes on the stream.
+let feedMemo = { at: 0, seq: -1, body: '' };
 app.get('/alerts', (req, res) => {
   q.count('*', 'feed');
+  const seq = lastEventId();
+  if (feedMemo.body && feedMemo.seq === seq && Date.now() - feedMemo.at < 20_000) return res.set('Cache-Control', 'no-store').type('json').send(feedMemo.body);
   const on = festivalsInWindow(), rank = a => RANK[String(a.severity || '').toLowerCase()] || 0;
   const items = on.map(f => ({ festival: f, alerts: q.activeAlerts(f.id).sort((a, b) => rank(b) - rank(a)), lightning: lightningFor(f.id) })).filter(i => i.alerts.length || ['red', 'orange'].includes(i.lightning?.code));
   const top = i => Math.max(i.alerts[0] ? rank(i.alerts[0]) : 0, i.lightning?.code === 'red' ? 3 : i.lightning?.code === 'orange' ? 2 : 0);
   items.sort((a, b) => top(b) - top(a) || Date.parse(a.festival.startDate) - Date.parse(b.festival.startDate));
   // The lightning code of every festival that is on, alerts or not, so the home page can show it beside each name.
   const codes = Object.fromEntries(on.map(f => [f.id, lightningFor(f.id)]).filter(([, l]) => l));
-  res.set('Cache-Control', 'no-store').json({ at: iso(), on: on.length, items, codes });
+  feedMemo = { at: Date.now(), seq, body: JSON.stringify({ at: iso(), seq, on: on.length, items, codes }) };   // seq: where the stream was when this was built
+  res.set('Cache-Control', 'no-store').type('json').send(feedMemo.body);
 });
 // A listing the importers got wrong (a concert, a tour, a car show) goes out of sight; an import keeps it hidden.
 const setStatus = status => (req, res) => {
@@ -232,6 +238,7 @@ app.post('/festivals/:id/ground/report', loadFestival, wrap(async (req, res) => 
   if ((await import('./limits.js')).limited('ground-report', req.ip, 5, 600_000)) return res.status(429).json({ error: 'too many reports, try again later' });
   const now = Date.now();
   const r = await reportGround(req.festival, String(req.body?.state || ''), { now, q, save: f => q.upsertFestival(f) });
+  q.log(req.festival.id, 'ground', { state: String(req.body?.state || ''), effective: r.effective });
   if (r.error) return res.status(400).json({ error: r.error });
   changed(req.festival.id, 'ground'); q.count(req.festival.id, 'ground.report');
   res.json({ ...r, reports: reportSummary(q, req.festival.id, now) });
@@ -270,6 +277,29 @@ const pointParam = (req, res, next) => {
   req.point = { latitude: lat, longitude: lon }; next();
 };
 app.get('/point/:at/lightning', pointParam, (req, res) => res.set('Cache-Control', 'no-store').json(lightningAt(req.point)));
+app.get('/point/:at/ground', pointParam, wrap(async (req, res) => res.set('Cache-Control', 'no-store').json(await pointGround(req.point))));
+/** Staff confirm or raise the code with the festival's key, for up to three hours; it never lowers the mapper's grade. */
+app.put('/festivals/:id/lightning', requireStaff, loadFestival, (req, res) => {
+  const checked = expect(req.body, { code: ['green', 'yellow', 'orange', 'red'], minutes: 'number?', note: 'string?:200' });
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const s = setStaffCode(req.festival.id, checked.value);
+  q.log(req.festival.id, 'lightning-staff', { code: s.code, until: s.until, note: s.note });
+  res.json({ ...lightningFor(req.festival.id), staff: s });
+});
+app.delete('/festivals/:id/lightning', requireStaff, loadFestival, (req, res) => { const had = clearStaffCode(req.festival.id); if (had) q.log(req.festival.id, 'lightning-staff', { code: null }); res.json({ ok: true, released: had, ...(lightningFor(req.festival.id) || {}) }); });
+/** What the weather service's offices have on the ground near here in the last three hours: hail, wind damage, flooding, placed and measured. */
+app.get('/festivals/:id/storm-reports', loadFestival, wrap(async (req, res) => {
+  try { res.set('Cache-Control', 'no-store').json({ at: iso(), reports: await stormReportsFor(req.festival) }); }
+  catch (e) { res.set('Cache-Control', 'no-store').json({ at: iso(), reports: [], error: e.message }); }
+}));
+/** The record: everything that happened at this festival, for the safety team's own notes, as rows or a sheet. */
+app.get('/festivals/:id/log', requireStaff, loadFestival, (req, res) => {
+  const days = Math.min(365, Math.max(1, Number(req.query.days) || 30)), rows = q.logFor(req.festival.id, iso(Date.now() - days * 86_400_000));
+  if (req.query.format !== 'csv') return res.set('Cache-Control', 'no-store').json({ festivalId: req.festival.id, days, rows });
+  const cell = v => `"${String(v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : v).replace(/"/g, '""')}"`;
+  const line = r => [r.at, r.kind, r.event || r.title || r.code || r.state || '', JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k]) => !['at', 'kind'].includes(k))))].map(cell).join(',');
+  res.set('Cache-Control', 'no-store').set('Content-Disposition', `attachment; filename="${req.festival.id}-record.csv"`).type('text/csv').send(['at,kind,what,detail', ...rows.map(line)].join('\n') + '\n');
+});
 app.get('/point/:at/lightning/flashes', pointParam, (req, res) => res.set('Cache-Control', 'no-store').json({ at: iso(), on: lightningOn(), flashes: flashesFor(req.point) }));
 
 /** Where the rain on the radar is going and when it gets here, from the frames on disk (nowcast.js). */
@@ -316,6 +346,7 @@ app.post('/festivals/:id/posts', requireStaff, loadFestival, wrap(async (req, re
   const push = await pushAlert(q.tokensFor(req.festival.id), req.festival, alert);
   const web = await pushWeb(req.festival, alert);
   q.setPostReach(info.lastInsertRowid, (push.sent || 0) + (web.sent || 0));
+  q.log(req.festival.id, 'post', { id: String(info.lastInsertRowid), title, postKind: kind, severity, expiresAt, reach: (push.sent || 0) + (web.sent || 0), ended });
   changed(req.festival.id, 'posts');
   if (hold || ended.length) changed(req.festival.id, 'alerts');
   res.status(201).json({ id: String(info.lastInsertRowid), kind, expiresAt, ended, push, web, reach: (push.sent || 0) + (web.sent || 0) });
@@ -331,6 +362,7 @@ app.delete('/festivals/:id/posts/:pid', requireStaff, loadFestival, wrap(async (
   const words = { title: `Retracted: ${post.title}`, why: 'Festival staff took this back.' };
   const push = await pushEnded(q.tokensFor(req.festival.id), req.festival, retracted, words), web = await pushEndedWeb(req.festival, retracted, words);
   changed(req.festival.id, 'posts'); if (a) changed(req.festival.id, 'alerts');
+  q.log(req.festival.id, 'retract', { id: String(post.id), title: post.title, postKind: post.kind });
   res.json({ ok: true, id: String(post.id), ended: Boolean(a), push, web });
 }));
 
@@ -404,7 +436,9 @@ app.post('/festivals/:id/incidents/:iid/publish', requireStaff, loadFestival, wr
     q.updateIncidentText(i.id, req.body.summary, i.transcript, req.body.category || i.category, req.body.level || i.level);
     Object.assign(i, { summary: req.body.summary, category: req.body.category || i.category, level: req.body.level || i.level });
   }
-  res.json({ id: i.id, push: await publishAndPush(req.festival, i) });
+  const push = await publishAndPush(req.festival, i);
+  q.log(req.festival.id, 'incident', { id: i.id, category: i.category, level: i.level, summary: i.summary, source: i.source });
+  res.json({ id: i.id, push });
 }));
 app.delete('/festivals/:id/incidents/:iid', requireStaff, loadFestival, (req, res) => { q.deleteIncident(req.params.iid); res.json({ ok: true }); });
 

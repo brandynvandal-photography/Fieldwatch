@@ -1,6 +1,6 @@
 import './env.js';
 import { q } from './db.js';
-import { activeAlerts, alertsFor, gridpoint, hourly, nwsStats, point } from './nws.js';
+import { activeAlerts, alertsFor, alertsForAll, gridpoint, hourly, nwsStats, point } from './nws.js';
 import { changed } from './live.js';
 import { headsUpAlert, incoming, spreadGrid } from './incoming.js';
 import { ensureGround, groundFor } from './ground.js';
@@ -18,8 +18,8 @@ export function festivalsInWindow(now = Date.now()) {
 
 const lastPolled = new Map();
 // Liveness for /health: when a poll last ran, when one last succeeded, and the last error, so a stale feed shows as a problem.
-const polling = { lastRunAt: null, lastOkAt: null, lastError: null, errorAt: null, festivals: 0, overruns: 0 };
-export const pollingStatus = () => ({ lastRunAt: polling.lastRunAt ? iso(polling.lastRunAt) : null, lastOkAt: polling.lastOkAt ? iso(polling.lastOkAt) : null, lastError: polling.lastError, errorAt: polling.errorAt, festivals: polling.festivals , overruns: polling.overruns, nws: { calls: nwsStats.calls, retries: nwsStats.retries } })
+const polling = { lastRunAt: null, lastOkAt: null, lastError: null, errorAt: null, festivals: 0, overruns: 0, zoneCalls: 0, zones: 0 };
+export const pollingStatus = () => ({ lastRunAt: polling.lastRunAt ? iso(polling.lastRunAt) : null, lastOkAt: polling.lastOkAt ? iso(polling.lastOkAt) : null, lastError: polling.lastError, errorAt: polling.errorAt, festivals: polling.festivals , overruns: polling.overruns, zoneCalls: polling.zoneCalls, zones: polling.zones, nws: { calls: nwsStats.calls, retries: nwsStats.retries } })
 
 // An end must stand for two polls: the weather service answers an empty list for seconds at a time, and one empty answer
 // must not end every warning on the sky card and buzz them as new when the next poll brings them back.
@@ -27,8 +27,8 @@ const missing = new Map();
 const goneTwice = (place, id, seen) => { const k = `${place}|${id}`; if (seen) { missing.delete(k); return false; } const n = (missing.get(k) || 0) + 1; missing.set(k, n); if (n >= 2) { missing.delete(k); return true; } return false; };
 
 /** Fetch NWS alerts for one festival, store new ones, push them, and end the ones that vanished. */
-export async function pollFestival(f) {
-  const fresh = await alertsFor(f.latitude, f.longitude);
+export async function pollFestival(f, given = null) {
+  const fresh = given || await alertsFor(f.latitude, f.longitude);
   lastPolled.set(f.id, Date.now());
   const seenNow = new Set(fresh.map(a => a.id)), replaced = new Set(fresh.flatMap(a => a.replaces || []));   // a message an update supersedes ends at once
   const brandNew = [];
@@ -43,6 +43,8 @@ export async function pollFestival(f) {
     if (replaced.has(id) || goneTwice(f.id, id, seenNow.has(id))) { const a = q.alert(f.id, id); if (a && (a.channel || 'weather') === 'weather') { q.updateAlert(f.id, { ...a, expiresAt: iso() }); ended++; if (!replaced.has(id)) over.push(a); } }
   }
   if (brandNew.length || ended) changed(f.id, 'alerts');
+  for (const a of brandNew) q.log(f.id, 'alert', { id: a.id, event: a.event, severity: a.severity, expiresAt: a.expiresAt });
+  for (const a of over) q.log(f.id, 'ended', { id: a.id, event: a.event });
   // A warning that went out loud is said to be over, once, when nothing of its kind still stands; a message an update replaced is the same warning, not an end.
   for (const a of over) {
     if (!(a.severity === 'extreme' || a.severity === 'severe') || q.activeAlerts(f.id).some(x => x.event === a.event && (x.channel || 'weather') === 'weather')) continue;
@@ -129,6 +131,7 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   q.setSetting(key, JSON.stringify({ hazard: inc.hazard, startsAt: inc.startsAt, at: new Date(now).toISOString() }));
   if (q.alert(f.id, a.id)) q.updateAlert(f.id, a); else q.insertAlert(f.id, a);
   q.count(f.id, 'headsup');
+  q.log(f.id, 'headsup', { id: a.id, event: a.event, hazard: inc.hazard, onset: a.onset });
   changed(f.id, 'headsup');
   const r = await pushAlert(q.tokensFor(f.id), f, a);
   const w = await pushWeb(f, a);
@@ -154,8 +157,11 @@ async function pollPass() {
   polling.lastRunAt = Date.now(); polling.festivals = on.length;
   if (!on.length) polling.lastOkAt = polling.lastRunAt;   // nothing to poll is not a failure
   try { await ensureGround(on, { save: f => q.upsertFestival(f) }); } catch (e) { console.error('ground lookup failed:', e.message); }
+  // One answer from the weather service for every festival's zones, then each festival keeps what names its grounds; a festival the bulk answer cannot place is asked for on its own.
+  let bulk = null;
+  if (on.length) { try { const r = await alertsForAll(on); bulk = r.byFestival; polling.zoneCalls = r.calls; polling.zones = r.zones; } catch (e) { polling.lastError = `zones: ${e.message}`; polling.errorAt = iso(); } }
   await pool(on, POOL, async f => {
-    try { await pollFestival(f); polling.lastOkAt = Date.now(); }
+    try { await pollFestival(f, bulk ? bulk.get(f.id) : null); polling.lastOkAt = Date.now(); }
     catch (e) { polling.lastError = `${f.id}: ${e.message}`; polling.errorAt = iso(); console.error(`[${f.id}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
     try { await headsUp(f); } catch (e) { console.error(`[${f.id}] heads-up failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   });

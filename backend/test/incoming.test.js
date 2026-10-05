@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hourly, grid } from './fixtures/nws.js';
-import { TIER, THRESHOLDS, alertHazard, allocate, campFor, deadlines, dirWords, flagText, groundWords, gustOdds, headline, headsUpAlert, heatFlag, incoming, lineWords, mudTier, mudWords, prep, spreadGrid, sunTimes, timing, wbgtF, windLine } from '../src/incoming.js';
+import { TIER, THRESHOLDS, alertHazard, allocate, campFor, condense, deadlines, dirWords, flagText, groundWords, gustOdds, headline, headsUpAlert, heatFlag, incoming, keepGeometry, lineWords, mudTier, mudWords, prep, reaches, spreadGrid, sunTimes, timing, wbgtF, windLine, zonesOf } from '../src/incoming.js';
 
 // The fixtures as the poller sees them: 48 hours from 18:00Z, thunder 40% from hour 3 and 60% at hours 6-7, gusts peaking at 34 mph, heat index 96.
 const periods = hourly.properties.periods.map(x => ({ startTime: x.startTime, temperature: x.temperature, shortForecast: x.shortForecast, windSpeed: x.windSpeed, precipChance: x.probabilityOfPrecipitation?.value ?? null }));
@@ -244,4 +244,18 @@ test('a cold night, rain that floods, the next window, the sun, and the line for
   assert.equal(timing('rain', 150, 1), 'Finish the camp list before you turn in. The ground goes first.');
   assert.equal(timing('cold', 150), 'Dry the sleeping gear while there is light. Layers and a hat for the night.');
   assert.equal(prep('storms', 150, false, 23).timing, timing('storms', 150, 23));
+});
+
+test('the shared zone logic: which zones a point names, whether a polygon reaches the grounds, one message per warning, and a polygon worth keeping', () => {
+  assert.deepEqual(zonesOf({ county: 'https://api.weather.gov/zones/county/FLC121', forecastZone: 'https://api.weather.gov/zones/forecast/FLZ024', fireWeatherZone: 'https://api.weather.gov/zones/fire/FLZ024' }), ['FLC121', 'FLZ024']);
+  assert.deepEqual(zonesOf({}), []); assert.deepEqual(zonesOf(null), []);
+  const box = { type: 'Polygon', coordinates: [[[-83.2, 30.2], [-82.7, 30.2], [-82.7, 30.5], [-83.2, 30.5], [-83.2, 30.2]]] };
+  assert.equal(reaches(box, 30.404, -82.9395), true, 'the grounds inside the polygon'); assert.equal(reaches(box, 31, -82.9395), false, 'well outside');
+  assert.equal(reaches(box, 30.513, -82.9395), true, 'a kilometer past the edge still counts: the square around the grounds reaches in');
+  assert.equal(reaches(null, 30.4, -82.9), true, 'a zone-wide alert always does');
+  const ft = (id, over = {}) => ({ properties: { id, event: 'Flood Advisory', sent: '2026-10-23T14:00:00-04:00', ends: '2026-10-23T18:00:00-04:00', ...over }, geometry: null });
+  const list = [ft('a'), ft('b', { sent: '2026-10-23T15:00:00-04:00', references: [{ identifier: 'a' }] }), ft('c', { event: 'Heat Advisory', geocode: { UGC: ['FLZ099'] } }), ft('d', { event: 'Heat Advisory', geocode: { UGC: ['FLZ024'] } }), ft('e', { messageType: 'Cancel', event: 'Wind Advisory' })];
+  assert.deepEqual(condense(list, ['FLZ024']).map(f => f.properties.id), ['b', 'd'], 'the update replaces its message, the other zone\'s segment and the cancel are out, one of each event and end stays');
+  assert.equal(keepGeometry(box), box); assert.equal(keepGeometry({ type: 'Point', coordinates: [0, 0] }), null); assert.equal(keepGeometry(null), null);
+  assert.equal(keepGeometry({ type: 'Polygon', coordinates: [Array.from({ length: 3000 }, (_, i) => [i / 100, i / 100])] }), null, 'a huge polygon stays with the service');
 });

@@ -13,11 +13,12 @@ const DAY = 86_400_000;
 export const housekeeping = { lastRunAt: null, lastError: null, removed: null };
 export function runHousekeeping({ now = Date.now(), audioDir = resolve(process.env.AUDIO_DIR || 'audio'), radarDir = RADAR_DIR,
   incidentDays = Number(process.env.INCIDENT_KEEP_DAYS || 30), postDays = Number(process.env.POST_KEEP_DAYS || 90), radarDays = 2 } = {}) {
-  const removed = { incidents: 0, audio: 0, posts: 0, radarDirs: 0, limits: 0 };
+  const removed = { incidents: 0, audio: 0, posts: 0, log: 0, radarDirs: 0, limits: 0 };
   try {
     for (const name of q.incidentAudioOlderThan(iso(now - incidentDays * DAY))) { try { unlinkSync(join(audioDir, name)); removed.audio++; } catch {} }
     removed.incidents = q.purgeIncidents(iso(now - incidentDays * DAY));
     removed.posts = q.purgePosts(iso(now - postDays * DAY));
+    removed.log = q.purgeLog(iso(now - Number(process.env.LOG_KEEP_DAYS || 180) * DAY));
     const on = new Set(festivalsInWindow(now).map(f => f.id));
     if (existsSync(radarDir)) for (const dir of readdirSync(radarDir)) {
       const p = join(radarDir, dir); let st; try { st = statSync(p); } catch { continue; }

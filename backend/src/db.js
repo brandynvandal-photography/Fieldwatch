@@ -70,6 +70,14 @@ db.exec(`
     created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS ground_reports_festival ON ground_reports(festival_id, created_at);
+  CREATE TABLE IF NOT EXISTS log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    festival_id TEXT NOT NULL,
+    at TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    json TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS log_festival ON log(festival_id, at);
   CREATE TABLE IF NOT EXISTS stats (
     day TEXT NOT NULL,
     festival_id TEXT NOT NULL,
@@ -142,6 +150,9 @@ const s = {
   incidentAudioOlderThan: db.prepare(`SELECT audio_file FROM incidents WHERE occurred_at < ? AND audio_file IS NOT NULL`),
   purgeIncidents: db.prepare(`DELETE FROM incidents WHERE occurred_at < ?`),
   purgePosts: db.prepare(`DELETE FROM posts WHERE posted_at < ?`),
+  insertLog: db.prepare(`INSERT INTO log (festival_id, at, kind, json) VALUES (?, ?, ?, ?)`),
+  logFor: db.prepare(`SELECT at, kind, json FROM log WHERE festival_id = ? AND at >= ? ORDER BY at ASC LIMIT 5000`),
+  purgeLog: db.prepare(`DELETE FROM log WHERE at < ?`),
   webSubscriptionPoints: db.prepare(`SELECT DISTINCT round(latitude, 2) AS latitude, round(longitude, 2) AS longitude FROM web_subscriptions WHERE festival_id IS NULL AND latitude IS NOT NULL AND longitude IS NOT NULL`),
 
   setting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
@@ -192,6 +203,9 @@ export const q = {
   incidentAudioOlderThan: olderThan => s.incidentAudioOlderThan.all(olderThan).map(r => r.audio_file),
   purgeIncidents: olderThan => s.purgeIncidents.run(olderThan).changes,
   purgePosts: olderThan => s.purgePosts.run(olderThan).changes,
+  log: (festivalId, kind, data) => { try { s.insertLog.run(festivalId, iso(), kind, JSON.stringify(data || {})); } catch {} },   // the record never breaks the thing it records
+  logFor: (festivalId, since) => s.logFor.all(festivalId, since).map(r => ({ ...JSON.parse(r.json), at: r.at, kind: r.kind })),   // the record's kind wins over a field of the same name
+  purgeLog: olderThan => s.purgeLog.run(olderThan).changes,
   deleteWebSubscription: endpoint => s.deleteWebSubscription.run(endpoint),
   webSubscriptionsFor: festivalId => s.webSubscriptionsFor.all(festivalId).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json), digest: r.digest !== 0 })),
   webSubscriptionsAt: (latitude, longitude) => s.webSubscriptionsAt.all(Math.round(latitude * 100) / 100, Math.round(longitude * 100) / 100).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json), digest: r.digest !== 0 })),

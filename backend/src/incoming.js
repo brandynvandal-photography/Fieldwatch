@@ -72,7 +72,7 @@ function allocate(series, hourly = []) {
 const cToF = c => c * 9 / 5 + 32, kmhToMph = k => k / 1.609;
 /** The grid's hour-by-hour numbers the model reads: heat index (°F), gusts (mph), chance of thunder (%), rain (inches in the hour), what the heat estimate needs, where the wind comes from (degrees) and what it feels like (°F). */
 const spreadGrid = (g, hourly = []) => ({ heat: spread(g?.heatIndex, cToF), gust: spread(g?.windGust, kmhToMph), thunder: spread(g?.probabilityOfThunder), rain: allocate(g?.quantitativePrecipitation, hourly),
-  temp: spread(g?.temperature, cToF), rh: spread(g?.relativeHumidity), wind: spread(g?.windSpeed, kmhToMph), sky: spread(g?.skyCover), dir: spread(g?.windDirection), feels: spread(g?.apparentTemperature, cToF) });
+  temp: spread(g?.temperature, cToF), rh: spread(g?.relativeHumidity), wind: spread(g?.windSpeed, kmhToMph), sky: spread(g?.skyCover), dir: spread(g?.windDirection), feels: spread(g?.apparentTemperature, cToF), snow: allocate(g?.snowfallAmount, hourly) });
 // Heat by exertion: the heat index is a shade number for someone at rest. An estimated wet-bulb globe temperature (Stull's wet
 // bulb, a globe warmed by the sun less cloud and wind, the standard 0.7/0.2/0.1 blend) is what work-rest guidance uses, and it
 // earns a flag. Red or black is a heat hazard on its own, whatever the heat index says.
@@ -99,14 +99,14 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
       const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
-      const wind = grid.wind?.[k] ?? null, dir = grid.dir?.[k] ?? null, feels = grid.feels?.[k] ?? null;
+      const wind = grid.wind?.[k] ?? null, dir = grid.dir?.[k] ?? null, feels = grid.feels?.[k] ?? null, snow = grid.snow?.[k] ?? null;
       const wbgt = wbgtF(grid.temp?.[k] ?? null, grid.rh?.[k] ?? null, wind ?? 0, grid.sky?.[k] ?? 0);
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
       if (!indoor && gust >= gustLine) hazards.push('wind');
       if (!indoor && (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF)) hazards.push('heat');
       if (!indoor && feels != null && feels <= THRESHOLDS.coldF) hazards.push('cold');   // a wet tent on a cold night is how people get hurt
-      return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wind, dir, feels, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
+      return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wind, dir, feels, snow, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
   // A run of wet hours is rain when it adds up: a drizzle that never reaches rainIn is not worth a heads-up.
   for (let i = 0; !indoor && i < marks.length; i++) {
@@ -134,7 +134,8 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
     const rainIn = win.some(m => m.rain != null) ? Math.round(win.reduce((s, m) => s + (m.rain || 0), 0) * 100) / 100 : null;
     forecast = { hazard: PRIORITY.find(p => all.has(p)), startsAt: new Date(Math.max(now, marks[i].t)).toISOString(), endsAt: new Date(marks[j].t + HOUR).toISOString(),
       source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), wbgt: peakOf('wbgt'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100,
-        wind: peakOf('wind'), dir: gustHour ? dirWords(gustHour.dir) : null, feels: lowOf('feels') == null ? null : Math.round(lowOf('feels')) } };
+        wind: peakOf('wind'), dir: gustHour ? dirWords(gustHour.dir) : null, feels: lowOf('feels') == null ? null : Math.round(lowOf('feels')),
+        snowIn: win.some(m => m.snow != null) ? Math.round(win.reduce((s, m) => s + (m.snow || 0), 0) * 10) / 10 : null } };
     if (forecast.peak.wbgt != null) forecast.flag = heatFlag(forecast.peak.wbgt);
     if (rainIn != null && (all.has('rain') || all.has('flood'))) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
     if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)), odds: gustOdds(forecast.peak.gust, forecast.peak.wind, gustLine) };
@@ -159,7 +160,7 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
   return pick ? { ...pick, minutes: Math.max(0, Math.round((Date.parse(pick.startsAt) - now) / 60000)), ...(indoor ? { indoor: true } : {}) } : null;
 }
 /** Rain in a sentence: "0.6 in of rain" when the grid says how much, "a 70% chance of rain" when it only says how likely. */
-const rainWords = p => p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.rainIn.toFixed(1)} in of rain` : p.precip != null ? `a ${Math.round(p.precip)}% chance of rain` : '';
+const rainWords = p => p.snowIn >= 0.1 ? `${p.snowIn.toFixed(1)} in of snow` : p.rainIn != null ? `${p.rainIn < 0.1 ? 'under 0.1' : p.rainIn.toFixed(1)} in of rain` : p.precip != null ? `a ${Math.round(p.precip)}% chance of rain` : '';
 // Mud: inches of rain before trampled grass on this soil goes soft (USDA hydrologic group A drains fast, D is clay), and how
 // the surface changes that. Sand and blacktop never make mud; they puddle, run off or turn slick instead.
 const MUD_IN = { A: 1.5, B: 0.75, C: 0.5, D: 0.3 };
@@ -281,6 +282,44 @@ function timing(hazard, m, hour) {
   return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes. Head for shelter with fifteen to spare.'
     : m <= 180 ? 'Secure camp now. Charge phones, fill water and pick your shelter.' : 'Secure what you would hate to lose. Check back in an hour.';
 }
+// Which alerts are this grounds' alerts, the same on the backend and on a phone with no backend: everything active for the
+// point's county and forecast zones, a polygon warning only where its polygon reaches the grounds, a zone-wide alert where it
+// names the grounds' own zone, one message per warning (an update replaces what it references; one event with one end is one).
+/** The zone ids a /points answer names: the county, the forecast zone, the fire weather zone. */
+const zonesOf = p => [...new Set([p && p.county, p && p.forecastZone, p && p.fireWeatherZone].map(u => String(u || '').split('/').pop()).filter(z => /^[A-Z]{2}[CZ]\d{3}$/.test(z)))];
+/** Does this alert's polygon reach the grounds: a 3 km square around the point, tested at nine points, and the polygon's own corners inside it. Zone-wide alerts (no polygon) always do. */
+function reaches(geometry, lat, lon, km = 1.5) {
+  if (!geometry) return true;
+  const polys = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.type === 'MultiPolygon' ? geometry.coordinates : null;
+  if (!polys) return true;
+  const dLat = km / 111.195, dLon = km / (111.195 * Math.cos(lat * Math.PI / 180));
+  const samples = []; for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) samples.push([lon + j * dLon, lat + i * dLat]);
+  const inRing = (ring, x, y) => { let inside = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [xi, yi] = ring[i], [xj, yj] = ring[j]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside; } return inside; };
+  for (const poly of polys) {
+    const ring = (poly && poly[0]) || [];
+    if (samples.some(([x, y]) => inRing(ring, x, y))) return true;
+    if (ring.some(([x, y]) => Math.abs(x - lon) <= dLon && Math.abs(y - lat) <= dLat)) return true;
+  }
+  return false;
+}
+/** One message per warning, from the features the weather service listed for these zones. */
+function condense(features, zones = []) {
+  const ids = new Set(features.map(ft => ft.properties.id));
+  const superseded = new Set(features.flatMap(ft => (ft.properties.references || []).map(r => r.identifier)).filter(id => ids.has(id)));
+  const sentAt = ft => Date.parse(ft.properties.sent || ft.properties.effective || '') || 0;
+  const out = [], seen = new Set();
+  for (const ft of features.slice().sort((a, b) => sentAt(b) - sentAt(a))) {
+    const p = ft.properties, ugc = (p.geocode && p.geocode.UGC) || [];
+    if (superseded.has(p.id) || p.messageType === 'Cancel') continue;
+    if (!ft.geometry && zones.length && ugc.length && !zones.some(z => ugc.includes(z))) continue;
+    const key = `${p.event}|${p.ends || p.expires || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key); out.push(ft);
+  }
+  return out;
+}
+/** A polygon small enough to keep with the alert and draw on the radar square; nothing for a zone-wide alert or a huge one. */
+const keepGeometry = g => (g && (g.type === 'Polygon' || g.type === 'MultiPolygon') && JSON.stringify(g).length <= 24000 ? g : null);
 // One line to act on and one line of what not to do, for every alert: a person in a panic reads the first line and nothing
 // else, so the push opens with it and so does the alert screen. An imperative under eight words, then what not to do.
 const ACTION = {
@@ -316,7 +355,7 @@ function actionLines(a, opts) {
 // ==== shared: end ====
 
 // ---- backend only: the wording of a push, in the festival's own clock ----
-export { THRESHOLDS, WIND_LINES, HEAT_FLAGS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, wbgtF, heatFlag, flagText, campFor, deadlines, taskMinutes, timing, ACTION, HOLD_ACTION, actionLines, gustOdds, dirWords, sunTimes };
+export { THRESHOLDS, WIND_LINES, HEAT_FLAGS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, wbgtF, heatFlag, flagText, campFor, deadlines, taskMinutes, timing, ACTION, HOLD_ACTION, actionLines, gustOdds, dirWords, sunTimes, zonesOf, reaches, condense, keepGeometry };
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 /** The hour of the day (0 to 23) at a place, for the bedtime line. */
 export const localHour = (t, tz) => { try { return Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: tz || 'UTC' }).format(new Date(t))); } catch { return new Date(t).getUTCHours(); } };
