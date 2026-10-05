@@ -335,7 +335,7 @@ test('dark theme, a fresh browser, and the installable shell', async () => {
 
 /** A backend the page can call from another origin: the live list, suggestions, and the admin queue. */
 function fakeBackend(list) {
-  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {}, partnerKeys: {} };
+  const store = { list: [...list], pending: [], subs: [], reports: [], posts: [], retracted: [], pendingReports: [], imports: 0, calls: [], feed: null, lightning: {}, ground: {}, partnerKeys: {} };
   store.groundReports = {}; store.alerts = {}; store.radar = {};
   // The live stream: open responses, and a way for a test to push a change to every page on it (backend/src/live.js).
   store.live = [];
@@ -392,6 +392,8 @@ function fakeBackend(list) {
       const sameFollow = (s, b) => s.subscription.endpoint === b.endpoint && (b.festivalId ? s.festivalId === b.festivalId : !s.festivalId);
       if (m === 'POST' && path === '/push/subscribe') { const b = JSON.parse(raw); store.subs = store.subs.filter(s => !sameFollow(s, { endpoint: b.subscription.endpoint, festivalId: b.festivalId })); store.subs.push(b); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => b.festivalId || b.here ? !sameFollow(s, b) : s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
+      const postList = path.match(/^\/festivals\/([^/]+)\/posts$/);
+      if (m === 'GET' && postList) return send(200, store.posts.map((p, i) => ({ id: String(i + 1), ...p, festival: undefined, key: undefined, postedAt: p.postedAt || new Date().toISOString(), kind: p.kind || 'notice', reach: 2 })).filter((p, i) => store.posts[i].festival === postList[1] && !store.retracted.includes(String(i + 1))));
       // The admin key does everything; a festival's staff key does that festival's staff routes.
       const partnerOf = store.partnerKeys[key] || null, keyedFest = (path.match(/^\/festivals\/([^/]+)(?:\/|$)/) || [])[1];
       if (m === 'GET' && path === '/staff/me') return key === 'k-admin' ? send(200, { scope: 'admin' }) : partnerOf ? send(200, { scope: 'partner', festivalId: partnerOf, name: store.list.find(f => f.id === partnerOf)?.name }) : send(401, { error: 'x-admin-key required' });
@@ -407,6 +409,8 @@ function fakeBackend(list) {
       const hide = path.match(/^\/festivals\/([^/]+)\/(hide|unhide)$/);
       if (m === 'POST' && hide) { const f = store.list.find(x => x.id === hide[1]); if (!f) return send(404, {}); f.status = hide[2] === 'hide' ? 'hidden' : 'published'; return send(200, { ok: true, id: f.id, status: f.status }); }
       const post = path.match(/^\/festivals\/([^/]+)\/posts$/);
+      const pd = path.match(/^\/festivals\/([^/]+)\/posts\/([^/]+)$/);
+      if (m === 'DELETE' && pd) { store.retracted.push(pd[2]); return send(200, { ok: true, id: pd[2], ended: true }); }
       if (m === 'POST' && post) { const b = JSON.parse(raw); store.posts.push({ festival: post[1], key, ...b }); return send(201, { id: String(store.posts.length), push: { sent: 0, skipped: true }, web: { sent: 2, gone: 0, failed: 0 } }); }
       const pend = path.match(/^\/festivals\/([^/]+)\/incidents\/pending$/);
       if (m === 'GET' && pend) return send(200, store.pendingReports);
@@ -461,13 +465,29 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     await shot(page, '16-post');
     await page.click('#p-send');
     await page.waitForSelector('.toast.show:has-text("Pushed to 2 phones")');
-    assert.deepEqual(store.posts, [{ festival: 'hulaween-2026', key: 'k-admin', title: 'Medical tent has moved', body: 'Now beside the water station at the east gate.', severity: 'moderate' }]);
+    assert.deepEqual(store.posts, [{ festival: 'hulaween-2026', key: 'k-admin', title: 'Medical tent has moved', body: 'Now beside the water station at the east gate.', severity: 'moderate', kind: 'notice' }]);
+    await page.waitForSelector('#admin');
+    // A hold from a template: shelter in place, an hour, always urgent; the page says it until it ends.
+    await page.click('button:has-text("Post an update")'); await page.waitForSelector('#p-title');
+    await page.click('button.chip:has-text("Shelter")');
+    assert.equal(await page.inputValue('#p-title'), 'Shelter in place'); assert.equal(await page.textContent('.chips .chip.on:has-text("hour")'), '1 hour');
+    assert.equal(await page.$('button.chip:has-text("Urgent")'), null, 'shelter is urgent, not a choice');
+    await page.click('button.chip:has-text("2 hours")');
+    assert.equal(await page.textContent('#p-send'), 'Call the hold');
+    await page.click('#p-send'); await page.waitForSelector('.toast.show:has-text("Pushed to 2 phones")');
+    assert.deepEqual(store.posts.at(-1), { festival: 'hulaween-2026', key: 'k-admin', title: 'Shelter in place', body: 'Lightning within 8 miles. Get into a vehicle or a building now. Tents, canopies and stages are not shelter.', severity: 'severe', kind: 'shelter', minutes: 120 });
     await page.waitForSelector('#admin');
 
     // Review what people reported, before it goes out.
     store.pendingReports.push({ id: 'rep-1', category: 'flood', level: 'warning', summary: 'Flooding behind Stage 2, avoid the path', location: 'Stage 2', source: 'attendee', occurredAt: new Date().toISOString() });
     await page.click('button:has-text("Review reports")');
     await page.waitForSelector('.pend:has-text("Flooding behind Stage 2")');
+    // The queue is live: a report landing while the screen is open shows up with no tap.
+    store.pendingReports.push({ id: 'rep-2', category: 'crowd', level: 'advisory', summary: 'Crush at the front rail of Stage 1', location: 'Stage 1', source: 'attendee', occurredAt: new Date().toISOString() });
+    store.emit({ festivalId: 'hulaween-2026', kind: 'reports', at: new Date().toISOString() });
+    await page.waitForSelector('.pend:has-text("Crush at the front rail")');
+    await page.click('.pend:has-text("Crush at the front rail") button:has-text("Remove")');
+    await page.waitForSelector('.pend:has-text("Crush at the front rail")', { state: 'detached' });
     await shot(page, '17-moderate');
     await page.click('.pend button:has-text("Publish")');
     await page.waitForSelector('.empty:has-text("Nothing waiting")');
@@ -1530,4 +1550,57 @@ test('the forecast screen says when the sun goes down and comes up here, and the
     assert.deepEqual([night, morning, noon], [true, true, true]);
     assert.deepEqual(seen.errors, []);
   } finally { await context.close(); }
+});
+
+test('the safety team: the key rides in on a scanned link, shelter and medical go on the record and onto every alert, a hold wears the sky, a post can be taken back, and a sign prints', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS.map(f => (f.id === 'hulaween-2026' ? { ...f, isPartner: true, shelter: 'The Music Hall and the cars in Lot B', medical: 'Medical tent by the main gate. ER: Shands Live Oak, 8 minutes north.' } : f))]);
+  store.partnerKeys['k-partner-hula'] = 'hulaween-2026';
+  store.posts.push({ festival: 'hulaween-2026', key: 'k-partner-hula', title: 'Gates closed', body: 'Until further notice.', severity: 'moderate', kind: 'notice' });
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026&staff=1&key=k-partner-hula`);
+    await page.waitForSelector('.sky.warn');
+    assert.equal(new URL(page.url()).searchParams.get('key'), null, 'the key is kept and the address is cleaned');
+    assert.equal(await page.evaluate(() => S.admin), 'k-partner-hula');
+    await page.waitForFunction(() => S.staffScope && S.staffScope.scope === 'partner');
+    // Shelter and medical, from the record, on the festival page.
+    await page.click('button.row:has-text("Shelter and medical")'); await page.waitForSelector('h1.title:has-text("Shelter and medical")');
+    assert.deepEqual(await page.$$eval('.todo .t', els => els.map(e => e.textContent)), ['Shelter', 'Medical']);
+    assert.match(await page.textContent('.todo p'), /^The Music Hall/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    // The staff screen for it opens on the record as it is, and saves through the backend.
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button:has-text("Post an update")');
+    await page.click('button.row:has-text("Shelter and medical")'); await page.waitForSelector('#r-shelter');
+    assert.equal(await page.inputValue('#r-shelter'), 'The Music Hall and the cars in Lot B');
+    await page.fill('#r-medical', 'Medical tent by the main gate.'); await page.click('#r-save'); await page.waitForSelector('.toast.show:has-text("Saved")');
+    assert.equal(store.list.find(f => f.id === 'hulaween-2026').medical, 'Medical tent by the main gate.');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('h1.title:has-text("Settings")'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    // A hold the team called wears the sky in its own color, with its own two lines and the shelter on the alert.
+    const until = new Date(Date.now() + 45 * 60000).toISOString();
+    store.alerts['hulaween-2026'] = [{ id: 'official-hulaween-2026-7', event: 'Shelter in place', headline: null, body: 'Lightning within 8 miles. Get into a vehicle or a building now.', instruction: 'Shelter: The Music Hall and the cars in Lot B', severity: 'severe', area: 'Suwannee Hulaween', source: 'Suwannee Hulaween staff', issuedAt: new Date().toISOString(), expiresAt: until, channel: 'official', kind: 'shelter', minutes: 45, relayCount: 0 }];
+    store.emit({ festivalId: 'hulaween-2026', kind: 'alerts', at: new Date().toISOString() });
+    await page.waitForSelector('.takeover'); assert.equal(await page.textContent('.takeover .do'), 'Shelter in place now'); await page.click('.takeover button:has-text("Got it")');
+    await page.waitForSelector('.sky.hold');
+    assert.equal(await page.textContent('.sky .eyebrow'), 'Festival staff'); assert.equal(await page.textContent('.sky h2'), 'Shelter in place');
+    assert.equal(await page.textContent('.sky p'), 'Shelter in place now. Festival staff say so. A vehicle or a building. Not a tent, canopy or stage.');
+    await page.click('.sky'); await page.waitForSelector('.alerthead');
+    assert.equal(await page.textContent('.alerthead .eyebrow'), 'Festival staff'); assert.equal(await page.textContent('.donow .t'), 'Shelter in place now');
+    assert.equal(await page.textContent('.todo.shelter p'), 'The Music Hall and the cars in Lot B');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.hold');
+    // The official screen: what each post is, how far it reached, and the way back.
+    await page.evaluate(() => go('official')); await page.waitForSelector('h1.title:has-text("Festival official")');
+    await page.waitForSelector('.row:has-text("Gates closed")');
+    assert.match(await page.textContent('.row:has-text("Gates closed") .s.num'), /reached 2 phones/);
+    await page.click('.row:has-text("Gates closed") button.retract'); await page.waitForSelector('.toast.show:has-text("Taken back")');
+    assert.deepEqual(store.retracted, ['1']);
+    await page.waitForSelector('.row:has-text("Gates closed")', { state: 'detached' });
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    // A sign for the gates.
+    await page.click('button[aria-label="Share"]'); await page.waitForSelector('h1.title:has-text("Suwannee Hulaween")');
+    await page.click('button:has-text("Print a sign")'); await page.waitForSelector('.sign');
+    assert.equal(await page.textContent('.sign h1'), 'Suwannee Hulaween');
+    assert.match(await page.getAttribute('.sign-qr', 'src'), /\/festivals\/hulaween-2026\/qr\.svg$/);
+    assert.match(await page.textContent('.sign-url'), /\?f=hulaween-2026$/);
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

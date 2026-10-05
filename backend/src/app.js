@@ -7,8 +7,8 @@ import { resolve } from 'node:path';
 import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { festivalsInWindow, pollFestival, polledRecently, pollingStatus } from './poller.js';
-import { pushAlert } from './push.js';
-import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled } from './webpush.js';
+import { pushAlert, pushEnded } from './push.js';
+import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled, pushEnded as pushEndedWeb } from './webpush.js';
 import { SITE, USER_AGENT, placeholderAgent } from './site.js';
 import { adminKeyStatus, ensureAdminKey, hashKey, isAdminKey, sameKey } from './adminkey.js';
 import QRCode from 'qrcode';
@@ -289,22 +289,50 @@ app.get('/festivals/:id/alerts', loadFestival, wrap(async (req, res) => {
 
 app.get('/festivals/:id/posts', loadFestival, (req, res) => res.json(q.posts(req.festival.id)));
 
+// A staff post is a notice, or a hold the safety team calls: shelter, evacuate or pause, which stands on the festival page as a
+// warning until its end (an hour unless said), and the all-clear, which ends every hold standing and is said once. Holds are kept
+// with the alerts so the page carries them; a notice is a post and a push, as before. The reach of every post is kept on it.
+const KINDS = ['notice', 'shelter', 'evacuate', 'pause', 'allclear'], HOLDS = ['shelter', 'evacuate', 'pause'];
 app.post('/festivals/:id/posts', requireStaff, loadFestival, wrap(async (req, res) => {
-  const { title, body, severity = 'minor' } = req.body || {};
+  const { title, body, kind = 'notice' } = req.body || {};
+  let { severity = 'minor', minutes } = req.body || {};
   if (!title || !body) return res.status(400).json({ error: 'title and body required' });
   if (!SEVERITIES.includes(severity)) return res.status(400).json({ error: `severity must be one of ${SEVERITIES.join(', ')}` });
-  const info = q.insertPost(req.festival.id, title, body);
+  if (!KINDS.includes(kind)) return res.status(400).json({ error: `kind must be one of ${KINDS.join(', ')}` });
+  const hold = HOLDS.includes(kind), now = Date.now();
+  if (kind === 'shelter' || kind === 'evacuate') severity = 'severe'; else if (kind === 'pause' && severity === 'minor') severity = 'moderate';
+  minutes = hold ? Math.min(720, Math.max(5, Number(minutes) || 60)) : null;
+  const expiresAt = hold ? iso(now + minutes * 60_000) : kind === 'allclear' ? iso(now + 15 * 60_000) : null;
+  const ended = [];
+  if (kind === 'allclear') for (const a of q.activeAlerts(req.festival.id)) if (a.channel === 'official' && HOLDS.includes(a.kind)) { q.updateAlert(req.festival.id, { ...a, expiresAt: iso(now) }); ended.push(a.id); }
+  const info = q.insertPost(req.festival.id, title, body, { kind, severity, expiresAt });
   q.count(req.festival.id, 'post');
   const alert = {
     id: `official-${req.festival.id}-${info.lastInsertRowid}`,
-    event: title, headline: null, body, instruction: null, severity,
+    event: title, headline: null, body, instruction: req.festival.shelter && hold ? `Shelter: ${req.festival.shelter}` : null, severity,
     area: req.festival.name, source: `${req.festival.name} staff`,
-    issuedAt: iso(), expiresAt: null, channel: 'official', relayCount: 0,
+    issuedAt: iso(now), expiresAt, channel: 'official', kind, minutes, relayCount: 0,
   };
+  if (hold || kind === 'allclear') q.insertAlert(req.festival.id, alert);
   const push = await pushAlert(q.tokensFor(req.festival.id), req.festival, alert);
   const web = await pushWeb(req.festival, alert);
+  q.setPostReach(info.lastInsertRowid, (push.sent || 0) + (web.sent || 0));
   changed(req.festival.id, 'posts');
-  res.status(201).json({ id: String(info.lastInsertRowid), push, web });
+  if (hold || ended.length) changed(req.festival.id, 'alerts');
+  res.status(201).json({ id: String(info.lastInsertRowid), kind, expiresAt, ended, push, web, reach: (push.sent || 0) + (web.sent || 0) });
+}));
+/** Staff take a post back: off the list, its hold ended, and the phones that heard it hear that, quietly, under the same tag. */
+app.delete('/festivals/:id/posts/:pid', requireStaff, loadFestival, wrap(async (req, res) => {
+  const post = q.post(req.params.pid);
+  if (!post || post.festivalId !== req.festival.id) return res.status(404).json({ error: 'no such post' });
+  if (!q.retractPost(post.id)) return res.status(409).json({ error: 'already retracted' });
+  const id = `official-${req.festival.id}-${post.id}`, a = q.alert(req.festival.id, id), now = Date.now();
+  if (a && (!a.expiresAt || Date.parse(a.expiresAt) > now)) q.updateAlert(req.festival.id, { ...a, expiresAt: iso(now), retracted: true });
+  const retracted = { id, event: post.title, severity: post.severity, channel: 'official', kind: post.kind };
+  const words = { title: `Retracted: ${post.title}`, why: 'Festival staff took this back.' };
+  const push = await pushEnded(q.tokensFor(req.festival.id), req.festival, retracted, words), web = await pushEndedWeb(req.festival, retracted, words);
+  changed(req.festival.id, 'posts'); if (a) changed(req.festival.id, 'alerts');
+  res.json({ ok: true, id: String(post.id), ended: Boolean(a), push, web });
 }));
 
 // ---- Incidents -----------------------------------------------------------
@@ -343,12 +371,15 @@ app.post('/festivals/:id/incidents', requireNode, loadFestival, upload.single('a
     audioFile: req.file?.filename || null, occurredAt: validIso(req.body.occurredAt) || iso(), published: 0,
   };
   q.insertIncident(incident);
+  changed(f.id, 'reports');   // the staff's queue hears it land
   const push = AUTO_PUBLISH ? await publishAndPush(f, incident) : { queued: true };
   res.status(201).json({ stored: true, id: incident.id, category: hit.category, level: hit.level, published: AUTO_PUBLISH, push });
 }));
 
 // Attendee reports always go to the moderation queue.
 const reportTimes = new Map();
+/** Tests send reports from one address all day. */
+export const resetReportLimit = () => reportTimes.clear();
 app.post('/festivals/:id/reports', loadFestival, (req, res) => {
   const ip = req.ip; const now = Date.now();
   const recent = (reportTimes.get(ip) || []).filter(t => now - t < 600_000);
@@ -366,6 +397,7 @@ app.post('/festivals/:id/reports', loadFestival, (req, res) => {
     occurredAt: iso(), published: 0,
   };
   q.insertIncident(incident);
+  changed(req.festival.id, 'reports');   // the staff's queue hears it land
   res.status(202).json({ id: incident.id, queued: true });
 });
 
@@ -426,12 +458,15 @@ app.get('/staff/me', (req, res) => {
   res.json({ scope: 'partner', festivalId: id, name: q.festival(id)?.name || id });
 });
 /** Issue a festival its staff key (replacing any before), shown once; the festival becomes a partner. The admin can read whether one stands, and take it back. */
-app.post('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => {
+app.post('/festivals/:id/partner-key', requireAdmin, loadFestival, wrap(async (req, res) => {
   const key = randomBytes(18).toString('base64url');
   q.setSetting(`partner:${req.festival.id}`, hashKey(key));
   if (!req.festival.isPartner) q.upsertFestival({ ...req.festival, isPartner: true });
-  res.json({ festivalId: req.festival.id, key, link: `${SITE}?f=${encodeURIComponent(req.festival.id)}&staff=1` });
-});
+  // The handoff: a link with the key in it, and that link as a QR, so the safety team scans it once and every phone is staff. Shown once, like the key.
+  const handoff = `${SITE}?f=${encodeURIComponent(req.festival.id)}&staff=1&key=${encodeURIComponent(key)}`;
+  const qr = await QRCode.toString(handoff, { type: 'svg', errorCorrectionLevel: 'M', margin: 1, color: { dark: '#1A1533ff', light: '#00000000' } });
+  res.json({ festivalId: req.festival.id, key, link: `${SITE}?f=${encodeURIComponent(req.festival.id)}&staff=1`, handoff, qr });
+}));
 app.get('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => res.json({ festivalId: req.festival.id, issued: Boolean(q.setting(`partner:${req.festival.id}`)) }));
 app.delete('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => { q.deleteSetting(`partner:${req.festival.id}`); res.json({ festivalId: req.festival.id, issued: false }); });
 /** Use, with nobody in it: packs opened, alerts listed and stored, pushes sent, heads-ups, posts, reports, follows, per festival, for the last `days` (7, up to 90). */

@@ -258,6 +258,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .sky .glow{position:absolute;inset:-4% 8% 8% 8%;border-radius:50%;background:radial-gradient(circle at 50% 30%,var(--c),transparent 70%);filter:blur(30px);z-index:-1;opacity:.9}
 .sky .glass{display:block;border-radius:32px;padding:24px 20px 18px;color:var(--ink)}
 .sky.warn .glass{background:linear-gradient(160deg,var(--warn),var(--warn-2));color:#fff;border-color:transparent;box-shadow:0 16px 44px rgba(244,63,94,.35)}
+.sky.hold .glass{background:linear-gradient(160deg,#5b3df5,#8b6cff);color:#fff;border-color:transparent;box-shadow:0 16px 44px rgba(91,61,245,.35)}
 .sky.watch .glass{background:linear-gradient(160deg,var(--watch),var(--watch-2));color:var(--watch-ink);border-color:transparent;box-shadow:0 16px 44px rgba(255,176,59,.35)}
 .sky .eyebrow{color:inherit;opacity:.72;margin:0 0 8px}
 .sky h2{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-optical-sizing:auto;font-size:34px;line-height:1.04;font-weight:600;letter-spacing:-.012em;text-wrap:balance}
@@ -467,6 +468,16 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .sky.stale .glass{filter:saturate(.55)}
 .bolt.none .lead{background:rgba(26,21,51,.08);color:var(--muted)}
 .toast.tap{cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.sign{background:#fff;color:#1A1533;border-radius:24px;padding:28px 24px 22px;text-align:center;margin:12px 0 14px}
+.sign .eyebrow{color:#6b6480}
+.sign h1{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:34px;line-height:1.05;margin:4px 0 16px;font-weight:600}
+.sign-qr{width:min(70vw,320px);height:auto;display:block;margin:0 auto 16px}
+.sign-lead{font-size:17px;line-height:1.4;max-width:34ch;margin:0 auto 12px}
+.sign-url{font-weight:600;font-size:16px;word-break:break-all}
+.sign-foot{font-size:12px;color:#6b6480;margin-top:12px}
+.qr.handoff svg{width:200px;height:200px;display:block;margin:10px auto 6px}
+.retract{margin-top:8px}
+@media print{body{background:#fff!important}.topbar,.btn,.note,#toast,#over,.orbs{display:none!important}#app,.screen{padding:0!important;margin:0!important}.sign{border-radius:0;padding:40px 24px;min-height:95vh;display:flex;flex-direction:column;justify-content:center}.sign h1{font-size:44px}.sign-qr{width:60vw;max-width:480px}}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,16px);opacity:0;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;max-width:calc(100% - 32px);width:max-content;white-space:normal;text-align:center;line-height:1.35;border-radius:22px}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .link{color:var(--accent);font-weight:600;text-decoration:none}
@@ -559,7 +570,7 @@ const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || na
 const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false, toured: false, geoSkip: false, walkStep: 0, introPlayed: false,
   fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
   staffScope: null, hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
-  post: { title: '', body: '', severity: 'minor', error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false,
+  post: { title: '', body: '', severity: 'minor', kind: 'notice', minutes: 60, error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false,
   sound: true, thunder: null, takeover: null, offline: navigator.onLine === false };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
@@ -861,6 +872,7 @@ function go(name, param, opts){
   if (name === 'ground') startGroundEdit();   // the chips open on what the lookups found now, not on a visit from before they landed
   if (name === 'picker') S.query = '';        // the list opens whole, not filtered by what was typed last time
   S.setupOpen = false;                        // the setup choice opens on its own link, never on arrival
+  if (name === 'record') S.recordEdit = null;   // the form opens on the record as it is
   render(false); window.scrollTo(0, 0);
   if (name === 'radar' && fest()) { startRadar(fest()); locate(); loadFlashes(fest()); }
   feedShown();
@@ -871,6 +883,7 @@ function go(name, param, opts){
   if (name === 'feed') loadFeed();
   if (name === 'ground') startGroundEdit();
   if (name === 'diagnostics') loadDiagnostics();
+  if (name === 'settings' && fest() && canStaff(fest()) && backend()) loadQueue();   // how many reports wait, on the row
 }
 function back(){
   stopRadar();
@@ -1151,7 +1164,7 @@ function connectLive(){
 }
 function onLive(d){
   const f = fest();
-  if (f && d.festivalId === f.id) { if (d.kind === 'lightning') loadLightning(f); else if (d.kind === 'radar') { if (S.screen === 'radar') startRadar(f); } else if (!S.busy) refresh(f); }
+  if (f && d.festivalId === f.id) { if (d.kind === 'lightning') loadLightning(f); else if (d.kind === 'radar') { if (S.screen === 'radar') startRadar(f); } else if (d.kind === 'reports') { if (canStaff(f)) loadQueue(); } else if (!S.busy) refresh(f); }
   if (S.screen === 'feed' && !S.feedBusy) loadFeed();
 }
 // ---- warnings, asked once: right after a festival opens, one card offers the push for it ----
@@ -1531,9 +1544,17 @@ const ACTION = {
   rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
   cold:    { warn: ['Get warm and dry now', 'A vehicle or a building with heat. Not a wet tent.'], watch: ['Dry layers before you turn in', 'Something between you and the ground.'] },
 };
-/** [do, and] for an alert: the protocol's line for a lightning code, the timing line and the first task of this setup's own list for a heads-up, the hazard's for a warning or a watch; null when the event names no hazard. */
+// A hold the festival's safety team calls: shelter, evacuate, pause, and the all-clear that ends it. The same two lines everywhere.
+const HOLD_ACTION = {
+  shelter:  ['Shelter in place now', 'Festival staff say so. A vehicle or a building. Not a tent, canopy or stage.'],
+  evacuate: ['Leave the grounds now', 'As staff direct. Take only what you carry.'],
+  pause:    ['Hold where you are', 'The show is paused. Wait for staff before moving.'],
+  allclear: ['All clear', 'Festival staff lifted the hold. Back to normal operations.'],
+};
+/** [do, and] for an alert: the protocol's line for a lightning code, the staff's for a hold, the timing line and the first task of this setup's own list for a heads-up, the hazard's for a warning or a watch; null when the event names no hazard. */
 function actionLines(a, opts) {
   const o = opts || {}, warn = a.severity === 'severe' || a.severity === 'extreme';
+  if (a.channel === 'official') return a.kind && HOLD_ACTION[a.kind] ? HOLD_ACTION[a.kind] : null;
   if (a.channel === 'lightning') return a.code === 'red' || warn ? ['Shelter now', 'Full work stoppage. Not a tent, canopy or stage.'] : ['Head for shelter', 'Evacuation procedures. Staff hold posts.'];
   if (a.channel === 'headsup') {
     const hz = a.hazard || alertHazard(a.event) || 'storms', m = a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - (o.now || Date.now())) / 60000)) : 999;
@@ -1925,6 +1946,7 @@ screens.home = () => {
   const f = fest(); if (!f) return screens.picker();
   const d = data(f), al = skyAlerts(f), lv = d.alerts ? level(f) : (d.error ? 'none' : 'loading');
   const strip = (d.hourly || []).slice(0, 6), over = lv === 'ok' ? endedRecently(f)[0] : null;   // a warning that ended in the last half hour: the all-clear is said, with what to do now
+  const top = lv === 'warn' ? al.find(isWarning) : lv === 'watch' ? al[0] : null, hold = Boolean(top && top.channel === 'official');   // the safety team's own call wears its own color
   const stale = S.offline || Boolean(d.error && d.at && Date.now() - Date.parse(d.at) > 15 * 60000);
   const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories`) : lv === 'ok' ? 'All clear' : lv === 'none' ? 'No weather data' : '';
   const line = lv === 'warn' ? (act => act ? `${act[0]}. ${act[1]}` : 'Take shelter now. Stages and tents are not safe shelter.')(actionFor(al.find(isWarning)))
@@ -1936,8 +1958,8 @@ screens.home = () => {
   const glow = lv === 'ok' ? 'var(--ok)' : lv === 'none' ? 'var(--muted)' : 'var(--violet)';
   const sky = lv === 'loading'
     ? `<div class="sky none" style="--c:var(--violet)" aria-busy="true"><i class="glow"></i><span class="glass"><div class="sk" style="width:38%;height:12px;margin:0 auto 12px"></div><div class="sk" style="width:72%;height:32px;margin:0 auto 10px"></div><div class="sk" style="width:60%;height:15px;margin:0 auto 18px"></div><div class="strip">${'<div class="sk" style="flex:1;height:66px"></div>'.repeat(6)}</div></span></div>`
-    : `<button class="sky ${lv}${over ? ' ended' : ''}${stale ? ' stale' : ''}" style="--c:${glow}" onclick="later(function(){ ${target} })"><i class="glow"></i><span class="glass">
-        <span class="eyebrow">Right now</span>
+    : `<button class="sky ${lv}${over ? ' ended' : ''}${stale ? ' stale' : ''}${hold ? ' hold' : ''}" style="--c:${glow}" onclick="later(function(){ ${target} })"><i class="glow"></i><span class="glass">
+        <span class="eyebrow">${hold ? 'Festival staff' : 'Right now'}</span>
         <h2>${esc(head)}</h2><p>${esc(line)}</p>
         ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h, f)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
         <span class="foot">${esc(statusLine(f))}</span>
@@ -1958,6 +1980,7 @@ screens.home = () => {
     </div>
     ${askPush(f)}
     <div class="group glass">
+      ${!here && (f.shelter || f.medical) ? `<button class="row" onclick="later(function(){ go('shelter') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Shelter and medical</div><div class="s">${esc(f.shelter || f.medical)}</div></div>${I.chev}</button>` : ''}
       ${here ? '' : `${f.isPartner || (f.site || []).length ? `<button class="row" onclick="later(function(){ go('official') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Festival official</div><div class="s">Updates from the festival</div></div>${I.chev}</button>` : ''}
       ${backend() ? `<button class="row" onclick="later(function(){ go('incidents') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Incidents</div><div class="s">County dispatch and reports</div></div>${I.chev}</button>
       <button class="row" onclick="later(function(){ go('report') })"><span class="lead">${I.flag}</span><div class="main"><div class="t">Report a hazard</div><div class="s">Flooding, a fight, someone hurt</div></div>${I.chev}</button>` : ''}
@@ -2052,9 +2075,10 @@ screens.alert = id => {
     : a.expiresAt ? `Until ${esc(fmtTime(a.expiresAt))} · <span data-countdown="${esc(a.expiresAt)}" data-left="1">${esc(leftText(a.expiresAt))}</span>` : esc(a.area);
   const todo = instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${hu ? 'Solidify camp' : 'What to do'}</div><p>${esc(instruction)}</p></div></div>` : '';
   return topbar(backBtn(), '', `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>`) + `
-    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p class="num">${when}</p></div>
+    <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : a.channel === 'official' ? 'Festival staff' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p class="num">${when}</p></div>
     ${!listed ? `<p class="note">From the notification. The festival's own list has not loaded${endedAt ? ', and this one has ended' : ''}.</p>` : ''}
     ${act ? `<div class="donow ${warn ? 'warn' : ''}"><div class="t">${esc(act[0])}</div><div class="s">${esc(act[1])}</div></div>` : ''}
+    ${f && f.shelter && (warn || a.channel === 'official') ? `<div class="todo glass shelter"><span class="ic">${I.shield}</span><div><div class="t">Shelter here</div><p>${esc(f.shelter)}</p></div></div>` : ''}
     ${ours ? todo : ''}
     ${!hu && alertHazard(a.event) === 'storms' && f && !insideOf(f) ? thunderButton() + thunderRow() : ''}
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
@@ -2091,7 +2115,7 @@ screens.prep = () => {
     <h1 class="title">${esc(label)}</h1>
     <p class="sub">${esc(incomingLine(inc))}</p>
     <div class="countdown glass"><span class="eyebrow">${now ? 'Started' : 'Arrives in'}</span><b class="num" data-countdown="${esc(inc.startsAt)}" data-bare="1">${esc(countdownText(inc.startsAt, true))}</b><span class="s">${esc(mudLine || timing(inc.hazard, m, new Date(inc.startsAt).getHours()))}</span></div>
-    <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${esc(shelterFor(inc.hazard, inc.indoor))}</p></div></div>
+    <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${f.shelter ? `${esc(f.shelter)}, say the festival's staff. ` : ''}${esc(shelterFor(inc.hazard, inc.indoor))}</p></div></div>
     ${groundReportRow(f, inc)}
     ${setupHead(f)}
     ${setupRow(f)}
@@ -2158,13 +2182,48 @@ screens.ground = () => {
 };
 
 
+screens.shelter = () => {
+  const f = fest(); if (!f || f.id === 'here') return screens.picker();
+  return topbar(backBtn(), '', '') + `
+    <span class="eyebrow">${esc(f.name)}</span>
+    <h1 class="title">Shelter and medical</h1>
+    <p class="sub">From the festival's safety team.</p>
+    ${f.shelter ? `<div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Shelter</div><p>${esc(f.shelter)}</p></div></div>` : ''}
+    ${f.medical ? `<div class="todo glass"><span class="ic">${I.plus}</span><div><div class="t">Medical</div><p>${esc(f.medical)}</p></div></div>` : ''}
+    <p class="note">In an emergency call 911. Tell them the festival and the nearest gate.</p>`;
+};
+screens.record = () => {
+  const f = fest(); if (!f || f.id === 'here' || !canStaff(f)) return screens.picker();
+  const e = S.recordEdit || (S.recordEdit = { shelter: f.shelter || '', medical: f.medical || '' });
+  return topbar(backBtn(), '', '') + `
+    <span class="eyebrow">${esc(f.name)}</span>
+    <h1 class="title">Shelter and medical</h1>
+    <p class="sub">On every alert and the prep screen, in your words.</p>
+    <div class="group glass">
+      <label class="field"><span class="k">Shelter</span><textarea id="r-shelter" placeholder="The Music Hall, and the cars in Lot B" oninput="S.recordEdit.shelter = this.value">${esc(e.shelter)}</textarea></label>
+      <label class="field"><span class="k">Medical</span><textarea id="r-medical" placeholder="Medical tent by the main gate. ER: Shands Live Oak, 8 minutes north." oninput="S.recordEdit.medical = this.value">${esc(e.medical)}</textarea></label>
+    </div>
+    <button class="btn" id="r-save" onclick="saveRecord()" ${S.recordBusy ? 'disabled' : ''}>${S.recordBusy ? 'Saving' : 'Save'}</button>
+    <p class="note">Where shelter is on these grounds, and where medical is and the nearest ER. Short and plain: people read it in a panic.</p>`;
+};
+async function saveRecord(){
+  const f = fest(), b = backend(); if (!f || !b || !S.recordEdit || S.recordBusy) return;
+  S.recordBusy = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}`, { method: 'PUT', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ shelter: S.recordEdit.shelter.trim(), medical: S.recordEdit.medical.trim() }) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const rec = await r.json(), i = FESTS.findIndex(x => x.id === f.id); if (i >= 0) FESTS[i] = { ...FESTS[i], ...rec, shelter: rec.shelter || '', medical: rec.medical || '' };
+    toast('Saved');
+  }catch(e){ toast(staffFail(e)); }
+  S.recordBusy = false; render();
+}
 screens.official = () => {
   const f = fest(); if (!f) return screens.picker();
   const posts = data(f).posts || [];
   return topbar(backBtn(), '', '') + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Festival official</h1>
-    ${f.isPartner ? (posts.length ? `<p class="h">Updates</p><div class="group glass">${posts.map(p => `<div class="row" style="align-items:flex-start"><div class="main"><div class="t">${esc(p.title)}</div><div class="s">${esc(p.body)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(p.postedAt))}</div></div></div>`).join('')}</div>` : '<div class="card glass"><h3>Nothing posted yet</h3></div>')
+    ${f.isPartner ? (posts.length ? `<p class="h">Updates</p><div class="group glass">${posts.map(p => `<div class="row" style="align-items:flex-start"><div class="main"><div class="t">${esc(p.title)}${p.kind && p.kind !== 'notice' ? ` <span class="pill ${p.kind === 'allclear' ? 'on' : 'warn'}">${esc(KIND_LABEL[p.kind] || p.kind)}</span>` : ''}</div><div class="s">${esc(p.body)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(p.postedAt))}${p.expiresAt && Date.parse(p.expiresAt) > Date.now() ? ` · until ${esc(fmtTime(p.expiresAt))}` : ''}${canStaff(f) && p.reach != null ? ` · reached ${p.reach} phone${p.reach === 1 ? '' : 's'}` : ''}</div>${canStaff(f) ? `<button class="btn quiet small retract" onclick="retractPost('${esc(p.id)}')">Take it back</button>` : ''}</div></div>`).join('')}</div>` : '<div class="card glass"><h3>Nothing posted yet</h3></div>')
                  : `<div class="card glass" style="margin-top:14px"><h3>Not joined yet</h3><p>Staff updates and evacuation notices show up here once the festival signs on.</p></div>`}
     ${(f.site || []).length ? `<p class="h">On site</p><div class="group glass">${f.site.map(s => `<div class="row"><div class="main"><div class="t">${esc(s.title)}</div><div class="s">${esc(s.detail)}</div></div></div>`).join('')}</div>` : ''}
     <p class="note"><a class="link" href="${esc(f.source)}" target="_blank" rel="noopener">${esc(f.source.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))}</a></p>`;
@@ -2224,32 +2283,56 @@ async function sendReport(){
   S.reporting = false; render();
 }
 
+// The safety team's own calls, ready to send: a hold stands on the festival page as a warning until its end, the all-clear ends it.
+const HOLD_KINDS = ['shelter', 'evacuate', 'pause'], KIND_LABEL = { shelter: 'Shelter', evacuate: 'Evacuate', pause: 'Paused', allclear: 'All clear', notice: 'Notice' };
+const TEMPLATES = [
+  { label: 'Shelter', kind: 'shelter', title: 'Shelter in place', body: 'Lightning within 8 miles. Get into a vehicle or a building now. Tents, canopies and stages are not shelter.', severity: 'severe', minutes: 60 },
+  { label: 'Evacuate', kind: 'evacuate', title: 'Evacuate the grounds', body: 'Leave the grounds now, as staff direct. Take only what you carry.', severity: 'severe', minutes: 120 },
+  { label: 'Pause', kind: 'pause', title: 'Show paused', body: 'The show is paused for weather. Hold where you are and wait for staff.', severity: 'moderate', minutes: 60 },
+  { label: 'All clear', kind: 'allclear', title: 'All clear', body: 'The hold is over. Back to normal operations.', severity: 'minor' },
+  { label: 'Gates closed', kind: 'notice', title: 'Gates closed', body: 'Gates are closed until further notice. Stay where you are.', severity: 'moderate' },
+  { label: 'Medical moved', kind: 'notice', title: 'Medical tent has moved', body: 'Now beside the water station at the east gate.', severity: 'minor' },
+];
+function useTemplate(i){ const t = TEMPLATES[i]; S.post = { ...S.post, title: t.title, body: t.body, severity: t.severity, kind: t.kind, minutes: t.minutes || 60, error: null }; render(); }
 screens.post = () => {
   const f = fest(); if (!f || f.id === 'here') return screens.picker();
-  const p = S.post;
+  const p = S.post, hold = HOLD_KINDS.includes(p.kind), forced = p.kind === 'shelter' || p.kind === 'evacuate';
+  const chips = idx => `<div class="chips">${idx.map(i => `<button class="chip ${p.kind === TEMPLATES[i].kind && p.title === TEMPLATES[i].title ? 'on' : ''}" onclick="useTemplate(${i})">${esc(TEMPLATES[i].label)}</button>`).join('')}</div>`;
   return topbar(backBtn(), '', '') + `
     <span class="eyebrow">${esc(f.name)}</span>
     <h1 class="title">Post an update</h1>
-    <p class="sub">Goes to every phone that switched warnings on.</p>
+    <p class="sub">Goes to every phone that switched warnings on. A hold stands on the festival page until it ends.</p>
+    <p class="h">Holds</p>${chips([0, 1, 2, 3])}
+    <p class="h">Notices</p>${chips([4, 5])}
     <div class="group glass">
       <label class="field"><span class="k">Title</span><input id="p-title" value="${esc(p.title)}" placeholder="Medical tent has moved" autocomplete="off" oninput="setPost('title', this.value)"></label>
       <label class="field"><textarea id="p-body" placeholder="Now beside the water station at the east gate." oninput="setPost('body', this.value)">${esc(p.body)}</textarea></label>
     </div>
-    <div class="chips">${['minor', 'moderate', 'severe'].map(x => `<button class="chip ${p.severity === x ? 'on' : ''}" onclick="setPost('severity', '${x}'); render()">${x === 'minor' ? 'Notice' : x === 'moderate' ? 'Heads up' : 'Urgent'}</button>`).join('')}</div>
-    <button class="btn" id="p-send" ${p.title.trim() && p.body.trim() && !S.posting ? '' : 'disabled'} onclick="sendPost()">${S.posting ? 'Posting' : 'Post'}</button>
+    ${hold ? `<p class="h">For</p><div class="chips">${[[30, '30 min'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours']].map(([m, l]) => `<button class="chip ${p.minutes === m ? 'on' : ''}" onclick="setPost('minutes', ${m}); render()">${l}</button>`).join('')}</div>` : ''}
+    ${forced ? '<p class="note">Shelter and evacuate are always urgent: a loud push, and the festival page says it until it ends.</p>' : `<div class="chips">${['minor', 'moderate', 'severe'].map(x => `<button class="chip ${p.severity === x ? 'on' : ''}" onclick="setPost('severity', '${x}'); render()">${x === 'minor' ? 'Notice' : x === 'moderate' ? 'Heads up' : 'Urgent'}</button>`).join('')}</div>`}
+    <button class="btn" id="p-send" ${p.title.trim() && p.body.trim() && !S.posting ? '' : 'disabled'} onclick="sendPost()">${S.posting ? 'Posting' : hold ? `Call the ${p.kind === 'pause' ? 'pause' : 'hold'}` : p.kind === 'allclear' ? 'Give the all-clear' : 'Post'}</button>
     <p class="note">${p.error ? esc(p.error) : 'Signed as festival staff. Keep it short.'}</p>`;
 };
+/** Staff take a post back: off the list, its hold ended, and the phones that heard it hear so. */
+async function retractPost(id){
+  const f = fest(), b = backend(); if (!f || !b || !canStaff(f)) return;
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}/posts/${encodeURIComponent(id)}`, { method: 'DELETE', headers: adminHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    toast('Taken back'); refresh(f);
+  }catch(e){ toast(staffFail(e)); }
+}
 function setPost(k, v){ S.post[k] = v; S.post.error = null; const b = document.getElementById('p-send'); if (b) b.disabled = !(S.post.title.trim() && S.post.body.trim()); }
 async function sendPost(){
   const f = fest(), p = S.post; if (!f || !p.title.trim() || !p.body.trim() || S.posting) return;
   S.posting = true; p.error = null; render();
   try{
-    const r = await fetch(`${backend()}/festivals/${encodeURIComponent(f.id)}/posts`, { method: 'POST', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ title: p.title.trim(), body: p.body.trim(), severity: p.severity }) });
+    const r = await fetch(`${backend()}/festivals/${encodeURIComponent(f.id)}/posts`, { method: 'POST', headers: { ...adminHeaders(), 'content-type': 'application/json' }, body: JSON.stringify({ title: p.title.trim(), body: p.body.trim(), severity: p.severity, kind: p.kind || 'notice', ...(HOLD_KINDS.includes(p.kind) ? { minutes: p.minutes || 60 } : {}) }) });
     const j = await r.json().catch(() => ({}));
     if (r.status === 401) throw new Error('Wrong admin key');
     if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
     const n = (j.web && j.web.sent) || 0;
-    S.post = { title: '', body: '', severity: 'minor', error: null }; S.posting = false;
+    S.post = { title: '', body: '', severity: 'minor', kind: 'notice', minutes: 60, error: null }; S.posting = false;
     toast(n ? `Posted. Pushed to ${n} phone${n === 1 ? '' : 's'}.` : 'Posted.', 3500); back(); refresh(f); return;
   }catch(e){ p.error = /fetch/i.test(e.message) ? "Couldn't reach the backend" : e.message; }
   S.posting = false; render();
@@ -2372,7 +2455,22 @@ screens.share = () => {
     <div class="qr glass">${b ? `<img src="${esc(b)}/festivals/${encodeURIComponent(f.id)}/qr.svg" alt="QR code that opens Fieldwatch on ${esc(f.name)}" width="240" height="240">` : `<div class="empty"><b>No QR code</b>It needs the backend.</div>`}</div>
     <p class="share-link num">${esc(url.replace(/^https?:\/\//, ''))}</p>
     <button class="btn" onclick="shareFestival()">${navigator.share ? 'Share' : 'Copy link'}</button>
-    <p class="note">Print it at the gate. Put it on the screens.</p>`;
+    <button class="btn quiet" onclick="later(function(){ go('sign') })">Print a sign</button>
+    <p class="note">Put it on the screens. The sign goes at the gates, the info booth and the medical tent.</p>`;
+};
+screens.sign = () => {
+  const f = fest(); if (!f || f.id === 'here') return screens.picker();
+  const b = backend(), url = shareURL(f).replace(/^https?:\/\//, '');
+  return topbar(backBtn(), '', '') + `<div class="sign">
+    <span class="eyebrow">Weather warnings for these grounds</span>
+    <h1>${esc(f.name)}</h1>
+    ${b ? `<img class="sign-qr" src="${esc(b)}/festivals/${encodeURIComponent(f.id)}/qr.svg" alt="QR code that opens Fieldwatch on ${esc(f.name)}">` : `<div class="empty"><b>No QR code</b>It needs the backend.</div>`}
+    <p class="sign-lead">Scan it. Warnings from the weather service, the lightning code and the radar for right here, on your phone. No app to install, no account.</p>
+    <p class="sign-url num">${esc(url)}</p>
+    <p class="sign-foot">Fieldwatch · Turn warnings on and they reach you with the phone in your pocket</p>
+  </div>
+  <button class="btn" onclick="window.print()">Print</button>
+  <p class="note">Letter or A4, portrait.</p>`;
 };
 const shareURL = f => `${location.origin}${location.pathname}?f=${encodeURIComponent(f.id)}`;
 async function shareFestival(){
@@ -2437,9 +2535,9 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : S.geoDenied ? 'Blocked' : 'Off'}</span></button></div>
   <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">Watch the intro and take the tour again</div></div>${I.chev}</button><button class="row" onclick="toggleSound()"><span class="lead">${I.bell}</span><div class="main"><div class="t">Sound on warnings</div><div class="s">A tone with the buzz when a warning lands or the code rises</div></div><span class="pill ${S.sound !== false ? 'on' : ''}">${S.sound !== false ? 'On' : 'Off'}</span></button></div>
   ${staffMode() ? `<p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">${S.queue && S.queue.length ? `${S.queue.length} waiting` : 'Before they go out'}</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('record') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Shelter and medical</div><div class="s">${fest().shelter || fest().medical ? 'On the record' : 'Where to go, in your words'}</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
   ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
-  ${S.issued ? `<div class="card glass"><h3>Staff key for ${esc(S.issued.name)}</h3><p>Shown once. Send it and the link to the safety team; they put the key in Settings here.</p><p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.key)}</p><p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.link)}</p><div class="acts"><button class="btn small" onclick="copyText('${esc(S.issued.key)}\\n${esc(S.issued.link)}')">Copy</button><button class="btn small quiet" onclick="S.issued = null; render()">Done</button></div></div>` : ''}` : ''}
+  ${S.issued ? `<div class="card glass"><h3>Staff key for ${esc(S.issued.name)}</h3><p>Shown once. Send it and the link to the safety team; they put the key in Settings here.</p><p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.key)}</p>${S.issued.qr ? `<div class="qr glass handoff">${S.issued.qr}</div><p>Or have each staff phone scan this once: it opens the app on the festival with the key in place.</p>` : ''}<p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.link)}</p><div class="acts"><button class="btn small" onclick="copyText('${esc(S.issued.key)}\\n${esc(S.issued.link)}')">Copy</button><button class="btn small quiet" onclick="S.issued = null; render()">Done</button></div></div>` : ''}` : ''}
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen with an icon. Works with no signal.</p></div>` : ''}
   <p class="note">Carrier emergency alerts still arrive on their own.</p>
   <div class="group glass"><button class="row" onclick="forget()"><div class="main"><div class="t">Forget saved data</div><div class="s">Festival choice and cached weather</div></div>${I.chev}</button></div>
@@ -2859,6 +2957,8 @@ async function boot(){
   FESTS = backend() && S.fests ? mergeLists(bundled || [], S.fests) : (bundled || []);
   const qs = new URLSearchParams(location.search);
   if (qs.get('staff')) { S.staff = true; save(); }
+  // The handoff: a staff phone scanned the QR the admin was given. The key is kept and the link is cleaned, since a key in an address is a key on a screen.
+  if (qs.get('key')) { S.admin = qs.get('key').trim(); S.staff = true; S.staffScope = null; qs.delete('key'); save(); try{ history.replaceState(null, '', location.pathname + (qs.toString() ? `?${qs}` : '')); }catch(e){} whoAmI(); }
   if (qs.get('f') || qs.get('here')) {
     S.link = { fest: qs.get('f'), here: !!qs.get('here'), alert: qs.get('alert') || null };
     qs.delete('f'); qs.delete('here'); qs.delete('alert');

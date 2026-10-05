@@ -86,6 +86,9 @@ if (!/PRIMARY KEY \(festival_id, id\)/.test(db.prepare(`SELECT sql FROM sqlite_m
     DROP TABLE alerts; ALTER TABLE alerts_new RENAME TO alerts; CREATE INDEX IF NOT EXISTS alerts_festival ON alerts(festival_id);`);
 }
 // Added later: a festival someone suggested waits as 'pending' until an admin approves it.
+for (const [col, type] of [['kind', "TEXT NOT NULL DEFAULT 'notice'"], ['severity', "TEXT NOT NULL DEFAULT 'minor'"], ['expires_at', 'TEXT'], ['reach', 'INTEGER NOT NULL DEFAULT 0'], ['retracted_at', 'TEXT']]) {
+  if (!db.prepare(`PRAGMA table_info(posts)`).all().some(c => c.name === col)) db.exec(`ALTER TABLE posts ADD COLUMN ${col} ${type}`);
+}
 if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'status')) {
   db.exec(`ALTER TABLE festivals ADD COLUMN status TEXT NOT NULL DEFAULT 'published'`);
 }
@@ -110,8 +113,11 @@ const s = {
   activeAlertIds: db.prepare(`SELECT id FROM alerts WHERE festival_id = ? AND (expires_at IS NULL OR expires_at > ?)`),
   purgeAlerts: db.prepare(`DELETE FROM alerts WHERE expires_at IS NOT NULL AND expires_at < ?`),
 
-  insertPost: db.prepare(`INSERT INTO posts (festival_id, title, body, posted_at) VALUES (?, ?, ?, ?)`),
-  posts: db.prepare(`SELECT id, title, body, posted_at FROM posts WHERE festival_id = ? ORDER BY posted_at DESC LIMIT 50`),
+  insertPost: db.prepare(`INSERT INTO posts (festival_id, title, body, posted_at, kind, severity, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)`),
+  posts: db.prepare(`SELECT id, title, body, posted_at, kind, severity, expires_at, reach FROM posts WHERE festival_id = ? AND retracted_at IS NULL ORDER BY posted_at DESC LIMIT 50`),
+  post: db.prepare(`SELECT id, festival_id, title, body, posted_at, kind, severity, expires_at, reach, retracted_at FROM posts WHERE id = ?`),
+  setPostReach: db.prepare(`UPDATE posts SET reach = ? WHERE id = ?`),
+  retractPost: db.prepare(`UPDATE posts SET retracted_at = ? WHERE id = ? AND retracted_at IS NULL`),
 
   insertIncident: db.prepare(`INSERT INTO incidents (id, festival_id, category, level, summary, transcript, source, talkgroup, location, latitude, longitude, audio_file, occurred_at, published, created_at)
     VALUES (@id, @festivalId, @category, @level, @summary, @transcript, @source, @talkgroup, @location, @latitude, @longitude, @audioFile, @occurredAt, @published, @createdAt)`),
@@ -160,8 +166,11 @@ export const q = {
   activeAlertIds: festivalId => s.activeAlertIds.all(festivalId, iso()).map(r => r.id),
   purgeAlerts: olderThan => s.purgeAlerts.run(iso(olderThan)),
 
-  insertPost: (festivalId, title, body) => s.insertPost.run(festivalId, title, body, iso()),
-  posts: festivalId => s.posts.all(festivalId).map(r => ({ id: String(r.id), title: r.title, body: r.body, postedAt: r.posted_at })),
+  insertPost: (festivalId, title, body, { kind = 'notice', severity = 'minor', expiresAt = null } = {}) => s.insertPost.run(festivalId, title, body, iso(), kind, severity, expiresAt),
+  posts: festivalId => s.posts.all(festivalId).map(r => ({ id: String(r.id), title: r.title, body: r.body, postedAt: r.posted_at, kind: r.kind, severity: r.severity, expiresAt: r.expires_at, reach: r.reach })),
+  post: id => { const r = s.post.get(Number(id)); return r ? { id: String(r.id), festivalId: r.festival_id, title: r.title, body: r.body, postedAt: r.posted_at, kind: r.kind, severity: r.severity, expiresAt: r.expires_at, reach: r.reach, retractedAt: r.retracted_at } : null; },
+  setPostReach: (id, n) => s.setPostReach.run(n, Number(id)),
+  retractPost: id => s.retractPost.run(iso(), Number(id)).changes > 0,
 
   insertIncident: i => s.insertIncident.run({ transcript: null, talkgroup: null, location: null, latitude: null, longitude: null, audioFile: null, published: 0, createdAt: iso(), ...i }),
   incident: id => rowToIncident(s.incident.get(id)),

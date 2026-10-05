@@ -293,9 +293,17 @@ const ACTION = {
   rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
   cold:    { warn: ['Get warm and dry now', 'A vehicle or a building with heat. Not a wet tent.'], watch: ['Dry layers before you turn in', 'Something between you and the ground.'] },
 };
-/** [do, and] for an alert: the protocol's line for a lightning code, the timing line and the first task of this setup's own list for a heads-up, the hazard's for a warning or a watch; null when the event names no hazard. */
+// A hold the festival's safety team calls: shelter, evacuate, pause, and the all-clear that ends it. The same two lines everywhere.
+const HOLD_ACTION = {
+  shelter:  ['Shelter in place now', 'Festival staff say so. A vehicle or a building. Not a tent, canopy or stage.'],
+  evacuate: ['Leave the grounds now', 'As staff direct. Take only what you carry.'],
+  pause:    ['Hold where you are', 'The show is paused. Wait for staff before moving.'],
+  allclear: ['All clear', 'Festival staff lifted the hold. Back to normal operations.'],
+};
+/** [do, and] for an alert: the protocol's line for a lightning code, the staff's for a hold, the timing line and the first task of this setup's own list for a heads-up, the hazard's for a warning or a watch; null when the event names no hazard. */
 function actionLines(a, opts) {
   const o = opts || {}, warn = a.severity === 'severe' || a.severity === 'extreme';
+  if (a.channel === 'official') return a.kind && HOLD_ACTION[a.kind] ? HOLD_ACTION[a.kind] : null;
   if (a.channel === 'lightning') return a.code === 'red' || warn ? ['Shelter now', 'Full work stoppage. Not a tent, canopy or stage.'] : ['Head for shelter', 'Evacuation procedures. Staff hold posts.'];
   if (a.channel === 'headsup') {
     const hz = a.hazard || alertHazard(a.event) || 'storms', m = a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - (o.now || Date.now())) / 60000)) : 999;
@@ -308,7 +316,7 @@ function actionLines(a, opts) {
 // ==== shared: end ====
 
 // ---- backend only: the wording of a push, in the festival's own clock ----
-export { THRESHOLDS, WIND_LINES, HEAT_FLAGS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, wbgtF, heatFlag, flagText, campFor, deadlines, taskMinutes, timing, ACTION, actionLines, gustOdds, dirWords, sunTimes };
+export { THRESHOLDS, WIND_LINES, HEAT_FLAGS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, wbgtF, heatFlag, flagText, campFor, deadlines, taskMinutes, timing, ACTION, HOLD_ACTION, actionLines, gustOdds, dirWords, sunTimes };
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 /** The hour of the day (0 to 23) at a place, for the bedtime line. */
 export const localHour = (t, tz) => { try { return Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: tz || 'UTC' }).format(new Date(t))); } catch { return new Date(t).getUTCHours(); } };

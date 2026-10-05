@@ -58,6 +58,9 @@ export function normalizeFestival(input = {}, { base = null, origin = 'curated',
   if (f.verifiedOn) out.verifiedOn = String(f.verifiedOn).slice(0, 10);
   if (text(f.grounds, 60)) out.grounds = text(f.grounds, 60);   // the known grounds this record sits on (grounds.js)
   const note = text(f.note, 300); if (note) out.note = note;
+  // What the safety team knows: where shelter is on these grounds, and where medical is and the nearest ER. On every alert and the prep screen.
+  const shelter = text(f.shelter, 300); if (shelter) out.shelter = shelter;
+  const medical = text(f.medical, 300); if (medical) out.medical = medical;
   if (f.submittedAt) out.submittedAt = f.submittedAt;
   if (f.ground && typeof f.ground === 'object') out.ground = f.ground;   // what the lookups found and what staff set (ground.js)
   if (f.camping === true || f.camping === false) out.camping = f.camping;   // whether people camp here: tent and canopy advice only where they do

@@ -712,3 +712,63 @@ test('a spot, festival or not: the lightning grade and the flashes for wherever 
   const fl = await api('GET', '/point/35.2271,-80.8431/lightning/flashes');
   assert.equal(fl.status, 200); assert.deepEqual(fl.json.flashes, []);
 });
+
+test('a hold the safety team calls stands on the page as a warning until its end, the all-clear ends it, a post can be taken back, and the reach is kept', async () => {
+  const sent = []; setWebPushTransport(async (sub, payload, opts) => { sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload), opts }); });
+  const sub = { endpoint: 'https://push.example.test/hold', expirationTime: null, keys: { p256dh: 'p-h', auth: 'a-h' } };
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub, festivalId: FEST, quiet: true } })).json.ok, true);
+  assert.equal((await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'x', body: 'y', kind: 'siren' } })).status, 400);
+  const before = Date.now();
+  const hold = await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Shelter in place', body: 'Lightning within 8 miles. Get into a vehicle or a building now.', kind: 'shelter', minutes: 45 } });
+  assert.equal(hold.status, 201); assert.equal(hold.json.kind, 'shelter'); assert.equal(hold.json.reach, 1); assert.deepEqual(hold.json.ended, []);
+  const standing = q.activeAlerts(FEST).find(a => a.id === `official-${FEST}-${hold.json.id}`);
+  assert.ok(standing, 'a hold is kept with the alerts so the page carries it'); assert.equal(standing.severity, 'severe', 'shelter is always urgent'); assert.equal(standing.kind, 'shelter'); assert.equal(standing.minutes, 45);
+  assert.ok(Math.abs(Date.parse(standing.expiresAt) - (before + 45 * 60_000)) < 5000, 'it ends when staff said');
+  assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Shelter in place'); assert.equal(sent[0].opts.urgency, 'high'); assert.equal(sent[0].payload.channel, 'official');
+  const listed = (await api('GET', `/festivals/${FEST}/posts`)).json.find(p => p.id === hold.json.id);
+  assert.equal(listed.kind, 'shelter'); assert.equal(listed.reach, 1); assert.equal(listed.expiresAt, standing.expiresAt);
+  // A notice stays a post and a push, not an alert on the sky.
+  const notice = await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Water station moved', body: 'Now by the east gate.' } });
+  assert.equal(notice.json.kind, 'notice'); assert.equal(q.alert(FEST, `official-${FEST}-${notice.json.id}`), null);
+  // The all-clear ends every hold standing and is said once.
+  sent.length = 0;
+  const clear = await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'All clear', body: 'The hold is over.', kind: 'allclear' } });
+  assert.deepEqual(clear.json.ended, [standing.id]);
+  assert.ok(Date.parse(q.alert(FEST, standing.id).expiresAt) <= Date.now(), 'the hold ended');
+  assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'All clear'); assert.equal(sent[0].opts.urgency, 'normal');
+  // Staff take the notice back: off the list, and the phones hear so under its tag.
+  sent.length = 0;
+  assert.equal((await api('DELETE', `/festivals/${FEST}/posts/999999`, { headers: admin })).status, 404);
+  assert.equal((await api('DELETE', `/festivals/${FEST}/posts/${notice.json.id}`)).status, 401);
+  const gone = await api('DELETE', `/festivals/${FEST}/posts/${notice.json.id}`, { headers: admin });
+  assert.equal(gone.status, 200); assert.equal(gone.json.ended, false, 'a notice had no alert to end');
+  assert.equal((await api('DELETE', `/festivals/${FEST}/posts/${notice.json.id}`, { headers: admin })).status, 409, 'once');
+  assert.ok(!(await api('GET', `/festivals/${FEST}/posts`)).json.some(p => p.id === notice.json.id), 'off the list');
+  assert.equal(sent.length, 0, 'a minor notice taken back is nothing to push about');
+  const hold2 = await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Evacuate the grounds', body: 'Leave now, as staff direct.', kind: 'evacuate' } });
+  sent.length = 0;
+  const back = await api('DELETE', `/festivals/${FEST}/posts/${hold2.json.id}`, { headers: admin });
+  assert.equal(back.json.ended, true); assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Retracted: Evacuate the grounds'); assert.equal(sent[0].payload.tag, `official-${FEST}-${hold2.json.id}`); assert.equal(sent[0].payload.ended, true);
+  assert.equal(q.alert(FEST, `official-${FEST}-${hold2.json.id}`).retracted, true);
+  assert.equal((await api('DELETE', '/push/subscribe', { body: { endpoint: sub.endpoint } })).json.ok, true);
+});
+
+test('the staff key hands off as a link and a QR, the record carries shelter and medical, and a report landing is on the stream', async () => {
+  const issued = await api('POST', `/festivals/${FEST}/partner-key`, { headers: admin });
+  assert.equal(issued.status, 200); assert.ok(issued.json.key);
+  assert.equal(issued.json.handoff, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&staff=1&key=${encodeURIComponent(issued.json.key)}`);
+  assert.match(issued.json.qr, /^<svg/, 'the handoff as a QR, to scan once');
+  assert.equal((await api('GET', '/staff/me', { headers: { 'x-admin-key': issued.json.key } })).json.scope, 'partner');
+  const edited = await api('PUT', `/festivals/${FEST}`, { headers: { 'x-admin-key': issued.json.key }, body: { shelter: 'The Music Hall and the cars in Lot B', medical: 'Medical tent by the main gate. ER: Shands Live Oak, 8 minutes north on US 129.' } });
+  assert.equal(edited.status, 200); assert.equal(edited.json.shelter, 'The Music Hall and the cars in Lot B'); assert.match(edited.json.medical, /^Medical tent/); assert.equal(edited.json.name, 'Suwannee Hulaween', 'the rest of the record stays');
+  assert.equal((await api('GET', `/festivals/${FEST}`)).json.shelter, 'The Music Hall and the cars in Lot B');
+  const hold = await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'Shelter in place', body: 'Now.', kind: 'shelter' } });
+  assert.equal(q.alert(FEST, `official-${FEST}-${hold.json.id}`).instruction, 'Shelter: The Music Hall and the cars in Lot B', 'a hold carries where shelter is');
+  await api('DELETE', `/festivals/${FEST}/posts/${hold.json.id}`, { headers: admin });
+  const { live } = await import('../src/live.js'), heard = []; const on = e => heard.push(e); live.on('change', on);
+  (await import('../src/app.js')).resetReportLimit();
+  assert.equal((await api('POST', `/festivals/${FEST}/reports`, { body: { summary: 'Fence down by the north gate, people climbing' } })).status, 202);
+  live.off('change', on);
+  assert.ok(heard.some(e => e.festivalId === FEST && e.kind === 'reports'), 'the staff queue hears it land');
+  await api('DELETE', `/festivals/${FEST}/partner-key`, { headers: admin });
+});
