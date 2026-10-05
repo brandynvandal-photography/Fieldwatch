@@ -1120,7 +1120,7 @@ function openSetup(){ S.setupOpen = true; render(); }
 const insideOf = f => Boolean(data(f).ground && data(f).ground.indoor === true);
 /** The list's heading, with one small way to say it is not you. Nobody is handed a form: the setup is read from the record (people camp here, or not) and the choice opens only on that tap. */
 function setupHead(f){
-  const on = setupFor(f), title = on === 'camping' ? 'Solidify camp, in order' : on === 'crew' ? 'Secure the booth, in order' : 'Before it comes, in order';
+  const on = setupFor(f), title = on === 'camping' ? 'Camp' : on === 'crew' ? 'Booth' : 'Checklist';
   if (S.setupOpen || insideOf(f)) return `<p class="h">${title}</p>`;   // inside, the list is the same for everyone
   const alt = on === 'camping' ? 'Not camping?' : on === 'crew' ? 'Not crew?' : campingAt(f) === false ? 'Crew?' : 'Camping or crew?';
   return `<p class="h">${title} <button class="hlink" onclick="openSetup()">${alt}</button></p>`;
@@ -1148,7 +1148,7 @@ function groundReportRow(f, inc){
   if (f.id === 'here' || (data(f).ground && data(f).ground.indoor === true)) return '';
   if (inc && !(inc.mud || ['rain', 'storms', 'flood', 'runoff'].includes(inc.hazard))) return '';   // the ground matters when rain is in the picture, not in heat or wind
   const g = data(f).ground || {}, last = g.reports && g.reports.last, fresh = last && Date.now() - Date.parse(last.at) < 6 * 3600000;
-  return `<p class="h">How is the ground?</p>
+  return `<p class="h">Ground</p>
     <div class="chips">${Object.entries(GROUND_STATE_LABEL).map(([v, l]) => `<button class="chip ${fresh && last.state === v ? 'on' : ''}" onclick="reportGround('${v}')" ${S.groundReporting ? 'disabled' : ''}>${l}</button>`).join('')}</div>
     <p class="note">${fresh ? `Last reported ${esc(GROUND_STATE_LABEL[last.state].toLowerCase())} ${esc(ago(last.at))}${g.reports.recent > 1 ? `, ${g.reports.recent} reports in six hours` : ''}.` : 'One tap tells everyone here and teaches the app how much rain this ground takes.'}${g.learned ? ` This ground goes soft at about ${esc(g.learned.threshold.toFixed(2))} in, from ${g.learned.samples} report${g.learned.samples === 1 ? '' : 's'}.` : ''}</p>`;
 }
@@ -1799,7 +1799,7 @@ function packLine(days){
 function daysSection(f){
   const days = festivalDays(f); if (!days.length) return '';
   const row = d => `<div class="dayrow"><span class="wd">${esc(weekday(d.date))}</span><span class="fc">${esc(d.forecast)}</span><span class="hl num"><b>${d.high == null ? '–' : Math.round(d.high) + '°'}</b><span>${d.low == null ? '–' : Math.round(d.low) + '°'}</span></span><span class="rn">${d.rain ? d.rain + '%' : ''}</span></div>`;
-  return `<p class="h">Day by day</p><p class="sub" id="pack">${esc(packLine(days))}</p><div class="group glass days">${days.map(row).join('')}</div>`;
+  return `<p class="h">Days</p><p class="sub" id="pack">${esc(packLine(days))}</p><div class="group glass days">${days.map(row).join('')}</div>`;
 }
 /** Sunset and sunrise here: the next of each from now, so the evening knows when the light goes and the small hours know when it comes back. */
 function sunLine(f){
@@ -1811,7 +1811,7 @@ function sunLine(f){
 }
 function crewSection(f, hours){
   const svg = hours.length ? crewSVG(f, hours) : ''; if (!svg) return '';
-  return `<p class="h">Heat, wind, lightning</p><div class="chart glass">${svg}<div class="tip" id="tip2"></div></div>`;
+  return `<p class="h">Hazards</p><div class="chart glass">${svg}<div class="tip" id="tip2"></div></div>`;
 }
 
 // ---- screens ---------------------------------------------------------------------------------------------------
@@ -1871,7 +1871,7 @@ const ES = {
   'Tornado': 'Tornado', 'Storms': 'Tormentas', 'Hail': 'Granizo', 'Strong wind': 'Viento fuerte', 'Flooding': 'Inundación', 'Heavy rain': 'Lluvia fuerte', 'Dangerous heat': 'Calor peligroso', 'Cold night': 'Noche fría',
   'Right now': 'Ahora mismo', 'Festival staff': 'Personal del festival', 'No weather data': 'Sin datos del clima', 'Warning': 'Aviso', 'Advisory': 'Advertencia', 'Heads-up': 'Atención', 'Lightning': 'Rayos',
   'What to do': 'Qué hacer', 'Solidify camp': 'Asegure el campamento', 'Shelter here': 'Refugio aquí', 'Warn people near you': 'Avise a la gente cerca de usted', 'Open the alert': 'Abrir la alerta', 'Got it': 'Entendido',
-  'Radar': 'Radar', 'Alerts': 'Alertas', 'Forecast': 'Pronóstico', 'Storm reports': 'Reportes de tormenta', 'Its area on the radar': 'Su área en el radar', 'The warning is drawn around the grounds, with the rain': 'El aviso está dibujado alrededor del recinto, con la lluvia',
+  'Radar': 'Radar', 'Alerts': 'Alertas', 'Forecast': 'Pronóstico', 'Storm reports': 'Reportes de tormenta', 'Sightings': 'Avistamientos', 'Ungraded': 'Sin código', 'Favorites': 'Favoritos', 'Its area on the radar': 'Su área en el radar', 'The warning is drawn around the grounds, with the rain': 'El aviso está dibujado alrededor del recinto, con la lluvia',
   'Ground now': 'Suelo ahora', 'Paths are soft and muddy': 'Los caminos están blandos y con lodo', 'Deep mud. Fields will not hold vehicles': 'Lodo profundo. Los campos no aguantan vehículos', 'Standing water on low ground': 'Agua estancada en el terreno bajo',
 };
 const T = s => (S.lang === 'es' && ES[s]) || s;
@@ -1993,7 +1993,7 @@ const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'he
 /** A card's code, as the card shows it: the feed's grade for the festival or its own, lifted by a standing lightning alert. */
 const feedCode = i => { const fd = S.feed, l = lightningState((fd && fd.codes && fd.codes[i.festival.id]) || i.lightning || null, i.alerts); return l ? l.code : 'none'; };
 const CODE_ORDER = { red: 5, orange: 4, yellow: 3, green: 2, indoor: 1, none: 0 };
-const CODE_GROUP = { red: 'Code Red', orange: 'Code Orange', yellow: 'Code Yellow', green: 'Code Green', indoor: 'Indoors', none: 'No lightning data', later: 'Favorites not on yet' };
+const CODE_GROUP = { red: 'Code Red', orange: 'Code Orange', yellow: 'Code Yellow', green: 'Code Green', indoor: 'Indoors', none: 'Ungraded', later: 'Favorites' };
 // The quiet bulk of the list, folded into one bubble each: the group's pill and why there is nothing to grade.
 const FOLDS = { green: { pill: CODE.green.label, cls: 'green', why: 'No lightning within 20 mi' }, indoor: { pill: 'Indoors', cls: '', why: 'No lightning codes' } };
 /**
@@ -2023,7 +2023,7 @@ screens.feed = () => {
   const groups = [];
   for (const i of cards) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
   const card = (i, inFold) => feedCard(i, { fav: isFav(i.festival.id), inFold: Boolean(inFold) });
-  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'No lightning data'))}</p>` : ''}${g.items.map(i => card(i)).join('')}`).join('');
+  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'Ungraded'))}</p>` : ''}${g.items.map(i => card(i)).join('')}`).join('');
   return topbar(S.stack.length ? backBtn() : '', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
     <h1 class="title">Festivals</h1>
@@ -2061,8 +2061,8 @@ function pickerBody(){
     return (hits.length ? `<div class="group glass tight">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
   }
   const favGroup = favs.length ? `<p class="h">Favorites</p><div class="grid">${favs.map(bubble).join('')}</div>` : '';
-  const bubbleGroup = bubbles.length ? `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Right here' : started(bubbles[0]) ? 'Happening now' : 'Gates open soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>` : '';
-  return `${favGroup}${bubbleGroup}${rest.length ? `<p class="h">Also on</p><div class="group glass tight">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
+  const bubbleGroup = bubbles.length ? `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Here' : started(bubbles[0]) ? 'Now' : 'Soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>` : '';
+  return `${favGroup}${bubbleGroup}${rest.length ? `<p class="h">Others</p><div class="group glass tight">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
 }
 screens.picker = () => {
   const on = pickerOn();
@@ -2144,7 +2144,7 @@ screens.weather = () => {
   const f = fest(); if (!f) return screens.picker();
   const d = data(f), al = activeAlerts(f), hr = (d.hourly || []).slice(0, 24);
   const alerts = al.length
-    ? `<p class="h">Active alerts</p><div class="group glass">${al.map(a => `<button class="alert" onclick="go('alert','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`
+    ? `<p class="h">Alerts</p><div class="group glass">${al.map(a => `<button class="alert" onclick="go('alert','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`
     : d.alerts ? `<div class="card glass"><h3>No active alerts</h3><p>Nothing in effect for ${esc(f.county || 'this spot')}.</p></div>`
     : `<div class="card glass"><h3>${S.busy ? 'Checking' : 'No data yet'}</h3><p>${esc(statusLine(f))}</p></div>`;
   const chart = hr.length
@@ -2227,7 +2227,7 @@ screens.alert = id => {
     ${a.geometry && f ? `<div class="group glass"><button class="row" onclick="later(function(){ go('radar') })"><span class="lead">${I.radar}</span><div class="main"><div class="t">${esc(T('Its area on the radar'))}</div><div class="s">${esc(T('The warning is drawn around the grounds, with the rain'))}</div></div>${I.chev}</button></div>` : ''}
     ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>${esc(T('Warn people near you'))}</span></button><p class="note">${IOS ? 'Works with no signal. They need AirDrop set to Everyone.' : 'Works with no signal. Or text it.'}</p>` : ''}
     ${sections.length ? `<div class="group glass secs">${sections.map(s => section(s.label, bullets(s.text))).join('')}</div>` : ''}
-    ${!ours && (instruction || paragraphs.length) ? `<details class="more glass"><summary>Full alert${I.chev}</summary><div class="inner secs">${instruction ? section('What to do', bullets(instruction)) : ''}${paragraphs.length ? section('From the weather service', paragraphs) : ''}</div></details>` : ours ? paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('') : ''}
+    ${!ours && (instruction || paragraphs.length) ? `<details class="more glass"><summary>Full alert${I.chev}</summary><div class="inner secs">${instruction ? section('Instructions', bullets(instruction)) : ''}${paragraphs.length ? section('Statement', paragraphs) : ''}</div></details>` : ours ? paragraphs.map(p => `<p class="body">${esc(p)}</p>`).join('') : ''}
     <div class="group glass">
       <div class="kv"><span class="k">Area</span><span class="v">${esc(areaText(a.area))}</span></div>
       <div class="kv"><span class="k">Source</span><span class="v">${esc(a.source)}</span></div>
@@ -2265,7 +2265,7 @@ screens.prep = () => {
     <details class="correct"><summary>Timeline and what to pack${I.chev}</summary><div class="inner">
     <p class="h">Timeline</p>
     <div class="group glass">${rows.map(([k, l, t]) => `<div class="tl ${k === stage ? 'now' : ''}"><span class="k">${esc(l)}</span><span class="v">${esc(t)}</span></div>`).join('')}</div>
-    <p class="h">Pack for shelter</p>
+    <p class="h">Pack</p>
     <div class="group glass steps">${SHELTER_PACK.map(s => `<div class="step"><span class="n"></span><span class="task">${esc(s)}</span></div>`).join('')}</div>
     </div></details>
     <p class="note">${groundLine(d.ground) ? esc(groundLine(d.ground)) + '. ' : ''}${inc.source === 'alert' ? 'From a National Weather Service watch or warning' : inc.source === 'radar' ? 'From the rain on the radar' : 'From the National Weather Service forecast'}${d.at ? ` · checked ${esc(ago(d.at))}` : ''}.</p>`;
@@ -2288,8 +2288,8 @@ screens.lightning = () => {
       ${live && l.code === 'red' && l.allClearAt ? (l.allClearHeld ? `<b class="num">Waiting for data</b><span class="s">thirty minutes have passed since the last close flash, but the mapper has not reported for ${esc(l.dataAt ? dataAge(l) : '?')} min, so nobody can call it clear</span>` : `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">to the all-clear unless it strikes again</span>`) : ''}</div>
     ${indoor ? '' : thunderButton() + thunderRow()}
     ${live && l.within ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}</div>` : ''}   <!-- a code staff set over no data has no counts -->
-    ${live ? `<p class="h">This code</p><div class="group glass">${codeRow(l.code)}</div><details class="correct"><summary>The other codes${I.chev}</summary><div class="inner"><div class="group glass">${Object.keys(CODE).filter(k => k !== l.code).map(codeRow).join('')}</div></div></details>`
-      : `<p class="h">The codes</p><div class="group glass">${Object.keys(CODE).map(codeRow).join('')}</div>`}
+    ${live ? `<p class="h">Current</p><div class="group glass">${codeRow(l.code)}</div><details class="correct"><summary>The other codes${I.chev}</summary><div class="inner"><div class="group glass">${Object.keys(CODE).filter(k => k !== l.code).map(codeRow).join('')}</div></div></details>`
+      : `<p class="h">Codes</p><div class="group glass">${Object.keys(CODE).map(codeRow).join('')}</div>`}
     ${canStaff(f) && backend() && !indoor ? staffCodeBox(f, l) : ''}
     <p class="note">GOES lightning mapper, read every 20 seconds. It can miss flashes under a thick anvil. The festival's own detection and safety staff are the authority.</p>`;
 };
@@ -2314,9 +2314,9 @@ screens.ground = () => {
     <p class="h">Setting</p>${chips('indoor', [[false, 'Outdoors'], [true, 'Indoors']], v => e.indoor === v)}
     <p class="h">Surface</p>${chips('surface', Object.entries(SURFACE_CHIP), v => e.surface === v)}
     <p class="h">Soil</p>${chips('soil', Object.entries(SOIL_CHIP), v => e.soil === v)}
-    <p class="h">Low ground</p>${chips('low', [[true, 'Yes, it floods'], [false, 'No']], v => e.low === v)}
+    <p class="h">Flooding</p>${chips('low', [[true, 'Yes, it floods'], [false, 'No']], v => e.low === v)}
     <p class="h">Camping</p>${chips('camping', [[true, 'Yes, people camp'], [false, 'No camping']], v => e.camping === v)}
-    <p class="h">What is standing</p>${chips('structures', Object.entries(STRUCTURE_CHIP), v => e.structures.includes(v))}
+    <p class="h">Structures</p>${chips('structures', Object.entries(STRUCTURE_CHIP), v => e.structures.includes(v))}
     <button class="btn" onclick="saveGround()" ${S.groundBusy ? 'disabled' : ''}>Save</button>
     <div class="acts"><button class="btn quiet small" onclick="groundCall('POST', '/lookup')" ${S.groundBusy ? 'disabled' : ''}>Look it up again</button>${g.override ? `<button class="btn quiet small" onclick="groundCall('DELETE', '')" ${S.groundBusy ? 'disabled' : ''}>Clear override</button>` : ''}<button class="btn quiet small" onclick="pinHere()" ${S.groundBusy || !S.here ? 'disabled' : ''}>Pin it here</button></div>
     <p class="note">${S.here ? `The pin is ${esc(fmtDist(away(f)))} from you. Pin it here moves it to where you stand and looks the ground up again.` : 'Pin it here needs your location on.'}</p>
@@ -2368,7 +2368,7 @@ screens.official = () => {
     <h1 class="title">Festival official</h1>
     ${f.isPartner ? (posts.length ? `<p class="h">Updates</p><div class="group glass">${posts.map(p => `<div class="row" style="align-items:flex-start"><div class="main"><div class="t">${esc(p.title)}${p.kind && p.kind !== 'notice' ? ` <span class="pill ${p.kind === 'allclear' ? 'on' : 'warn'}">${esc(KIND_LABEL[p.kind] || p.kind)}</span>` : ''}</div><div class="s">${esc(p.body)}</div><div class="s num" style="font-size:13px">${esc(fmtFull(p.postedAt))}${p.expiresAt && Date.parse(p.expiresAt) > Date.now() ? ` · until ${esc(fmtTime(p.expiresAt))}` : ''}${canStaff(f) && p.reach != null ? ` · reached ${p.reach} phone${p.reach === 1 ? '' : 's'}` : ''}</div>${canStaff(f) ? `<button class="btn quiet small retract" onclick="retractPost('${esc(p.id)}')">Take it back</button>` : ''}</div></div>`).join('')}</div>` : '<div class="card glass"><h3>Nothing posted yet</h3></div>')
                  : `<div class="card glass" style="margin-top:14px"><h3>Not joined yet</h3><p>Staff updates and evacuation notices show up here once the festival signs on.</p></div>`}
-    ${(f.site || []).length ? `<p class="h">On site</p><div class="group glass">${f.site.map(s => `<div class="row"><div class="main"><div class="t">${esc(s.title)}</div><div class="s">${esc(s.detail)}</div></div></div>`).join('')}</div>` : ''}
+    ${(f.site || []).length ? `<p class="h">Site</p><div class="group glass">${f.site.map(s => `<div class="row"><div class="main"><div class="t">${esc(s.title)}</div><div class="s">${esc(s.detail)}</div></div></div>`).join('')}</div>` : ''}
     <p class="note"><a class="link" href="${esc(f.source)}" target="_blank" rel="noopener">${esc(f.source.replace(/^https?:\/\//, '').replace(/\/.*$/, ''))}</a></p>`;
 };
 
@@ -2451,7 +2451,7 @@ screens.post = () => {
       <label class="field"><span class="k">Title</span><input id="p-title" value="${esc(p.title)}" placeholder="Medical tent has moved" autocomplete="off" oninput="setPost('title', this.value)"></label>
       <label class="field"><textarea id="p-body" placeholder="Now beside the water station at the east gate." oninput="setPost('body', this.value)">${esc(p.body)}</textarea></label>
     </div>
-    ${hold ? `<p class="h">For</p><div class="chips">${[[30, '30 min'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours']].map(([m, l]) => `<button class="chip ${p.minutes === m ? 'on' : ''}" onclick="setPost('minutes', ${m}); render()">${l}</button>`).join('')}</div>` : ''}
+    ${hold ? `<p class="h">Duration</p><div class="chips">${[[30, '30 min'], [60, '1 hour'], [120, '2 hours'], [240, '4 hours']].map(([m, l]) => `<button class="chip ${p.minutes === m ? 'on' : ''}" onclick="setPost('minutes', ${m}); render()">${l}</button>`).join('')}</div>` : ''}
     ${forced ? '<p class="note">Shelter and evacuate are always urgent: a loud push, and the festival page says it until it ends.</p>' : `<div class="chips">${['minor', 'moderate', 'severe'].map(x => `<button class="chip ${p.severity === x ? 'on' : ''}" onclick="setPost('severity', '${x}'); render()">${x === 'minor' ? 'Notice' : x === 'moderate' ? 'Heads up' : 'Urgent'}</button>`).join('')}</div>`}
     <button class="btn" id="p-send" ${p.title.trim() && p.body.trim() && !S.posting ? '' : 'disabled'} onclick="sendPost()">${S.posting ? 'Posting' : hold ? `Call the ${p.kind === 'pause' ? 'pause' : 'hold'}` : p.kind === 'allclear' ? 'Give the all-clear' : 'Post'}</button>
     <p class="note">${p.error ? esc(p.error) : 'Signed as festival staff. Keep it short.'}</p>`;
@@ -2659,23 +2659,23 @@ screens.metrics = () => {
     <p class="h">Reach</p>
     <div class="tiles">
       ${tile('Opens', n(m.opens), opensPts)}
-      ${tile('Following now', n(m.following), null)}
-      ${tile('Follow rate', m.followRate == null ? '–' : `${m.followRate}%`, per('follow'))}
+      ${tile('Following', n(m.following), null)}
+      ${tile('Conversion', m.followRate == null ? '–' : `${m.followRate}%`, per('follow'))}
       ${tile('Pushed', n(m.delivered.sent), pushedPts)}
       ${tile('Delivered', m.delivered.rate == null ? '–' : `${m.delivered.rate}%`, null)}
-      ${tile('Issue to push', m.alertLatencySeconds == null ? '–' : `${m.alertLatencySeconds} s`, null)}
+      ${tile('Latency', m.alertLatencySeconds == null ? '–' : `${m.alertLatencySeconds} s`, null)}
     </div>
-    <p class="h">What happened</p>
+    <p class="h">Activity</p>
     <div class="tiles">
       ${tile('Warnings', n(m.totals['alert.new']), per('alert.new'), 'warn')}
       ${tile('Heads-ups', n(m.totals.headsup), per('headsup'))}
       ${tile('Reports', n(m.totals.report), per('report'))}
       ${tile('Posts', n(m.totals.post), per('post'))}
     </div>
-    ${codeTotal ? `<p class="h">Lightning, minutes in each code</p><div class="card glass codecard"><div class="codebar">${codes.filter(([, v]) => v).map(([c, v]) => `<i class="${c}" style="flex:${v}" title="${esc(CODE[c].label)} ${v} min"></i>`).join('')}</div><p>${codes.map(([c, v]) => `${esc(CODE[c].label.replace('Code ', ''))} ${n(v)} min`).join(' · ')}</p></div>` : ''}
-    ${m.stale ? `<p class="h">Minutes behind</p><div class="tiles three">${tile('Alert poll', n(m.stale.poll), null)}${tile('Lightning files', n(m.stale.lightning), null)}${tile('Radar', n(m.stale.radar), null)}</div><p class="note">Minutes in which the data was older than it should be: the poll past three minutes, the lightning files past five while a festival was on, the radar past forty-five.</p>` : ''}
-    ${m.festivals && m.festivals.length ? `<p class="h">By festival</p><div class="group glass">${m.festivals.slice(0, 20).map(x => `<div class="row"><div class="main"><div class="t">${esc(x.name)}</div><div class="s num">${n(x.opens)} opens · ${n(x.following)} following · ${n(x.pushed)} pushed</div></div></div>`).join('')}</div>` : ''}
-    <p class="note">Opens are alert lists and packs fetched. Following is phones with warnings on right now. Delivered is what the push services took, over gone and failed. Nothing here can name a phone.</p>` : S.metricsBusy ? `<div class="tiles">${'<div class="tile glass"><div class="sk" style="height:48px"></div></div>'.repeat(4)}</div>` : ''}`;
+    ${codeTotal ? `<p class="h">Lightning</p><div class="card glass codecard"><div class="codebar">${codes.filter(([, v]) => v).map(([c, v]) => `<i class="${c}" style="flex:${v}" title="${esc(CODE[c].label)} ${v} min"></i>`).join('')}</div><p>${codes.map(([c, v]) => `${esc(CODE[c].label.replace('Code ', ''))} ${n(v)} min`).join(' · ')}</p></div>` : ''}
+    ${m.stale ? `<p class="h">Freshness</p><div class="tiles three">${tile('Polling', n(m.stale.poll), null)}${tile('Lightning', n(m.stale.lightning), null)}${tile('Radar', n(m.stale.radar), null)}</div><p class="note">Minutes the data was behind: the alert poll past three minutes, the lightning files past five while a festival was on, the radar past forty-five.</p>` : ''}
+    ${m.festivals && m.festivals.length ? `<p class="h">Festivals</p><div class="group glass">${m.festivals.slice(0, 20).map(x => `<div class="row"><div class="main"><div class="t">${esc(x.name)}</div><div class="s num">${n(x.opens)} opens · ${n(x.following)} following · ${n(x.pushed)} pushed</div></div></div>`).join('')}</div>` : ''}
+    <p class="note">Opens are alert lists and packs fetched. Following is phones with warnings on right now; conversion is follows over opens. Delivered is what the push services took, over gone and failed; latency is the seconds from the weather service issuing to the push. Freshness counts the minutes the data was older than it should be. Nothing here can name a phone.</p>` : S.metricsBusy ? `<div class="tiles">${'<div class="tile glass"><div class="sk" style="height:48px"></div></div>'.repeat(4)}</div>` : ''}`;
 };
 /** The season report as a sheet: fetched with the key and handed to the phone as a file, like the record. */
 async function downloadReport(){
@@ -2716,8 +2716,9 @@ screens.diagnostics = () => {
       ${kv('Saved', esc(g.saved || 'Checking'))}
       ${kv('Installed', STANDALONE ? 'Yes, from the Home Screen' : IOS ? 'No. Add to Home Screen for warnings' : 'No')}
     </div>
-    <p class="h">${f ? esc(f.name) : 'No festival'}</p>
+    <p class="h">Festival</p>
     <div class="group glass">
+      ${kv('Chosen', f ? esc(f.name) : 'None')}
       ${kv('Weather', d.at ? `${esc(ago(d.at))}${d.error ? ' · last fetch failed' : ''}` : 'Not fetched')}
       ${kv('Hourly', `${(d.hourly || []).length} hours`)}
       ${kv('Alerts', `${(d.alerts || []).length} held`)}
@@ -2743,11 +2744,11 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : S.geoDenied ? 'Blocked' : 'Off'}</span></button></div>
   ${backend() ? `<div class="group glass">${metricsRow()}</div>` : ''}
   <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">Watch the intro and take the tour again</div></div>${I.chev}</button><button class="row" onclick="toggleSound()"><span class="lead">${I.bell}</span><div class="main"><div class="t">Sound on warnings</div><div class="s">A tone with the buzz when a warning lands or the code rises</div></div><span class="pill ${S.sound !== false ? 'on' : ''}">${S.sound !== false ? 'On' : 'Off'}</span></button><button class="row" onclick="toggleDigest()"><span class="lead">${I.sun}</span><div class="main"><div class="t">Morning brief</div><div class="s">One quiet push at seven, in the festival's own clock, with the day in a line</div></div><span class="pill ${S.digest !== false ? 'on' : ''}">${S.digest !== false ? 'On' : 'Off'}</span></button></div>
-  <p class="h">In the field</p>
+  <p class="h">Field</p>
   <div class="group glass"><button class="row" onclick="toggleSun()"><span class="lead">${I.sun}</span><div class="main"><div class="t">Sun mode</div><div class="s">Black on white, no glass, for a screen in full sun</div></div><span class="pill ${S.theme === 'sun' ? 'on' : ''}">${S.theme === 'sun' ? 'On' : 'Off'}</span></button><button class="row" onclick="toggleSaver()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Battery saver</div><div class="s">${S.battery ? `${Math.round(S.battery.level * 100)}%${S.battery.charging ? ', charging' : ''} · ` : ''}Fewer checks, the radar paused. On by itself under 20%</div></div><span class="pill ${saving() ? 'on' : ''}">${saving() ? 'On' : 'Off'}</span></button></div>
-  <p class="h">Text size</p>
+  <p class="h">Text</p>
   <div class="chips">${[['normal', 'Normal'], ['large', 'Large'], ['larger', 'Larger']].map(([v, l]) => `<button class="chip ${(S.text || 'normal') === v ? 'on' : ''}" onclick="setText('${v}')">${l}</button>`).join('')}</div>
-  <p class="h">Language · Idioma</p>
+  <p class="h">Language</p>
   <div class="chips">${[['en', 'English'], ['es', 'Español']].map(([v, l]) => `<button class="chip ${(S.lang || 'en') === v ? 'on' : ''}" onclick="setLang('${v}')">${l}</button>`).join('')}</div>
   <p class="note">${S.lang === 'es' ? 'Las líneas para actuar, los códigos de rayos y las palabras de cada alerta, en español. Lo demás sigue en inglés por ahora.' : 'The lines to act on, the lightning codes and the words on every alert, in Spanish. The rest stays in English for now.'}</p>
   ${staffMode() ? `<p class="h">Admin</p>
@@ -2920,7 +2921,7 @@ const lsrLine = r => [r.magnitude != null ? `${r.magnitude}${lsrUnit(r.unit)}` :
 const stormReports = f => ((data(f).stormReports && data(f).stormReports.reports) || []);
 function stormReportsRows(f){
   const list = stormReports(f); if (!list.length) return '';
-  return `<p class="h">${esc(T('Storm reports'))}, last three hours</p><div class="group glass">${list.slice(0, 6).map(r => `<div class="row lsr-row"><span class="lead">${I.flag}</span><div class="main"><div class="t">${esc(lsrWords(r.kind))}</div><div class="s">${esc(lsrLine(r))}${r.remark ? `<br>${esc(r.remark)}` : ''}</div></div></div>`).join('')}</div>
+  return `<p class="h">${esc(T('Sightings'))}</p><div class="group glass">${list.slice(0, 6).map(r => `<div class="row lsr-row"><span class="lead">${I.flag}</span><div class="main"><div class="t">${esc(lsrWords(r.kind))}</div><div class="s">${esc(lsrLine(r))}${r.remark ? `<br>${esc(r.remark)}` : ''}</div></div></div>`).join('')}</div>
     <p class="note">What people saw and measured, placed by the weather service's offices within 40 miles. Not a forecast.</p>`;
 }
 /** A diamond per storm report on the radar square, where it was seen. */
@@ -2947,7 +2948,7 @@ function staffCodeBox(f, l){
   const e = S.staffCode || (S.staffCode = { code: (st && st.code) || 'orange', minutes: 60, note: (st && st.note) || '' });
   return `<details class="correct"${st ? ' open' : ''}><summary>Set the code as staff${I.chev}</summary><div class="inner">
     <p class="h">Code</p><div class="chips">${['green', 'yellow', 'orange', 'red'].map(k => `<button class="chip ${e.code === k ? 'on' : ''}" onclick="setStaffCodeField('code', '${k}')">${esc(CODE[k].label.replace('Code ', ''))}</button>`).join('')}</div>
-    <p class="h">For</p><div class="chips">${[[30, '30 min'], [60, '1 hour'], [120, '2 hours'], [180, '3 hours']].map(([m, w]) => `<button class="chip ${e.minutes === m ? 'on' : ''}" onclick="setStaffCodeField('minutes', ${m})">${w}</button>`).join('')}</div>
+    <p class="h">Duration</p><div class="chips">${[[30, '30 min'], [60, '1 hour'], [120, '2 hours'], [180, '3 hours']].map(([m, w]) => `<button class="chip ${e.minutes === m ? 'on' : ''}" onclick="setStaffCodeField('minutes', ${m})">${w}</button>`).join('')}</div>
     <div class="group glass"><label class="field"><span class="k">Why</span><input id="staff-note" value="${esc(e.note)}" placeholder="Vendor detection shows a cell building to the west" maxlength="200" oninput="S.staffCode.note = this.value"></label></div>
     <button class="btn" id="staff-set" onclick="setStaffCode()" ${S.staffCodeBusy ? 'disabled' : ''}>${S.staffCodeBusy ? 'Setting' : st ? 'Change it' : 'Set it'}</button>
     ${st ? `<div class="acts"><button class="btn quiet small" id="staff-release" onclick="releaseStaffCode()" ${S.staffCodeBusy ? 'disabled' : ''}>Release it</button></div>` : ''}

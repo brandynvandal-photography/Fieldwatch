@@ -124,7 +124,7 @@ test('the walkthrough opens once: an intro scene, pages that teach, a start page
   assert.equal(await page.textContent('.bubble .t'), 'Suwannee Hulaween', 'the one happening now comes first');
   assert.equal(await page.textContent('.bubble .ph'), 'Happening now');
   assert.match(await page.textContent('button:has-text("Sick New World")'), /Gates in \d days|Gates tomorrow/, 'a day out: early entry and crews are already there');
-  assert.equal((await page.$$eval('p.h', els => els.map(e => e.textContent)))[0], 'Happening now');
+  assert.equal((await page.$$eval('p.h', els => els.map(e => e.textContent)))[0], 'Now');
   assert.match(await page.textContent('.note'), /week before gates/);
   await shot(page, '1-picker');
   await page.fill('#q', 'hulaween');
@@ -231,9 +231,9 @@ test('picking a festival pulls live alerts and the forecast, and the home screen
   assert.match(await page.textContent('.alerthead p'), /^Until 3:00 PM · .* left$/, 'and how long it has left, as a number');
   assert.ok(!(await page.$('details.more[open]')), 'the long text is folded');
   await page.click('details.more summary');
-  assert.match(await page.textContent('details.more .sec:has-text("What to do")'), /interior room/, 'the weather service instruction is under Full alert');
+  assert.match(await page.textContent('details.more .sec:has-text("Instructions")'), /interior room/, 'the weather service instruction is under Full alert');
   assert.match(await page.textContent('details.more'), /near Live Oak/);
-  assert.deepEqual(await page.$$eval('.secs .sec .k', els => els.map(e => e.textContent)), ['What to do', 'From the weather service'], 'long text is stacked under small labels');
+  assert.deepEqual(await page.$$eval('.secs .sec .k', els => els.map(e => e.textContent)), ['Instructions', 'Statement'], 'long text is stacked under small labels');
   assert.deepEqual(await page.evaluate(() => bullets('- Prolonged rain on saturated soil. - For flood safety, visit weather.gov. Rain of 2-4 inches.')), ['Prolonged rain on saturated soil.', 'For flood safety, visit weather.gov. Rain of 2-4 inches.']);
   assert.equal(await page.evaluate(() => areaText('Harrison; Shelby; Pottawattamie; Mills; Montgomery; Fremont')), 'Harrison, Shelby, Pottawattamie and 3 more');
   assert.match(await page.textContent('.group'), /NWS Jacksonville FL/);
@@ -698,7 +698,7 @@ test('with location on, the app opens the festival you are standing at, sorts th
   assert.match(await page.textContent('.feedfest .fh .t'), /Suwannee Hulaween/, 'its warning puts it first on the home page');
   await page.click('button.row:has-text("Search festivals")');
   await page.waitForSelector('h1.title:has-text("Which festival?")');
-  assert.equal((await page.$$eval('p.h', els => els.map(e => e.textContent)))[0], 'Right here');
+  assert.equal((await page.$$eval('p.h', els => els.map(e => e.textContent)))[0], 'Here');
   assert.equal(await page.textContent('.bubble .t'), 'Suwannee Hulaween');
   assert.match(await page.textContent('.bubble .ph'), /right here$/);
   const others = await page.$$eval('.bubble .ph, .row .tr', els => els.map(e => e.textContent).filter(t => / mi$/.test(t)));
@@ -902,7 +902,8 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.equal(await page.$('.codefold .feedfest .fh .pill'), null, 'the bubble says the code once; the rows inside carry no pill');
     assert.ok(await page.$('details.codefold.glass'), 'the bubble is one glass, its rows inside it');
     assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.classList.contains('glass')).length), 0, 'not a bubble per festival inside the bubble');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['No lightning data'], 'the bubble is its own header; the rest are headed by code');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Ungraded'], 'the bubble is its own header; the rest are headed by code');
+    assert.ok((await page.$$eval('p.h, .tile .k', els => els.map(e => e.textContent.trim()))).every(t => !/\s/.test(t) || /^Code (Red|Orange|Yellow|Green)$/.test(t)), 'every section header is one word, a code\'s name aside');
     assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount - 1, 'the ungraded festivals stay open');
 
     // Every festival green: one bubble and nothing else, until the tap.
@@ -991,7 +992,7 @@ test('storms on the way: a countdown on the festival page with the first things 
   await page.click('.headsup');
   await page.waitForSelector('h1.title:has-text("Storms")');
   assert.match(await page.textContent('.countdown b'), /^[23] h \d+ m$/);
-  assert.match(await page.textContent('.countdown .s'), /^Secure camp now/);
+  assert.match(await page.textContent('.countdown .s'), /^Secure camp (now|before you turn in)/);
   assert.match(await page.textContent('.todo'), /Where to shelter.*hard-topped vehicle/s);
   const camp = await page.$$eval('.steps .step .task', els => els.map(e => e.textContent));
   assert.match(await page.textContent('.steps .step:first-child .by'), /^by \d+:\d\d [AP]M$/, 'start-by times on the camp list');
@@ -1410,7 +1411,7 @@ test('a heads-up from the backend opens like any alert, from the home page row a
     await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026&alert=${encodeURIComponent(hu.id)}`);
     await page.waitForSelector('.alerthead');
     assert.match(await page.textContent('.alerthead h2'), /Storms expected around 5:00 PM/);
-    assert.match(await page.textContent('.donow .t'), /^Secure camp now/);
+    assert.match(await page.textContent('.donow .t'), /^Secure camp (now|before you turn in)/);
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });
@@ -1799,17 +1800,17 @@ test('metrics: counts with nobody in them on a screen for everyone, seven or thi
     await page.click('button.row:has-text("Metrics")'); await page.waitForSelector('h1.title:has-text("Metrics")'); await page.waitForSelector('.tile');
     assert.ok(store.calls.includes('GET /festivals/hulaween-2026/stats'), 'the festival\'s own numbers, no key sent');
     assert.equal(await page.textContent('.tile:has-text("Opens") .n'), '134');
-    assert.equal(await page.textContent('.tile:has-text("Following now") .n'), '57');
+    assert.equal(await page.textContent('.tile:has-text("Following") .n'), '57');
     assert.equal(await page.textContent('.tile:has-text("Delivered") .n'), '97%');
-    assert.equal(await page.textContent('.tile:has-text("Issue to push") .n'), '41 s');
+    assert.equal(await page.textContent('.tile:has-text("Latency") .n'), '41 s');
     assert.equal(await page.$$eval('.tile:has-text("Opens") .spark path', els => els.length), 1, 'a sparkline per counted tile');
     assert.equal(await page.textContent('.codecard p'), 'Red 25 min · Orange 0 min · Yellow 0 min · Green 600 min');
-    assert.equal(await page.$('.tile:has-text("Alert poll")'), null, 'nothing fleet-wide on a festival\'s view');
+    assert.equal(await page.$('.tile:has-text("Polling")'), null, 'nothing fleet-wide on a festival\'s view');
     await page.click('button.chip:has-text("30 days")'); await page.waitForFunction(() => S.metrics && S.metrics.days === 30);
     assert.equal(await page.$$eval('.tile:has-text("Opens") .spark path', els => els.length), 1);
-    await page.click('button.chip:has-text("All festivals")'); await page.waitForSelector('.tile:has-text("Alert poll")');
+    await page.click('button.chip:has-text("All festivals")'); await page.waitForSelector('.tile:has-text("Polling")');
     assert.ok(store.calls.includes('GET /stats') && !store.calls.includes('GET /admin/stats'), 'the public route, never the admin one');
-    assert.equal(await page.textContent('.tile:has-text("Lightning files") .n'), '2');
+    assert.equal(await page.textContent('.tiles.three .tile:has-text("Lightning") .n'), '2');
     assert.ok((await page.$$eval('.group .row .t', els => els.map(e => e.textContent))).includes('Suwannee Hulaween'), 'by festival');
     assert.deepEqual(await page.$$eval('.chips', els => els.map(e => e.getBoundingClientRect().height < 60)), [true, true], 'each chip row on one line');
     // The festivals list has the row too.
