@@ -902,9 +902,9 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount, 'a tap opens every card');
     await shot(page, '21b-feed-open');
     // Rows the same height, hairlines between them, the place on one line.
-    const rows = await page.$$eval('.codefold .feedfest', els => els.map(e => ({ h: Math.round(e.getBoundingClientRect().height), top: e.children[0].offsetHeight })));
-    assert.ok(rows.every(r => r.h >= 62), `every row at least 62 px: ${rows.map(r => r.h).join(' ')}`);
-    assert.equal(await page.$eval('.codefold .feedfest .fh .s', e => getComputedStyle(e).whiteSpace), 'nowrap', 'the place line never wraps');
+    const heads = await page.$$eval('.feedfest .fh', els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+    assert.ok(heads.length >= 5 && heads.every(h => h === 64), `every festival row is the same height whatever its text: ${heads.join(' ')}`);
+    assert.deepEqual(await page.$eval('.codefold .feedfest .fh', e => [getComputedStyle(e.querySelector('.t')).whiteSpace, getComputedStyle(e.querySelector('.s')).whiteSpace]), ['nowrap', 'nowrap'], 'the name and the place stay on one line each');
     assert.equal(await page.textContent('.codefold .feedfest .fh .t'), 'Suwannee Hulaween', 'worst first inside');
     const inside = await page.textContent('.codefold .feedfest:has-text("Heat Advisory") .fh .t');
     await page.click(`.codefold .feedfest:has-text("Heat Advisory") button.fh`);
