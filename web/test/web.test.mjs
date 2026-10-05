@@ -912,7 +912,7 @@ test('the festivals list is every festival that is on, organized by code with th
     await shot(page, '21b-feed-open');
     // Rows the same height, hairlines between them, the place on one line.
     const heads = await page.$$eval('.feedfest .fh', els => els.map(e => Math.round(e.getBoundingClientRect().height)));
-    assert.ok(heads.length >= 5 && heads.every(h => h === 64), `every festival row is the same height whatever its text: ${heads.join(' ')}`);
+    assert.ok(heads.length >= 5 && heads.every(h => h === 76), `every festival row is the same height whatever its text: ${heads.join(' ')}`);
     assert.deepEqual(await page.$eval('.codefold .feedfest .fh', e => [getComputedStyle(e.querySelector('.t')).whiteSpace, getComputedStyle(e.querySelector('.s')).whiteSpace]), ['nowrap', 'nowrap'], 'the name and the place stay on one line each');
     assert.equal(await page.textContent('.codefold .feedfest .fh .t'), 'Suwannee Hulaween', 'worst first inside');
     const inside = await page.textContent('.codefold .feedfest:has-text("Heat Advisory") .fh .t');
