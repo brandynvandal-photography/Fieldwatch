@@ -782,27 +782,31 @@ test('the festivals list is every festival that is on, organized by code with th
     store.lightning['hulaween-2026'] = { code: 'green', nearestMi: null, nearestAt: null, within: { 8: 0, 12: 0, 20: 0 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: null, at: new Date().toISOString(), dataAt: new Date().toISOString(), source: 'GOES GLM' };
     await page.click('button:has-text("Festivals")');
     await page.waitForSelector('h1.title:has-text("Festivals")');
-    assert.match(await page.textContent('.feedfest .fh .t'), /Suwannee Hulaween/, 'the warning still comes first');
-    assert.equal(await page.$$eval('.feedfest', els => els.length), liveCount, 'every festival that is on, nothing added for having been looked at');
-    assert.equal(await page.textContent('.feedfest .fh .pill'), 'Code Green', 'with its code beside its name, green included');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Code Green', 'No lightning data'], 'headed by code, the graded festival above the rest');
-
-    // Code Green is one bubble: the quiet festivals counted, with what little is going on at them, folded until a tap. A green
-    // festival with a warning stays its own card above it.
+    // Code Green is one bubble, and every green festival starts inside it, a warning included: the bubble counts what is going on
+    // and wears the warning's bar. The ungraded festivals stay open under their own header.
     const greenText = 'No lightning within 20 mi';
+    await page.waitForSelector('details.codefold');
+    assert.equal(await page.textContent('.codefold summary .t'), '1 festival', 'a green festival starts in the bubble, warning or not');
+    assert.equal(await page.textContent('.codefold summary .s'), `${greenText} · 1 warning`, 'what is going on inside is counted on the bubble');
+    assert.ok(await page.$('.codefold summary .bar.warn'), 'and the bubble wears the warning\'s bar');
+    assert.equal(await page.$$eval('.feedfest', els => els.length), liveCount, 'every festival that is on, nothing added for having been looked at');
+    assert.equal(await page.textContent('.codefold .feedfest .fh .pill'), 'Code Green', 'with its code beside its name inside, green included');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['No lightning data'], 'the bubble is its own header; the rest are headed by code');
+    assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount - 1, 'the ungraded festivals stay open');
+
+    // Every festival green: one bubble and nothing else, until the tap.
     for (const x of store.list.filter(f => isLive(f))) store.lightning[x.id] = { ...store.lightning['hulaween-2026'] };
     await page.click('button[aria-label="Refresh"]');
-    await page.waitForSelector('details.codefold');
+    await page.waitForFunction(n => document.querySelector('.codefold summary .t')?.textContent === `${n} festivals`, liveCount);
     assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), [], 'one code on the list: no headers');
-    assert.deepEqual(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).map(e => e.querySelector('.fh .t').textContent)), ['Suwannee Hulaween'], 'the warning stands as a card; the rest fold');
-    assert.equal(await page.textContent('.codefold summary .t'), `${liveCount - 1} festivals`);
-    assert.equal(await page.textContent('.codefold summary .s'), `${greenText} · 1 advisory`, 'the heat advisory inside is counted, not lost');
+    assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), 0, 'every festival starts in the bubble, the warning included');
+    assert.equal(await page.textContent('.codefold summary .s'), `${greenText} · 1 warning · 1 advisory`, 'the warning and the advisory inside are counted, not lost');
     assert.equal(await page.textContent('.codefold summary .pill'), 'Code Green');
-    assert.equal(await page.$$eval('.codefold .feedfest', els => els.length), liveCount - 1, 'every quiet festival is inside');
-    assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.checkVisibility()).length), 0, 'and folded away');
+    assert.equal(await page.$$eval('.codefold .feedfest', els => els.length), liveCount, 'every festival is inside');
     await page.click('.codefold summary');
     await page.waitForFunction(() => document.querySelector('details.codefold')?.open);
-    assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount - 1, 'a tap opens every card');
+    assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount, 'a tap opens every card');
+    assert.equal(await page.textContent('.codefold .feedfest .fh .t'), 'Suwannee Hulaween', 'worst first inside');
     const inside = await page.textContent('.codefold .feedfest:has-text("Heat Advisory") .fh .t');
     await page.click(`.codefold .feedfest:has-text("Heat Advisory") button.fh`);
     await page.waitForSelector(`h1.title:has-text("${inside}")`);
@@ -816,6 +820,7 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.equal(await page.$('.feedfest .alert'), null, 'a quiet day: cards with no alert rows');
     assert.equal(await page.textContent('.codefold summary .t'), `${liveCount} festivals`, 'nothing loud: every festival is in the bubble');
     assert.equal(await page.textContent('.codefold summary .s'), greenText);
+    assert.equal(await page.$('.codefold summary .bar'), null, 'no bar with nothing going on');
     assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), 0);
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
