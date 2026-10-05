@@ -20,12 +20,11 @@ concurrency:
   group: pages
   cancel-in-progress: true
 jobs:
-  deploy:
+  # Two jobs, as GitHub's own Pages workflow has them: the artifact a job uploads is not always visible to a deploy
+  # started in the same job (deploy-pages then fails with "No artifacts named github-pages"); a second job sees it.
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Stage the site files
@@ -39,5 +38,13 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
