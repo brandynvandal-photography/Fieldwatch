@@ -86,6 +86,8 @@ export const grid = {
     relativeHumidity: { uom: 'wmoUnit:percent', values: [{ validTime: gridTime(0, 'PT12H'), value: 65 }] },
     windSpeed: { uom: 'wmoUnit:km_h-1', values: [{ validTime: gridTime(0, 'PT12H'), value: 16.09 }] },
     skyCover: { uom: 'wmoUnit:percent', values: [{ validTime: gridTime(0, 'PT12H'), value: 70 }] },
+    windDirection: { uom: 'wmoUnit:degree_(angle)', values: [{ validTime: gridTime(0, 'PT12H'), value: 225 }] },
+    apparentTemperature: { uom: 'wmoUnit:degC', values: Array.from({ length: 12 }, (_, h) => ({ validTime: gridTime(h), value: fToC(82 - h) })) },
     probabilityOfThunder: { uom: 'wmoUnit:percent', values: [
       { validTime: gridTime(0, 'PT3H'), value: 20 }, { validTime: gridTime(3, 'PT3H'), value: 40 }, { validTime: gridTime(6, 'PT2H'), value: 60 },
       { validTime: gridTime(8, 'PT4H'), value: 30 }, { validTime: gridTime(12, 'P1DT12H'), value: 0 },

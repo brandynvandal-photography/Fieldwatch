@@ -285,6 +285,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .headsup{display:block;width:100%;text-align:left;border-radius:var(--radius);padding:16px 16px 14px 20px;margin:12px 0 4px;position:relative;color:var(--ink)}
 .headsup::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:5px;border-radius:0 3px 3px 0;background:var(--watch)}
 .headsup.tornado::before,.headsup.flood::before{background:var(--warn)}
+.headsup.cold::before{background:var(--cyan)}
 .hu-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .hu-top .eyebrow{margin:0;text-align:left}
 .hu-when{font-size:13px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--watch);color:var(--watch-ink);white-space:nowrap}
@@ -664,7 +665,7 @@ async function loadHourly(f){
 // The grid behind the forecast (/gridpoints/{wfo}/{x},{y}), raw: the shared block below spreads it hour by hour once the hourly forecast is in.
 async function loadGrid(f){
   const g = (await getJSON((await pointFor(f)).forecastGridData, GEO)).properties;
-  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder, quantitativePrecipitation: g.quantitativePrecipitation, temperature: g.temperature, relativeHumidity: g.relativeHumidity, windSpeed: g.windSpeed, skyCover: g.skyCover };
+  return { heatIndex: g.heatIndex, windGust: g.windGust, probabilityOfThunder: g.probabilityOfThunder, quantitativePrecipitation: g.quantitativePrecipitation, temperature: g.temperature, relativeHumidity: g.relativeHumidity, windSpeed: g.windSpeed, skyCover: g.skyCover, windDirection: g.windDirection, apparentTemperature: g.apparentTemperature };
 }
 async function loadDaily(f){
   const point = await pointFor(f), fc = await getJSON(point.forecast, GEO);
@@ -918,8 +919,9 @@ const I = {
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>'),
 };
-function glyph(h){
-  const s = (h.shortForecast || '').toLowerCase(), hour = new Date(h.startTime).getHours(), night = hour < 6 || hour >= 20;
+function glyph(h, f){
+  const s = (h.shortForecast || '').toLowerCase(), t = Date.parse(h.startTime), sun = f && Number.isFinite(f.latitude) ? sunTimes(f.latitude, f.longitude, t) : null;
+  const hour = new Date(h.startTime).getHours(), night = sun && sun.sunrise ? t < sun.sunrise || t >= sun.sunset : sun && sun.polar ? sun.polar === 'night' : hour < 6 || hour >= 20;   // the sun's own hours here, not a fixed clock
   if (s.includes('thunder')) return I.storm;
   if (s.includes('snow') || s.includes('sleet') || s.includes('ice')) return I.snow;
   if (s.includes('rain') || s.includes('shower') || s.includes('drizzle')) return I.rain;
@@ -1229,20 +1231,44 @@ function lightningTile(f){
 // nothing from the page or the server, no imports.
 const HOUR = 3600000;
 // Lines the forecast has to cross: chance of thunder (%), gusts (mph), rain in the window (inches) with the chance of
-// rain (%) standing in when the grid has no amount, hourly rain that counts as raining (inches), heat index (°F).
-const THRESHOLDS = { thunder: 30, gustMph: 30, precip: 60, rainIn: 0.25, rainInHr: 0.02, heatF: 100, wbgtF: 85 };
+// rain (%) standing in when the grid has no amount, hourly rain that counts as raining (inches), heat index (°F), what it feels
+// like at or under which a night is cold (°F), and rain hard enough to flood: in an hour, or over three.
+const THRESHOLDS = { thunder: 30, gustMph: 30, precip: 60, rainIn: 0.25, rainInHr: 0.02, heatF: 100, wbgtF: 85, coldF: 40, floodInHr: 0.5, floodIn3h: 1 };
 // Gust lines by what is standing: inflatables come down at 20 mph, pop-up canopies fail around 30, stages and rigging hold to 40.
 const WIND_LINES = { inflatables: 20, canopies: 30, stage: 40 };
 const WIND_LABEL = { inflatables: 'inflatables line', canopies: 'canopy line', stage: 'stage hold line' };
 /** The gust that matters here: the lowest line among what is standing (canopies, when nothing is known). */
 const windLine = ground => Math.min(...((ground && Array.isArray(ground.structures) && ground.structures.length ? ground.structures : ['canopies']).map(s => WIND_LINES[s] || WIND_LINES.canopies)));
 /** "the canopy line", "the inflatables and canopy lines". */
+/** How sure the line is to be crossed: the sustained wind past it, or a gust well past it, is likely; a gust just over it is possible. */
+const gustOdds = (gust, wind, line) => (gust == null ? null : (wind != null && wind >= line) || gust >= line + 10 ? 'likely' : gust >= line ? 'possible' : null);
+/** A wind direction in degrees as the point it comes from: "SW". */
+const dirWords = deg => (deg == null || !Number.isFinite(Number(deg)) ? null : ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round((((Number(deg) % 360) + 360) % 360) / 45) % 8]);
+/** Sunrise and sunset (ms) on the day of t at a point, from the NOAA sunrise equation: within a few minutes, which is all a night glyph or a bedtime line needs. */
+function sunTimes(lat, lon, t) {
+  const rad = Math.PI / 180, ms = j => Math.round((j - 2440587.5) * 86400000), phi = lat * rad;
+  const day = n => {
+    const J = n - lon / 360;   // days since J2000 at this longitude's mean solar noon (longitude east positive)
+    const M = ((357.5291 + 0.98560028 * J) % 360) * rad, C = 1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M);
+    const lam = ((M / rad + C + 180 + 102.9372) % 360) * rad, transit = 2451545 + J + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * lam);
+    const dec = Math.asin(Math.sin(lam) * Math.sin(23.4397 * rad));
+    const cosw = (Math.sin(-0.833 * rad) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec));
+    if (cosw >= 1) return { sunrise: null, sunset: null, polar: 'night', transit: ms(transit) };
+    if (cosw <= -1) return { sunrise: null, sunset: null, polar: 'day', transit: ms(transit) };
+    const w = Math.acos(cosw) / rad / 360;
+    return { sunrise: ms(transit - w), sunset: ms(transit + w), transit: ms(transit) };
+  };
+  // The solar day whose noon is nearest t, so the same evening and the small hours after it share one sunset and one sunrise.
+  let n = Math.ceil(t / 86400000 + 2440587.5 - 2451545 + 0.0008), d = day(n);
+  if (t - d.transit > 43200000) d = day(n + 1); else if (d.transit - t > 43200000) d = day(n - 1);
+  return { sunrise: d.sunrise, sunset: d.sunset, ...(d.polar ? { polar: d.polar } : {}) };
+}
 const lineWords = crossed => { const l = crossed.map(s => WIND_LABEL[s]).filter(Boolean); return !l.length ? '' : l.length === 1 ? `the ${l[0]}` : `the ${l.slice(0, -1).map(x => x.replace(/ line$/, '')).join(', ')} and ${l[l.length - 1].replace(/ line$/, ' lines')}`; };
-const PRIORITY = ['tornado', 'storms', 'hail', 'wind', 'flood', 'rain', 'heat'];
+const PRIORITY = ['tornado', 'storms', 'hail', 'wind', 'flood', 'rain', 'heat', 'cold'];
 // Indoors (a club, a hall, an arena) the building is the shelter: only what can reach inside or the way in and out is a hazard.
 const INDOOR_HAZARDS = ['tornado', 'storms', 'flood'];
-const ALERT_HAZARD = [[/tornado/i, 'tornado'], [/thunderstorm|lightning/i, 'storms'], [/hail/i, 'hail'], [/wind|gale/i, 'wind'], [/flood/i, 'flood'], [/heat/i, 'heat'], [/rain|storm/i, 'rain']];
-const LABEL = { tornado: 'Tornado', storms: 'Storms', hail: 'Hail', wind: 'Strong wind', flood: 'Flooding', rain: 'Heavy rain', heat: 'Dangerous heat' };
+const ALERT_HAZARD = [[/tornado/i, 'tornado'], [/thunderstorm|lightning/i, 'storms'], [/hail/i, 'hail'], [/wind|gale/i, 'wind'], [/flood/i, 'flood'], [/heat/i, 'heat'], [/freeze|frost|wind chill|cold/i, 'cold'], [/rain|storm/i, 'rain']];
+const LABEL = { tornado: 'Tornado', storms: 'Storms', hail: 'Hail', wind: 'Strong wind', flood: 'Flooding', rain: 'Heavy rain', heat: 'Dangerous heat', cold: 'Cold night' };
 const DURATION = /P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/;
 const hourKey = t => Math.floor(t / HOUR);
 /** The hours an ISO interval with a duration covers, keyed by the hour, at most three days of them. */
@@ -1271,9 +1297,9 @@ function allocate(series, hourly = []) {
   return out;
 }
 const cToF = c => c * 9 / 5 + 32, kmhToMph = k => k / 1.609;
-/** The grid's hour-by-hour numbers the model reads: heat index (°F), gusts (mph), chance of thunder (%), rain (inches in the hour), and what the heat estimate needs. */
+/** The grid's hour-by-hour numbers the model reads: heat index (°F), gusts (mph), chance of thunder (%), rain (inches in the hour), what the heat estimate needs, where the wind comes from (degrees) and what it feels like (°F). */
 const spreadGrid = (g, hourly = []) => ({ heat: spread(g?.heatIndex, cToF), gust: spread(g?.windGust, kmhToMph), thunder: spread(g?.probabilityOfThunder), rain: allocate(g?.quantitativePrecipitation, hourly),
-  temp: spread(g?.temperature, cToF), rh: spread(g?.relativeHumidity), wind: spread(g?.windSpeed, kmhToMph), sky: spread(g?.skyCover) });
+  temp: spread(g?.temperature, cToF), rh: spread(g?.relativeHumidity), wind: spread(g?.windSpeed, kmhToMph), sky: spread(g?.skyCover), dir: spread(g?.windDirection), feels: spread(g?.apparentTemperature, cToF) });
 // Heat by exertion: the heat index is a shade number for someone at rest. An estimated wet-bulb globe temperature (Stull's wet
 // bulb, a globe warmed by the sun less cloud and wind, the standard 0.7/0.2/0.1 blend) is what work-rest guidance uses, and it
 // earns a flag. Red or black is a heat hazard on its own, whatever the heat index says.
@@ -1300,12 +1326,14 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
   const marks = hourly.map(h => ({ t: Date.parse(h.startTime), h })).filter(x => Number.isFinite(x.t) && x.t + HOUR > now && x.t < end).sort((a, b) => a.t - b.t)
     .map(({ t, h }) => {
       const k = hourKey(t), thunder = grid.thunder?.[k] ?? null, gust = grid.gust?.[k] ?? null, heat = grid.heat?.[k] ?? null, precip = h.precipChance ?? null, rain = grid.rain?.[k] ?? null;
-      const wbgt = wbgtF(grid.temp?.[k] ?? null, grid.rh?.[k] ?? null, grid.wind?.[k] ?? 0, grid.sky?.[k] ?? 0);
+      const wind = grid.wind?.[k] ?? null, dir = grid.dir?.[k] ?? null, feels = grid.feels?.[k] ?? null;
+      const wbgt = wbgtF(grid.temp?.[k] ?? null, grid.rh?.[k] ?? null, wind ?? 0, grid.sky?.[k] ?? 0);
       const hazards = [];
       if (thunder >= THRESHOLDS.thunder) hazards.push('storms');
       if (!indoor && gust >= gustLine) hazards.push('wind');
       if (!indoor && (heat >= THRESHOLDS.heatF || wbgt >= THRESHOLDS.wbgtF)) hazards.push('heat');
-      return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
+      if (!indoor && feels != null && feels <= THRESHOLDS.coldF) hazards.push('cold');   // a wet tent on a cold night is how people get hurt
+      return { t, hazards, thunder, gust, heat, wbgt, precip, rain, wind, dir, feels, wet: rain != null ? rain >= THRESHOLDS.rainInHr : precip >= THRESHOLDS.precip };
     });
   // A run of wet hours is rain when it adds up: a drizzle that never reaches rainIn is not worth a heads-up.
   for (let i = 0; !indoor && i < marks.length; i++) {
@@ -1315,6 +1343,12 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
     if (!known || total >= THRESHOLDS.rainIn) for (const m of run) m.hazards.push('rain');
     i = j;
   }
+  // Rain hard enough to flood: half an inch in an hour, an inch over three, or a third of an inch an hour onto low ground.
+  for (let i = 0; !indoor && i < marks.length; i++) {
+    const r = marks[i].rain; if (r == null) continue;
+    const three = r + ((marks[i - 1] && marks[i - 1].rain) || 0) + ((marks[i - 2] && marks[i - 2].rain) || 0);
+    if (r >= THRESHOLDS.floodInHr || three >= THRESHOLDS.floodIn3h || (ground && ground.low && r >= 0.3)) marks[i].hazards.push('flood');
+  }
   let forecast = null;
   const i = marks.findIndex(m => m.hazards.length);
   if (i >= 0) {
@@ -1322,12 +1356,18 @@ function incoming({ hourly = [], grid = {}, alerts = [], ground = {}, nowcast = 
     while (j + 1 < marks.length && marks[j + 1].hazards.length && marks[j + 1].t - marks[j].t <= HOUR) j++;
     const win = marks.slice(i, j + 1), all = new Set(win.flatMap(m => m.hazards));
     const peakOf = key => win.reduce((b, m) => (m[key] != null && (b == null || m[key] > b) ? m[key] : b), null);
+    const lowOf = key => win.reduce((b, m) => (m[key] != null && (b == null || m[key] < b) ? m[key] : b), null);
+    const gustHour = win.reduce((b, m) => (m.gust != null && (!b || m.gust > b.gust) ? m : b), null);
     const rainIn = win.some(m => m.rain != null) ? Math.round(win.reduce((s, m) => s + (m.rain || 0), 0) * 100) / 100 : null;
     forecast = { hazard: PRIORITY.find(p => all.has(p)), startsAt: new Date(Math.max(now, marks[i].t)).toISOString(), endsAt: new Date(marks[j].t + HOUR).toISOString(),
-      source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), wbgt: peakOf('wbgt'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100 } };
+      source: 'forecast', peak: { thunder: peakOf('thunder'), gust: peakOf('gust'), precip: peakOf('precip'), heat: peakOf('heat'), wbgt: peakOf('wbgt'), rainIn, rateInHr: rainIn == null ? null : Math.round((peakOf('rain') || 0) * 100) / 100,
+        wind: peakOf('wind'), dir: gustHour ? dirWords(gustHour.dir) : null, feels: lowOf('feels') == null ? null : Math.round(lowOf('feels')) } };
     if (forecast.peak.wbgt != null) forecast.flag = heatFlag(forecast.peak.wbgt);
-    if (rainIn != null && all.has('rain')) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
-    if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)) };
+    if (rainIn != null && (all.has('rain') || all.has('flood'))) forecast.mud = mudTier(ground, rainIn, forecast.peak.rateInHr);
+    if (forecast.peak.gust != null) forecast.wind = { line: gustLine, crossed: standing.filter(s => forecast.peak.gust >= (WIND_LINES[s] || WIND_LINES.canopies)), odds: gustOdds(forecast.peak.gust, forecast.peak.wind, gustLine) };
+    // A second stretch later in the twelve hours is said too, so nobody packs up after the first.
+    let k = j + 1; while (k < marks.length && !marks[k].hazards.length) k++;
+    if (k < marks.length) forecast.next = { hazard: PRIORITY.find(p => marks[k].hazards.includes(p)), startsAt: new Date(marks[k].t).toISOString() };
   }
   // A warning already in effect for the hazard is on the sky and says it all: no heads-up for the same thing.
   const warned = new Set(alerts.filter(a => a.channel !== 'headsup' && /warning$/i.test(a.event || '') && Date.parse(a.onset || a.issuedAt || '') <= now && (!a.expiresAt || Date.parse(a.expiresAt) > now)).map(a => alertHazard(a.event)).filter(Boolean));
@@ -1380,7 +1420,7 @@ function groundWords(ground = {}) {
   return `${s}${soil}${ground.low ? ', low ground' : ''}`;
 }
 // How long each task takes, so a start-by time can be worked back from the arrival. Anything not listed takes ten minutes.
-const TASK_MIN = [['Leave before it starts if', 90], ['Whatever must leave', 90], ['Move the car to hard ground', 60], ['Move the tent', 45], ['Move the car off low ground', 30], ['Deflate and tie down', 30], ['Clear the stage deck', 20],
+const TASK_MIN = [['Leave before it starts if', 90], ['Whatever must leave', 90], ['Park a vehicle on the', 20], ['Dry the sleeping gear', 20], ['A pad or anything', 10], ['Dry layers', 5], ['A warm layer', 5], ['Warm layers', 5], ['Keep the car', 0], ['Rotate anyone', 0], ['A warm place', 0], ['Move the car to hard ground', 60], ['Move the tent', 45], ['Move the car off low ground', 30], ['Deflate and tie down', 30], ['Clear the stage deck', 20],
   ['Park a vehicle upwind', 20], ['Guy lines and sandbags', 20], ['A tarp over the tent', 20], ['A shade cloth', 20], ['Tarp the tent floor', 20], ['Stock under a tarp', 20], ['Pack what you can carry', 20], ['Stake every loop', 15], ['Tarp over the tent', 15],
   ['Secure stock', 15], ['Close the booth', 15], ['Drop vendor canopies', 10], ['Find shade', 10], ['Drop pop-up canopies', 5], ['Seal a dry set', 5], ['Leave the camp', 5], ['Get to the shelter', 5], ['Know where the shelter is', 5],
   ['Bag the phone', 5], ['Rain shell and a bag', 5], ['Boots', 5], ['Tie down or bag', 5], ['Get under a solid roof', 5], ['Keep the phone and cash dry', 5],
@@ -1395,7 +1435,8 @@ const taskMinutes = t => (TASK_MIN.find(([k]) => t.startsWith(k)) || [null, 10])
 function campFor(inc, setup = 'day') {
   if (inc.indoor) return ((PREP[inc.hazard] || PREP.storms).indoor || PREP.storms.indoor).slice();   // inside, the list is the same for everyone
   const s = setup === 'camping' || setup === 'crew' ? setup : 'day', tierList = t => TIER[t][s === 'day' ? 'day' : 'camping'];
-  const own = inc.hazard === 'rain' && inc.mud ? tierList(inc.mud.tier) : (PREP[inc.hazard] || PREP.storms)[s];
+  const list = inc.hazard === 'rain' && inc.mud ? tierList(inc.mud.tier) : (PREP[inc.hazard] || PREP.storms)[s];
+  const dir = inc.peak && inc.peak.dir, own = dir ? list.map(t => (t === 'Park a vehicle upwind as a windbreak' ? `Park a vehicle on the ${dir} side as a windbreak` : t)) : list;   // the wind's side, when the forecast says which
   const ground = inc.hazard !== 'rain' && inc.mud && ['soft', 'deep', 'water'].includes(inc.mud.tier) ? tierList(inc.mud.tier).filter(t => /^(Whatever must leave|Move the car|Leave before it starts|Move the tent off)/.test(t)) : [];
   const crossed = (inc.wind && inc.wind.crossed) || [], standing = [];
   if (s === 'crew' && crossed.includes('stage')) standing.push('Clear the stage deck and drop the scrim and banners');
@@ -1433,6 +1474,11 @@ const PREP = {
              day: ['Know the route to high ground', 'Pack what you can carry', 'Leave the car if water is rising around it'],
              crew: ['Close the booth and get to high ground', 'Know the route to high ground', 'Leave the car if water is rising around it'],
              during: 'Stay on high ground. Water rises faster than it looks.', after: 'Stay off flooded paths until staff open them. The water hides what it took.' },
+  cold:    { label: 'Cold night', shelter: 'A vehicle or a building with heat. A dry tent with a pad under you holds warmth; a wet one does not.',
+             camping: ['Dry layers and a hat before you turn in', 'A pad or anything between you and the ground', 'Dry the sleeping gear now, not later', 'Check on neighbors in thin tents'],
+             day: ['A warm layer and a hat for after dark', 'Keep the car as a warm place to sit', 'Check on the people around you'],
+             crew: ['Warm layers for the night shift', 'Rotate anyone standing still', 'A warm place to sit for breaks'],
+             during: 'Stay dry. Wet and cold together is how people get hurt.', after: 'Dry everything that got damp before the next night.' },
   heat:    { label: 'Dangerous heat', shelter: 'Water every twenty minutes and shade at midday. Medical tent at the first sign of confusion or no sweat.',
              camping: ['A tarp over the tent for shade', 'Freeze water bottles overnight', 'Rest between noon and four', 'Check on neighbors'],
              day: ['Water every twenty minutes', 'Find shade for the afternoon', 'Rest before it peaks', 'Check on the people around you'],
@@ -1452,10 +1498,13 @@ const PREP = {
 /** Where to shelter for a hazard: the building itself when the event is indoors. */
 const shelterFor = (hazard, indoor) => { const P = PREP[hazard] || PREP.storms; return indoor && P.indoorShelter ? P.indoorShelter : P.shelter; };
 const SHELTER_PACK = ['Phone and a battery pack', 'Water and a snack', 'Rain shell and a warm layer', 'ID, cash, keys, medication', 'A light'];
-/** What to do with the time there is, the same line the push carries. */
-function timing(hazard, m) {
-  if (hazard === 'rain') return m <= 20 ? 'Get the last things under cover and stay dry.' : m <= 60 ? 'Finish the camp list now. The ground goes first.' : m <= 180 ? 'Work the list in order. The car goes first if it must move.' : 'Secure what you would hate to lose. Check back in an hour.';
+/** What to do with the time there is, the same line the push carries; with the local hour it starts, a window that comes while people sleep is readied before anyone turns in. */
+function timing(hazard, m, hour) {
+  const night = hour != null && m > 60 && (hour >= 22 || hour < 5);
+  if (hazard === 'cold') return m <= 60 ? 'Dry layers on and something under you before it gets cold.' : 'Dry the sleeping gear while there is light. Layers and a hat for the night.';
+  if (hazard === 'rain') return night ? 'Finish the camp list before you turn in. The ground goes first.' : m <= 20 ? 'Get the last things under cover and stay dry.' : m <= 60 ? 'Finish the camp list now. The ground goes first.' : m <= 180 ? 'Work the list in order. The car goes first if it must move.' : 'Secure what you would hate to lose. Check back in an hour.';
   if (hazard === 'heat') return m <= 20 ? 'Get into shade now and drink.' : m <= 60 ? 'Find your shade for the afternoon and fill every bottle.' : m <= 180 ? 'Fill water and find shade. Rest before it peaks.' : 'Freeze bottles and plan the afternoon in shade. Check back in an hour.';
+  if (night) return 'Secure camp before you turn in. Charge phones, fill water and know the way to shelter in the dark.';
   return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes. Head for shelter with fifteen to spare.'
     : m <= 180 ? 'Secure camp now. Charge phones, fill water and pick your shelter.' : 'Secure what you would hate to lose. Check back in an hour.';
 }
@@ -1469,6 +1518,7 @@ const ACTION = {
   flood:   { warn: ['Move to high ground now', 'Never walk or drive through moving water.'], watch: ['Know the route to high ground', 'Move the tent off low ground.'] },
   heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbors.'] },
   rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
+  cold:    { warn: ['Get warm and dry now', 'A vehicle or a building with heat. Not a wet tent.'], watch: ['Dry layers before you turn in', 'Something between you and the ground.'] },
 };
 /** [do, and] for an alert: the protocol's line for a lightning code, the timing line and the first task of this setup's own list for a heads-up, the hazard's for a warning or a watch; null when the event names no hazard. */
 function actionLines(a, opts) {
@@ -1477,7 +1527,7 @@ function actionLines(a, opts) {
   if (a.channel === 'headsup') {
     const hz = a.hazard || alertHazard(a.event) || 'storms', m = a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - (o.now || Date.now())) / 60000)) : 999;
     const first = campFor({ hazard: hz, indoor: Boolean(o.indoor) }, o.setup || 'day')[0];
-    return [timing(hz, m).replace(/\.$/, ''), first ? `${first}.` : ''];
+    return [timing(hz, m, o.hour == null ? null : o.hour).replace(/\.$/, ''), first ? `${first}.` : ''];
   }
   const hz = alertHazard(a.event); if (!hz) return null;
   return ACTION[hz][warn || /warning/i.test(a.event || '') ? 'warn' : 'watch'];
@@ -1507,15 +1557,18 @@ function incomingLine(inc){
   const p = inc.peak || {}, bits = [];
   if (inc.nowcast && inc.nowcast.minutes != null) bits.push(`on the radar${inc.nowcast.heading ? ` moving ${inc.nowcast.heading} at ${Math.round((inc.nowcast.speedKmh || 0) / 1.609)} mph` : ''}`);
   if (inc.hazard === 'storms' && p.thunder != null) bits.push(`thunder ${Math.round(p.thunder)}%`);
-  const crossed = (inc.wind && inc.wind.crossed) || [];
-  if (crossed.length) bits.push(`gusts to ${Math.round(p.gust)} mph past ${lineWords(crossed)}`); else if (p.gust >= THRESHOLDS.gustMph) bits.push(`gusts to ${Math.round(p.gust)} mph`);
-  if (p.rainIn != null ? p.rainIn >= THRESHOLDS.rainIn : p.precip >= THRESHOLDS.precip) bits.push(rainWords(p));
+  const crossed = (inc.wind && inc.wind.crossed) || [], dirW = inc.hazard === 'wind' && p.dir ? ` from the ${p.dir}` : '', maybe = inc.wind && inc.wind.odds === 'possible';
+  if (crossed.length) bits.push(`gusts to ${Math.round(p.gust)} mph${dirW}${maybe ? ', maybe past ' : ' past '}${lineWords(crossed)}`); else if (p.gust >= THRESHOLDS.gustMph) bits.push(`gusts to ${Math.round(p.gust)} mph${dirW}`);
+  if (inc.hazard === 'flood' && p.rateInHr) bits.push(`${p.rateInHr.toFixed(1)} in of rain an hour`);
+  else if (p.rainIn != null ? p.rainIn >= THRESHOLDS.rainIn : p.precip >= THRESHOLDS.precip) bits.push(rainWords(p));
+  if (inc.hazard === 'cold' && p.feels != null) bits.push(`feels like ${Math.round(p.feels)}°`);
   if (inc.mud && inc.mud.past >= 0.1) bits.push(`${inc.mud.past.toFixed(1)} in already down`);
   if (p.heat >= THRESHOLDS.heatF) bits.push(`heat index ${Math.round(p.heat)}°`);
   if (inc.flag === 'red' || inc.flag === 'black') bits.push(`${inc.flag} flag for work`);
   const ground = inc.mud && inc.mud.tier !== 'wet' ? ` · ${groundWords(inc.ground || {})}` : '';
   const rep = inc.ground && inc.ground.reports && inc.ground.reports.last, said = rep && Date.now() - Date.parse(rep.at) < 6 * 3600000 ? ` · reported ${GROUND_STATE_LABEL[rep.state] ? GROUND_STATE_LABEL[rep.state].toLowerCase() : rep.state} ${ago(rep.at)}` : '';
-  return `${span}${bits.length ? ' · ' + bits.join(', ') : ''}${ground}${said}`;
+  const next = inc.next && inc.source !== 'alert' ? ` · more ${(LABEL[inc.next.hazard] || 'weather').toLowerCase()} around ${fmtTime(inc.next.startsAt)}` : '';
+  return `${span}${bits.length ? ' · ' + bits.join(', ') : ''}${ground}${said}${next}`;
 }
 /** What to call it: the mud tier for rain, the flag for heat that earns one, the hazard otherwise. */
 const incomingLabel = inc => inc.hazard === 'rain' && inc.mud ? TIER[inc.mud.tier].label : inc.hazard === 'heat' && (inc.flag === 'red' || inc.flag === 'black') ? `${inc.flag.charAt(0).toUpperCase()}${inc.flag.slice(1)} flag heat` : (PREP[inc.hazard] || PREP.storms).label;
@@ -1626,6 +1679,14 @@ function daysSection(f){
   const days = festivalDays(f); if (!days.length) return '';
   const row = d => `<div class="dayrow"><span class="wd">${esc(weekday(d.date))}</span><span class="fc">${esc(d.forecast)}</span><span class="hl num"><b>${d.high == null ? '–' : Math.round(d.high) + '°'}</b><span>${d.low == null ? '–' : Math.round(d.low) + '°'}</span></span><span class="rn">${d.rain ? d.rain + '%' : ''}</span></div>`;
   return `<p class="h">Day by day</p><p class="sub" id="pack">${esc(packLine(days))}</p><div class="group glass days">${days.map(row).join('')}</div>`;
+}
+/** Sunset and sunrise here: the next of each from now, so the evening knows when the light goes and the small hours know when it comes back. */
+function sunLine(f){
+  if (!f || !Number.isFinite(f.latitude)) return '';
+  const now = Date.now(), today = sunTimes(f.latitude, f.longitude, now), tomorrow = sunTimes(f.latitude, f.longitude, now + DAY);
+  if (today.polar) return '';
+  const sunset = today.sunset > now ? today.sunset : tomorrow.sunset, sunrise = today.sunrise > now ? today.sunrise : tomorrow.sunrise;
+  return `<p class="note suntimes">${sunset < sunrise ? `Sunset ${esc(fmtTime(new Date(sunset).toISOString()))} · Sunrise ${esc(fmtTime(new Date(sunrise).toISOString()))}` : `Sunrise ${esc(fmtTime(new Date(sunrise).toISOString()))} · Sunset ${esc(fmtTime(new Date(sunset).toISOString()))}`}</p>`;
 }
 function crewSection(f, hours){
   const svg = hours.length ? crewSVG(f, hours) : ''; if (!svg) return '';
@@ -1867,7 +1928,7 @@ screens.home = () => {
     : `<button class="sky ${lv}${over ? ' ended' : ''}${stale ? ' stale' : ''}" style="--c:${glow}" onclick="later(function(){ ${target} })"><i class="glow"></i><span class="glass">
         <span class="eyebrow">Right now</span>
         <h2>${esc(head)}</h2><p>${esc(line)}</p>
-        ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
+        ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h, f)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
         <span class="foot">${esc(statusLine(f))}</span>
       </span></button>`;
   const here = f.id === 'here';
@@ -1915,7 +1976,7 @@ screens.weather = () => {
     : `<div class="card glass"><h3>${S.busy ? 'Checking' : 'No data yet'}</h3><p>${esc(statusLine(f))}</p></div>`;
   const chart = hr.length
     ? `<div class="chart glass"><div class="lbl">Next ${hr.length} hours</div>${chartSVG(hr)}<div class="tip" id="tip"></div></div>
-       <div class="hours">${hr.map((h, i) => `<div class="hr glass ${i === 0 ? 'now' : ''}" title="${esc(h.shortForecast)}"><div class="tm">${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</div>${glyph(h)}<div class="tp num">${Math.round(h.temperature)}°</div>${h.precipChance ? `<div class="pp">${h.precipChance}%</div>` : '<div class="pp">&nbsp;</div>'}</div>`).join('')}</div>`
+       <div class="hours">${hr.map((h, i) => `<div class="hr glass ${i === 0 ? 'now' : ''}" title="${esc(h.shortForecast)}"><div class="tm">${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</div>${glyph(h, f)}<div class="tp num">${Math.round(h.temperature)}°</div>${h.precipChance ? `<div class="pp">${h.precipChance}%</div>` : '<div class="pp">&nbsp;</div>'}</div>`).join('')}</div>`
     : S.busy ? `<div class="chart glass"><div class="sk" style="height:150px"></div></div>` : `<div class="card glass"><p>The forecast loads when you have signal.</p></div>`;
   return topbar(backBtn(), '', refreshBtn()) + `
     <span class="eyebrow">${esc(f.county)}</span>
@@ -1924,6 +1985,7 @@ screens.weather = () => {
     ${alerts}
     <p class="h">Forecast</p>
     ${chart}
+    ${sunLine(f)}
     ${crewSection(f, hr)}
     ${daysSection(f)}
     <p class="note">National Weather Service · ${esc(statusLine(f))}</p>`;
@@ -1995,7 +2057,7 @@ screens.alert = id => {
 };
 
 // ---- the one line to act on (ACTION, actionLines in the shared block): the lines for this festival's own setup, camping, day lot or crew, inside or out ----
-function actionFor(a){ const f = fest(); return actionLines(a, { setup: f ? setupFor(f) : 'day', indoor: f ? insideOf(f) : false }); }
+function actionFor(a){ const f = fest(); return actionLines(a, { setup: f ? setupFor(f) : 'day', indoor: f ? insideOf(f) : false, hour: a.onset ? new Date(a.onset).getHours() : null }); }
 /** How long an alert has left, for the head: "42 min left", or nothing once it is ending. */
 const leftText = t => { const c = fmtCountdown(Date.parse(t) - Date.now()); return c === 'now' ? 'ending' : `${c} left`; };
 /** Shelter, camp, a timeline you are somewhere on, and what to pack, for whatever is on the way. */
@@ -2016,7 +2078,7 @@ screens.prep = () => {
     <span class="eyebrow">${now ? 'Happening now' : 'On the way'}</span>
     <h1 class="title">${esc(label)}</h1>
     <p class="sub">${esc(incomingLine(inc))}</p>
-    <div class="countdown glass"><span class="eyebrow">${now ? 'Started' : 'Arrives in'}</span><b class="num" data-countdown="${esc(inc.startsAt)}" data-bare="1">${esc(countdownText(inc.startsAt, true))}</b><span class="s">${esc(mudLine || timing(inc.hazard, m))}</span></div>
+    <div class="countdown glass"><span class="eyebrow">${now ? 'Started' : 'Arrives in'}</span><b class="num" data-countdown="${esc(inc.startsAt)}" data-bare="1">${esc(countdownText(inc.startsAt, true))}</b><span class="s">${esc(mudLine || timing(inc.hazard, m, new Date(inc.startsAt).getHours()))}</span></div>
     <div class="todo glass"><span class="ic">${I.shield}</span><div><div class="t">Where to shelter</div><p>${esc(shelterFor(inc.hazard, inc.indoor))}</p></div></div>
     ${groundReportRow(f, inc)}
     ${setupHead(f)}

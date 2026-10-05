@@ -107,9 +107,23 @@ export async function headsUp(f, { now = Date.now(), every = HEADS_UP_EVERY_MS }
   const ground = await groundFor(f, { now });
   let nowcast = null; try { nowcast = nowcastFor(f, { now }); } catch (e) { console.error(`[${f.id}] nowcast failed:`, e.message); }
   const inc = incoming({ hourly: periods, grid: spreadGrid(g, periods), alerts: q.activeAlerts(f.id), ground, nowcast, now });
-  if (!inc || inc.source === 'alert' || inc.minutes > HEADS_UP_HOURS * 60 || inc.minutes < 10) return null;
+  const cur = q.activeAlerts(f.id, now).find(a => a.channel === 'headsup' && Date.parse(a.onset || '') > now);   // one of ours, still ahead
+  if (!inc) {
+    // The forecast let go of the window: the heads-up is withdrawn, not left counting down to nothing.
+    if (cur) { q.updateAlert(f.id, { ...cur, expiresAt: iso(now), withdrawn: true }); changed(f.id, 'headsup'); console.log(`[${f.id}] heads-up withdrawn: ${cur.event}`); }
+    return null;
+  }
+  if (inc.source === 'alert' || inc.minutes > HEADS_UP_HOURS * 60 || inc.minutes < 10) return null;
   const key = `headsup:${f.id}`, prev = JSON.parse(q.setting(key) || 'null');
-  if (prev && prev.hazard === inc.hazard && Math.abs(Date.parse(prev.startsAt) - Date.parse(inc.startsAt)) < 90 * 60_000 && now - Date.parse(prev.at) < 6 * 3_600_000) return null;
+  if (prev && prev.hazard === inc.hazard && Math.abs(Date.parse(prev.startsAt) - Date.parse(inc.startsAt)) < 90 * 60_000 && now - Date.parse(prev.at) < 6 * 3_600_000) {
+    // The same window, announced already: the stored heads-up follows the forecast (the hour it starts, the first task) with no second push.
+    if (cur && cur.hazard === inc.hazard) {
+      const a = headsUpAlert(f, inc, p.timeZone, now, ground), moved = Math.abs(Date.parse(cur.onset) - Date.parse(inc.startsAt)) >= 15 * 60_000 || cur.event !== a.event;
+      q.updateAlert(f.id, { ...a, id: cur.id, issuedAt: cur.issuedAt, updatedAt: iso(now) });
+      if (moved) { changed(f.id, 'headsup'); console.log(`[${f.id}] heads-up moved: ${a.event}`); }
+    }
+    return null;
+  }
   const a = headsUpAlert(f, inc, p.timeZone, now, ground);
   q.setSetting(key, JSON.stringify({ hazard: inc.hazard, startsAt: inc.startsAt, at: new Date(now).toISOString() }));
   if (q.alert(f.id, a.id)) q.updateAlert(f.id, a); else q.insertAlert(f.id, a);

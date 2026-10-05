@@ -84,7 +84,7 @@ export async function pushWeb(festival, alert) {
   const urgent = alert.severity === 'extreme' || alert.severity === 'severe';
   const payload = fit({
     title: alert.event,
-    body: `${actionLead(festival, alert)}${festival.name}. ${sentences(String(alert.headline || alert.body || '').replace(/\s+/g, ' '), 160)}`,
+    body: `${actionLead(festival, alert)}${festival.name}. ${sentences(String(alert.headline || alert.body || '').replace(/\s+/g, ' '), 200)}`,   // whole sentences; a phone shows about four lines
     tag: alert.id, urgent, severity: alert.severity, channel: alert.channel || 'weather', issuedAt: alert.issuedAt || null, expiresAt: alert.expiresAt || null,
     url: here ? `${SITE}?here=1&alert=${encodeURIComponent(alert.id)}` : `${SITE}?f=${encodeURIComponent(festival.id)}&alert=${encodeURIComponent(alert.id)}`,
     alert: slim(alert),   // the alert itself, so the tap opens it with no signal

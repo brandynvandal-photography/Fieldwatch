@@ -2,12 +2,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hourly, grid } from './fixtures/nws.js';
-import { TIER, THRESHOLDS, alertHazard, allocate, campFor, deadlines, flagText, groundWords, headline, headsUpAlert, heatFlag, incoming, lineWords, mudTier, mudWords, prep, spreadGrid, wbgtF, windLine } from '../src/incoming.js';
+import { TIER, THRESHOLDS, alertHazard, allocate, campFor, deadlines, dirWords, flagText, groundWords, gustOdds, headline, headsUpAlert, heatFlag, incoming, lineWords, mudTier, mudWords, prep, spreadGrid, sunTimes, timing, wbgtF, windLine } from '../src/incoming.js';
 
 // The fixtures as the poller sees them: 48 hours from 18:00Z, thunder 40% from hour 3 and 60% at hours 6-7, gusts peaking at 34 mph, heat index 96.
 const periods = hourly.properties.periods.map(x => ({ startTime: x.startTime, temperature: x.temperature, shortForecast: x.shortForecast, windSpeed: x.windSpeed, precipChance: x.probabilityOfPrecipitation?.value ?? null }));
 const g = spreadGrid({ heatIndex: grid.properties.heatIndex, windGust: grid.properties.windGust, probabilityOfThunder: grid.properties.probabilityOfThunder, quantitativePrecipitation: grid.properties.quantitativePrecipitation,
-  temperature: grid.properties.temperature, relativeHumidity: grid.properties.relativeHumidity, windSpeed: grid.properties.windSpeed, skyCover: grid.properties.skyCover }, periods);
+  temperature: grid.properties.temperature, relativeHumidity: grid.properties.relativeHumidity, windSpeed: grid.properties.windSpeed, skyCover: grid.properties.skyCover,
+  windDirection: grid.properties.windDirection, apparentTemperature: grid.properties.apparentTemperature }, periods);
 const at = (h, m = 0) => Date.UTC(2026, 9, 23, 18 + h, m);
 const TZ = 'America/New_York';
 const festival = { id: 'hulaween-2026', name: 'Suwannee Hulaween', location: 'Live Oak, FL' };
@@ -20,7 +21,9 @@ test('the first stretch of the next twelve hours over a threshold is the window:
   assert.equal(inc.startsAt, new Date(at(3)).toISOString()); assert.equal(inc.minutes, 150);
   assert.equal(inc.endsAt, new Date(at(12)).toISOString(), 'thunder stays at or over 30% through hour 11');
   assert.equal(inc.peak.thunder, 60); assert.equal(Math.round(inc.peak.gust), 34); assert.equal(inc.peak.precip, 40);
-  assert.deepEqual(inc.wind, { line: 30, crossed: ['canopies'] }, 'gusts of 34 mph are past the canopy line, the line when nothing else is known to be standing');
+  assert.deepEqual(inc.wind, { line: 30, crossed: ['canopies'], odds: 'possible' }, 'gusts of 34 mph are past the canopy line, the line when nothing else is known to be standing, but only just: possible, not likely');
+  assert.equal(inc.peak.dir, 'SW'); assert.equal(inc.peak.wind, 10); assert.equal(inc.peak.feels, 71, 'the window knows where the wind comes from and the coldest it feels in it');
+  assert.equal(inc.next, undefined, 'nothing after the storms in these twelve hours');
   assert.equal(inc.peak.rainIn, 0.55, 'the rain in the window, in inches, from the grid amount'); assert.equal(inc.peak.rateInHr, 0.08);
   assert.equal(headline(inc, TZ), 'Storms expected around 5:00 PM');
 });
@@ -63,11 +66,16 @@ test('heat, wind and rain have their own lines; a dry, calm forecast has nothing
   assert.equal(heat.hazard, 'heat'); assert.equal(heat.minutes, 90); assert.equal(headline(heat, TZ), 'Heat index near 103° expected around 4:00 PM');
   const windy = { ...g, thunder: {}, rain: {}, gust: { ...g.gust, [Math.floor(at(5) / 3_600_000)]: 45 } };
   const wind = incoming({ hourly: periods, grid: windy, now: at(0, 30) });
-  assert.equal(wind.hazard, 'wind'); assert.equal(headline(wind, TZ), 'Gusts to 45 mph past the canopy line expected around 6:00 PM', 'the canopy line is 30 mph, crossed at hour 4');
+  assert.equal(wind.hazard, 'wind'); assert.equal(headline(wind, TZ), 'Gusts to 45 mph from the SW past the canopy line expected around 6:00 PM', 'the canopy line is 30 mph, crossed at hour 4, and the wind has a side');
+  assert.equal(wind.wind.odds, 'likely', 'fifteen past the line is likely');
+  assert.ok(campFor(wind, 'camping').includes('Park a vehicle on the SW side as a windbreak'), 'the windbreak goes on the side the wind comes from');
+  const marginal = incoming({ hourly: periods, grid: { ...windy, gust: { ...g.gust, [Math.floor(at(5) / 3_600_000)]: 33 }, dir: {} }, now: at(0, 30) });
+  assert.equal(headline(marginal, TZ), 'Gusts to 33 mph, maybe past the canopy line, expected around 6:00 PM', 'just over the line: maybe, and no side when the grid has none');
+  assert.ok(campFor(marginal, 'camping').includes('Park a vehicle upwind as a windbreak'));
   const stage = incoming({ hourly: periods, grid: windy, ground: { structures: ['stage'] }, now: at(0, 30) });
-  assert.equal(headline(stage, TZ), 'Gusts to 45 mph past the stage hold line expected around 7:00 PM', 'only a stage standing: the 40 mph line, crossed an hour later');
+  assert.equal(headline(stage, TZ), 'Gusts to 45 mph from the SW, maybe past the stage hold line, expected around 7:00 PM', 'only a stage standing: the 40 mph line, crossed an hour later, and by five: maybe');
   const both = incoming({ hourly: periods, grid: windy, ground: { structures: ['inflatables', 'stage'] }, now: at(0, 30) });
-  assert.equal(headline(both, TZ), 'Gusts to 45 mph past the inflatables and stage hold lines expected around 4:00 PM', 'inflatables come down at 20 mph');
+  assert.equal(headline(both, TZ), 'Gusts to 45 mph from the SW past the inflatables and stage hold lines expected around 4:00 PM', 'inflatables come down at 20 mph');
   assert.deepEqual(campFor(both, 'crew').slice(0, 2), ['Clear the stage deck and drop the scrim and banners', 'Deflate and tie down the inflatables'], 'what is standing comes first on the list, for crew');
   assert.deepEqual(campFor(both, 'day'), PREP_DAY_WIND, 'a day visitor cannot touch the stage; their list is their own');
   assert.equal(windLine({}), 30); assert.equal(windLine({ structures: [] }), 30); assert.equal(windLine({ structures: ['stage'] }), 40); assert.equal(lineWords(['canopies']), 'the canopy line'); assert.equal(lineWords([]), '');
@@ -95,11 +103,11 @@ test('what to do depends on the time there is; the heads-up reads like an alert 
   const a = headsUpAlert(festival, inc, TZ, at(0, 30), CAMP);
   assert.equal(a.id, `headsup-hulaween-2026-${Math.floor(at(3) / 3_600_000)}`, 'one id per festival and starting hour, so a repeat updates rather than duplicates');
   assert.equal(a.event, 'Storms expected around 5:00 PM'); assert.equal(a.channel, 'headsup'); assert.equal(a.severity, 'moderate');
-  assert.equal(a.headline, 'Stake every loop, tie guy lines, weigh the legs by 4:35 PM. The forecast has a 60% chance of thunder, gusts to 34 mph past the canopy line and 0.6 in of rain.', 'the first thing to do and when, then the forecast');
-  assert.match(a.body, /^Stake every loop, tie guy lines, weigh the legs by 4:35 PM\. The forecast has a 60% chance of thunder, gusts to 34 mph past the canopy line and 0\.6 in of rain\. Secure camp now.*Tents, canopies and stages are not shelter\.$/);
-  const wet = headsUpAlert(festival, { ...inc, hazard: 'rain', peak: { thunder: null, gust: 41, precip: 95, heat: null } }, TZ, at(0, 30), CAMP);
+  assert.equal(a.headline, 'Stake every loop, tie guy lines, weigh the legs by 4:35 PM. The forecast has a 60% chance of thunder, gusts to 34 mph, maybe past the canopy line and 0.6 in of rain.', 'the first thing to do and when, then the forecast');
+  assert.match(a.body, /^Stake every loop, tie guy lines, weigh the legs by 4:35 PM\. The forecast has a 60% chance of thunder, gusts to 34 mph, maybe past the canopy line and 0\.6 in of rain\. Secure camp now.*Tents, canopies and stages are not shelter\.$/);
+  const wet = headsUpAlert(festival, { ...inc, hazard: 'rain', peak: { thunder: null, gust: 41, precip: 95, heat: null }, wind: { line: 30, crossed: ['canopies'], odds: 'likely' } }, TZ, at(0, 30), CAMP);
   assert.match(wet.body, /^Bins and bags off the floor by 4:40 PM\. The forecast has gusts to 41 mph past the canopy line and a 95% chance of rain\. /, 'a sentence whatever leads it, not "rain 95%."');
-  const three = headsUpAlert(festival, { ...inc, peak: { thunder: 60, gust: 45, precip: 70, heat: null } }, TZ, at(0, 30), CAMP);
+  const three = headsUpAlert(festival, { ...inc, peak: { thunder: 60, gust: 45, precip: 70, heat: null }, wind: { line: 30, crossed: ['canopies'], odds: 'likely' } }, TZ, at(0, 30), CAMP);
   const day = headsUpAlert(festival, inc, TZ, at(0, 30));
   assert.equal(day.setup, 'day'); assert.match(day.headline, /^Charge the phone, fill water by 4:40 PM\. /, 'nobody knows if people camp here: no tent talk');
   assert.ok(!day.instruction.includes('canop') && !day.instruction.includes('tent'), 'a day visitor\'s list has no canopies or tents');
@@ -195,4 +203,45 @@ test('indoors: storms still count (people come and go), wind, heat and rain do n
   assert.equal(incoming({ hourly: periods, grid: calm, ground: { indoor: true }, now: at(0, 30) }), null, 'gusts of 34 mph and rain are nothing to a building');
   assert.ok(incoming({ hourly: periods, grid: calm, ground: {}, now: at(0, 30) }), 'outdoors the same forecast is a heads-up');
   assert.equal(prep('storms', 120, true).shelter, 'Inside is shelter. The line and the lot outside are not. A car is.');
+});
+
+test('a cold night, rain that floods, the next window, the sun, and the line for a window that comes while people sleep', () => {
+  // Feels-like under 40° from hour 8: a cold night with its own list, after the storms in priority, never indoors.
+  const chilly = { ...g, feels: Object.fromEntries(Object.keys(g.feels).map(k => [k, k >= String(Math.floor(at(8) / 3_600_000)) ? 36 : 70])) };
+  const cold = incoming({ hourly: periods, grid: { ...chilly, thunder: {}, rain: {}, gust: {} }, now: at(0, 30) });
+  assert.equal(cold.hazard, 'cold'); assert.equal(cold.peak.feels, 36); assert.equal(headline(cold, TZ), 'Cold to 36° expected around 10:00 PM');
+  assert.deepEqual(campFor(cold, 'camping').slice(0, 2), ['Dry layers and a hat before you turn in', 'A pad or anything between you and the ground']);
+  assert.match(headsUpAlert(festival, cold, TZ, at(0, 30), CAMP).headline, /^Dry the sleeping gear now, not later by \d+:\d\d PM\. The forecast has a night that feels like 36°\.$/);
+  assert.equal(incoming({ hourly: periods, grid: { ...chilly, thunder: {}, rain: {}, gust: {} }, ground: { indoor: true }, now: at(0, 30) }), null, 'inside, the night is not cold');
+  const withStorms = incoming({ hourly: periods, grid: chilly, now: at(0, 30) });
+  assert.equal(withStorms.hazard, 'storms', 'storms first'); assert.deepEqual(withStorms.next, undefined, 'the storm window runs into the cold hours: one window, not two');
+  assert.equal(alertHazard('Freeze Warning'), 'cold'); assert.equal(alertHazard('Cold Weather Advisory'), 'cold'); assert.equal(alertHazard('Winter Storm Warning'), 'rain');
+  // Half an inch in an hour floods; so does a third of an inch an hour onto low ground; a quarter over three hours does not.
+  const pour = { ...g, thunder: {}, gust: {}, rain: { ...g.rain, [Math.floor(at(4) / 3_600_000)]: 0.6 } };
+  const flood = incoming({ hourly: periods, grid: pour, now: at(0, 30) });
+  assert.equal(flood.hazard, 'flood'); assert.equal(headline(flood, TZ), 'Flash flooding possible around 6:00 PM', 'the hour of the half inch, named for what it is'); assert.equal(flood.peak.rateInHr, 0.6);
+  assert.match(headsUpAlert(festival, flood, TZ, at(0, 30), CAMP).headline, /The forecast has 0\.6 in of rain an hour\./);
+  const low = incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {}, rain: { ...g.rain, [Math.floor(at(4) / 3_600_000)]: 0.35 } }, ground: { low: true }, now: at(0, 30) });
+  assert.equal(low.hazard, 'flood', 'low ground floods on less'); assert.equal(incoming({ hourly: periods, grid: { ...g, thunder: {}, gust: {} }, now: at(0, 30) }).hazard, 'rain', 'the fixture\'s rain is rain, not a flood');
+  // Two stretches: storms at hour 3, then wind again at hour 10 after a calm hour. The first is the window; the second is named.
+  const twice = { ...g, thunder: Object.fromEntries(Object.entries(g.thunder).map(([k, v]) => [k, k >= String(Math.floor(at(8) / 3_600_000)) ? 0 : v])), gust: { ...g.gust, [Math.floor(at(8) / 3_600_000)]: 10, [Math.floor(at(10) / 3_600_000)]: 45, [Math.floor(at(11) / 3_600_000)]: 45 }, rain: {} };
+  const first = incoming({ hourly: periods, grid: twice, now: at(0, 30) });
+  assert.equal(first.hazard, 'storms'); assert.equal(first.endsAt, new Date(at(8)).toISOString()); assert.deepEqual(first.next, { hazard: 'wind', startsAt: new Date(at(10)).toISOString() });
+  // The sun over Live Oak on the fixture's day: up around 7:40 AM, down around 6:50 PM Eastern.
+  const sun = sunTimes(30.404, -82.9395, at(0));
+  assert.ok(sun.sunrise > Date.UTC(2026, 9, 23, 11, 25) && sun.sunrise < Date.UTC(2026, 9, 23, 11, 55), new Date(sun.sunrise).toISOString());
+  assert.ok(sun.sunset > Date.UTC(2026, 9, 23, 22, 35) && sun.sunset < Date.UTC(2026, 9, 23, 23, 5), new Date(sun.sunset).toISOString());
+  assert.equal(sunTimes(89, 0, Date.UTC(2026, 11, 21)).polar, 'night'); assert.equal(sunTimes(89, 0, Date.UTC(2026, 5, 21)).polar, 'day');
+  const late = sunTimes(30.404, -82.9395, Date.UTC(2026, 9, 24, 6)), early = sunTimes(30.404, -82.9395, Date.UTC(2026, 9, 24, 11, 50));
+  assert.ok(Date.UTC(2026, 9, 24, 6) < late.sunrise && late.sunrise < Date.UTC(2026, 9, 24, 11, 55), 'two in the morning is before that morning\'s sunrise: night');
+  assert.ok(early.sunrise < Date.UTC(2026, 9, 24, 11, 50) && Date.UTC(2026, 9, 24, 11, 50) < early.sunset, 'ten to eight is after it: day');
+  assert.equal(gustOdds(45, 10, 30), 'likely'); assert.equal(gustOdds(34, 10, 30), 'possible'); assert.equal(gustOdds(32, 31, 30), 'likely', 'sustained past the line'); assert.equal(gustOdds(25, 10, 30), null); assert.equal(gustOdds(null, 10, 30), null);
+  assert.equal(dirWords(225), 'SW'); assert.equal(dirWords(0), 'N'); assert.equal(dirWords(359), 'N'); assert.equal(dirWords(-90), 'W'); assert.equal(dirWords(null), null);
+  // Storms at 2 AM, three hours out: the list is done before anyone turns in; the same storms at 2 PM get the usual line.
+  assert.equal(timing('storms', 180, 23), 'Secure camp before you turn in. Charge phones, fill water and know the way to shelter in the dark.');
+  assert.equal(timing('storms', 180, 14), 'Secure camp now. Charge phones, fill water and pick your shelter.');
+  assert.equal(timing('storms', 30, 23), 'Finish securing camp in the next few minutes. Head for shelter with fifteen to spare.', 'half an hour out, the hour does not matter');
+  assert.equal(timing('rain', 150, 1), 'Finish the camp list before you turn in. The ground goes first.');
+  assert.equal(timing('cold', 150), 'Dry the sleeping gear while there is light. Layers and a hat for the night.');
+  assert.equal(prep('storms', 150, false, 23).timing, timing('storms', 150, 23));
 });

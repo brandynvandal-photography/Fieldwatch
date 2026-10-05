@@ -39,7 +39,7 @@ globalThis.fetch = async (url, opts = {}) => {
   if (url.includes('/alerts/active')) return jsonResponse({ type: 'FeatureCollection', features: nwsState.features });
   if (url.includes('/points/')) return jsonResponse(points);
   if (url.includes('/forecast/hourly')) return jsonResponse(hourly);
-  if (/gridpoints\/[^/]+\/[\d,]+$/.test(url)) return jsonResponse(grid);
+  if (/gridpoints\/[^/]+\/[\d,]+$/.test(url)) return jsonResponse(nwsState.grid || grid);
   if (url.includes('overpass')) return jsonResponse({ elements: [{ type: 'area', id: 1, tags: { boundary: 'administrative', admin_level: '6' } }, { type: 'area', id: 2, tags: { leisure: 'park', name: 'Spirit of the Suwannee Music Park' } }] });
   if (url.includes('sdmdataaccess')) return jsonResponse({ Table: [['mukey', 'muname', 'compname', 'hydgrp', 'drainagecl', 'comppct_r'], ['1', 'Blanton fine sand, 0 to 5 percent slopes', 'Blanton', 'A', 'Somewhat excessively drained', '85']] });
   if (url.includes('n0q-t.cgi')) return new Response(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64'), { status: 200, headers: { 'content-type': 'image/png' } });
@@ -539,7 +539,7 @@ test('a heads-up goes out hours before the forecast turns: once per window, push
   assert.equal(a.channel, 'headsup'); assert.equal(a.event, 'Storms expected around 5:00 PM'); assert.equal(a.minutes, 150); assert.equal(a.severity, 'moderate');
   assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'stored with the festival\'s alerts');
   assert.equal(sent.length, 1); assert.equal(sent[0].payload.title, 'Storms expected around 5:00 PM'); assert.equal(sent[0].opts.urgency, 'normal');
-  assert.equal(sent[0].payload.body, 'Suwannee Hulaween. Stake every loop, tie guy lines, weigh the legs by 4:35 PM. The forecast has a 60% chance of thunder, gusts to 34 mph past the canopy line and 0.6 in of rain.', 'the action first, then the forecast');
+  assert.equal(sent[0].payload.body, 'Suwannee Hulaween. Stake every loop, tie guy lines, weigh the legs by 4:35 PM. The forecast has a 60% chance of thunder, gusts to 34 mph, maybe past the canopy line and 0.6 in of rain.', 'the action first, then the forecast');
   assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&alert=${encodeURIComponent(a.id)}`);
   assert.equal(await headsUp(q.festival(FEST), { now: now + 25 * 60_000 }), null, 'the same window is not announced twice');
   assert.equal(sent.length, 1);
@@ -549,6 +549,20 @@ test('a heads-up goes out hours before the forecast turns: once per window, push
   await pollFestival(q.festival(FEST));
   assert.ok(q.activeAlerts(FEST).some(x => x.id === a.id), 'NWS not listing it does not end it: it is ours, and it ends with the window');
   nwsState.features = before;
+  // The forecast moves the storms an hour later: the stored heads-up follows (its hour, its first task, the same id), the page is told, nobody is pushed again.
+  const shift = (s, h) => ({ ...s, values: s.values.map(v => { const [t0, d] = v.validTime.split('/'); return { ...v, validTime: `${new Date(Date.parse(t0) + h * 3600000).toISOString().replace('.000Z', '+00:00')}/${d}` }; }) });
+  nwsState.grid = { properties: { ...grid.properties, probabilityOfThunder: shift(grid.properties.probabilityOfThunder, 1) } };
+  assert.equal(await headsUp(q.festival(FEST), { now: now + 50 * 60_000 }), null);
+  const moved = q.alert(FEST, a.id);
+  assert.equal(moved.event, 'Storms expected around 6:00 PM'); assert.equal(moved.onset, '2026-10-23T22:00:00.000Z'); assert.equal(moved.issuedAt, a.issuedAt); assert.ok(moved.updatedAt);
+  assert.equal(sent.length, 1, 'the same window an hour later is not a second push');
+  // The forecast lets go of the storms altogether: the heads-up is withdrawn rather than left counting down to nothing.
+  nwsState.grid = { properties: { ...grid.properties, probabilityOfThunder: { values: [] }, windGust: { values: [] }, quantitativePrecipitation: { values: [] } } };
+  assert.equal(await headsUp(q.festival(FEST), { now: now + 75 * 60_000 }), null);
+  const gone = q.alert(FEST, a.id);
+  assert.ok(Date.parse(gone.expiresAt) <= now + 75 * 60_000, 'ended'); assert.equal(gone.withdrawn, true);
+  assert.ok(!q.activeAlerts(FEST, now + 75 * 60_000).some(x => x.id === a.id), 'and off the list, by that clock');
+  nwsState.grid = null;
   q.updateAlert(FEST, { ...a, expiresAt: new Date().toISOString() });
   assert.equal((await api('DELETE', '/push/subscribe', { body: { endpoint: sub.endpoint } })).json.ok, true);
 });

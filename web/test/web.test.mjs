@@ -899,7 +899,7 @@ test('storms on the way: a countdown on the festival page with the first things 
   assert.equal(await page.textContent('.headsup h3'), 'Storms');
   assert.match(await page.textContent('.headsup .eyebrow'), /On the way/);
   assert.match(await page.textContent('.hu-when'), /^in [23] h \d+ m$|^in 3 h 0 m$/, 'the countdown, two to three hours out');
-  assert.match(await page.textContent('.headsup p'), /^Around \d+:00 [AP]M until \d+:00 [AP]M · thunder 60%, gusts to 34 mph past the canopy line$/, 'gusts named against what is standing');
+  assert.match(await page.textContent('.headsup p'), /^Around \d+:00 [AP]M until \d+:00 [AP]M · thunder 60%, gusts to 34 mph, maybe past the canopy line$/, 'gusts named against what is standing, and how sure');
   assert.deepEqual(await page.$$eval('.hu-steps .st .task', els => els.map(e => e.textContent)), ['Stake every loop, tie guy lines, weigh the legs'], 'the longest task first');
   assert.ok((await page.$$eval('.hu-steps .st .by', els => els.map(e => e.textContent))).every(t => /^by \d+:\d\d [AP]M$/.test(t)), 'each with a start-by time');
   assert.equal(await page.textContent('.sky h2'), 'Severe Thunderstorm Warning', 'the warning already in effect stays on the sky; the heads-up is its own card');
@@ -1500,4 +1500,19 @@ test('late lightning files: the tile says the data is old and holds the code; a 
     assert.equal(await page.textContent('.bolt .t'), 'No lightning data · 12 min');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('the forecast screen says when the sun goes down and comes up here, and the hour strip glyphs follow the sun, not a fixed clock', async () => {
+  const { page, context, seen } = await newPage();
+  try {
+    await pickHulaween(page);
+    await page.click('button.orb:has-text("Forecast")'); await page.waitForSelector('h1.title:has-text("Weather")');
+    assert.match(await page.textContent('.suntimes'), /^(Sunset \d{1,2}:\d\d [AP]M · Sunrise \d{1,2}:\d\d [AP]M|Sunrise \d{1,2}:\d\d [AP]M · Sunset \d{1,2}:\d\d [AP]M)$/);
+    // Live Oak, any day of the year: the sun is never up at half past nine at night nor at six in the morning (a fixed clock called six day), and always up at noon.
+    const night = await page.evaluate(() => { const f = fest(), t = new Date(); t.setHours(21, 30, 0, 0); return glyph({ shortForecast: 'Clear', startTime: t.toISOString() }, f) === I.moon; });
+    const morning = await page.evaluate(() => { const f = fest(), t = new Date(); t.setHours(6, 0, 0, 0); return glyph({ shortForecast: 'Sunny', startTime: t.toISOString() }, f) === I.moon; });
+    const noon = await page.evaluate(() => { const f = fest(), t = new Date(); t.setHours(12, 0, 0, 0); return glyph({ shortForecast: 'Sunny', startTime: t.toISOString() }, f) === I.sun; });
+    assert.deepEqual([night, morning, noon], [true, true, true]);
+    assert.deepEqual(seen.errors, []);
+  } finally { await context.close(); }
 });

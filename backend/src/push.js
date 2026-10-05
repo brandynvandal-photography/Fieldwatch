@@ -41,7 +41,7 @@ export async function pushAlert(tokens, festival, alert) {
   note.alert = {
     title: alert.event,
     subtitle: festival.name,
-    body: `${actionLead(festival, alert)}${alert.headline || alert.body || ''}`.slice(0, 180),
+    body: `${actionLead(festival, alert)}${alert.headline || alert.body || ''}`.slice(0, 200),
   };
   note.payload = {
     festivalId: festival.id,
