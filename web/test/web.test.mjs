@@ -81,6 +81,8 @@ async function newPage(opts = {}) {
 }
 // Without a location the festivals list is the home page; the picker is one tap away on it.
 const enter = async page => { await page.goto(`${base}/index.html`); await page.waitForSelector('h1.title'); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
+/** Back from a long screen after a tap far down it: the top first, a frame to settle, then the button. A click while the page is still re-laying out around the scroll is what the runner's slow Chromium reports as an unstable element. */
+const backToTop = async page => { await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(350); await page.click('button[aria-label="Back"]'); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 /** Icons that grew past their box: an SVG outside a chart or the radar wider than 70 px is a button swallowed by its icon (Safari does this to an unsized SVG in a flex row). */
 const oversizedIcons = page => page.$$eval('svg', els => els.filter(e => !e.closest('.chart, .rmap, #crew, .scene, .illus') && e.getBoundingClientRect().width > 70).map(e => `${e.parentElement.className || e.parentElement.tagName} ${Math.round(e.getBoundingClientRect().width)}px`));
@@ -1761,7 +1763,7 @@ test('the later tier: storm reports and the warning\'s own area on the radar squ
     await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button.chip:has-text("Español")'); await page.waitForFunction(() => !S.queueBusy);
     await page.click('button.chip:has-text("Español")');
     assert.equal(await page.evaluate(() => document.documentElement.lang), 'es');
-    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    await backToTop(page); await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('.sky .eyebrow'), 'Ahora mismo');
     assert.equal(await page.textContent('.sky p'), 'Entre a un vehículo o un edificio. No una carpa, un toldo ni un escenario.');
     assert.deepEqual(await page.$$eval('.orbrow .orb .l', els => els.map(e => e.textContent)), ['Radar', 'Alertas', 'Pronóstico']);
@@ -1811,7 +1813,7 @@ test('metrics: counts with nobody in them on a screen for everyone, seven or thi
     assert.ok((await page.$$eval('.group .row .t', els => els.map(e => e.textContent))).includes('Suwannee Hulaween'), 'by festival');
     assert.deepEqual(await page.$$eval('.chips', els => els.map(e => e.getBoundingClientRect().height < 60)), [true, true], 'each chip row on one line');
     // The festivals list has the row too.
-    await page.click('button[aria-label="Back"]'); await page.waitForSelector('h1.title:has-text("Settings")'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    await backToTop(page); await page.waitForSelector('h1.title:has-text("Settings")'); await backToTop(page); await page.waitForSelector('.sky.warn');
     await page.click('button:has-text("Festivals")'); await page.waitForSelector('button.row:has-text("Metrics")');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
