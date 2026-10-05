@@ -1,11 +1,11 @@
-// Fieldwatch service worker: the app shell opens with no signal, and an update lands on the next refresh.
-// Weather is never cached here; the page keeps its own copy of the last good data. Radar frames and the map under them are kept,
+// Fieldwatch service worker: the app shell opens from its copy at once, with or without signal, while the network refreshes the
+// copy behind it; when the page itself changed, every open page hears so it can offer a reload. Weather is never cached here; the page keeps its own copy of the last good data. Radar frames and the map under them are kept,
 // newest in and oldest out, so the loop from before the signal dropped still plays. The alert a warning carries is kept too,
 // so the alert screen opens on it with nothing else loaded.
 const CACHE = 'fieldwatch-shell-v2', RADAR = 'fieldwatch-radar-v1', ALERTS = 'fieldwatch-alerts-v1', KEEP = [CACHE, RADAR, ALERTS];
 const RADAR_MAX = 200;    // frames and tiles kept: twelve hours at five-minute steps and the map tiles under them
 const ALERTS_MAX = 50;
-const SHELL = ['./', './index.html', './festivals.json', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
+const SHELL = ['./index.html', './festivals.json', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -27,16 +27,34 @@ async function radarFrame(req) {
   return r || fetch(req);
 }
 
+/** The shell, copy first: the copy answers at once (on bad signal the network can take ten seconds, and a blank page is the worst answer), the network refreshes it behind, and a changed page is announced to every open page. Keys drop the query, so a link that opens on an alert is the same page. */
+const shellKey = url => url.origin + url.pathname.replace(/\/$/, '/index.html');   // the app at / and at /index.html is one copy
+async function differs(a, b) {
+  const both = n => a.headers.get(n) && b.headers.get(n);
+  if (both('etag')) return a.headers.get('etag') !== b.headers.get('etag');
+  if (both('last-modified')) return a.headers.get('last-modified') !== b.headers.get('last-modified');
+  return (await a.clone().text()) !== (await b.clone().text());
+}
+const notifyUpdated = () => self.clients.matchAll({ type: 'window' }).then(list => list.forEach(c => c.postMessage({ type: 'updated' }))).catch(() => {});
+async function shell(req, url) {
+  const c = await caches.open(CACHE), key = shellKey(url), hit = await c.match(key);
+  const net = fetch(req).then(async r => {
+    if (!r.ok) return r;
+    try {
+      const copy = r.clone(), page = /\/(index\.html)?$/.test(url.pathname);
+      if (hit && page && await differs(hit, copy)) notifyUpdated();
+      await c.put(key, copy);
+    } catch (err) {}
+    return r;
+  }).catch(() => hit || c.match(shellKey(new URL('./index.html', self.location.href))));
+  return hit || net;
+}
+
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   if (isRadar(url)) { e.respondWith(radarFrame(e.request)); return; }
-  if (url.origin === location.origin) {
-    // Network first so a deploy shows up in one refresh; the cache answers when there is no signal.
-    e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
-      .catch(() => caches.match(e.request, { ignoreSearch: true }).then(r => r || caches.match('./index.html'))));
-    return;
-  }
+  if (url.origin === location.origin) { e.respondWith(shell(e.request, url)); return; }
   if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
     // Fonts change rarely; serve what we have and refresh in the background.
     e.respondWith(caches.open(CACHE).then(async c => { const hit = await c.match(e.request); const net = fetch(e.request).then(r => { c.put(e.request, r.clone()); return r; }).catch(() => hit); return hit || net; }));

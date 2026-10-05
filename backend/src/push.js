@@ -2,6 +2,8 @@ import apn from '@parse/node-apn';
 import { ttlFor } from './util.js';
 import { existsSync } from 'node:fs';
 import { q } from './db.js';
+import { actionLead } from './webpush.js';
+import { PREP, alertHazard } from './incoming.js';
 
 // Push is optional until there is a paid developer account. A missing or placeholder
 // key must never stop the server: everything else (packs, alerts, incidents) still works.
@@ -39,12 +41,33 @@ export async function pushAlert(tokens, festival, alert) {
   note.alert = {
     title: alert.event,
     subtitle: festival.name,
-    body: (alert.headline || alert.body || '').slice(0, 180),
+    body: `${actionLead(festival, alert)}${alert.headline || alert.body || ''}`.slice(0, 180),
   };
   note.payload = {
     festivalId: festival.id,
     alert: JSON.stringify({ ...alert, body: (alert.body || '').slice(0, 1500) }),
   };
+  const result = await provider.send(note, tokens);
+  for (const f of result.failed) {
+    if (f.status === '410' || f.response?.reason === 'BadDeviceToken') q.deleteDevice(f.device);
+  }
+  q.count(festival.id, 'push.apns', result.sent.length);
+  return { sent: result.sent.length, failed: result.failed.length };
+}
+
+/** The warning is over: a quiet note under the same collapse id, so it replaces the loud one, with what to do now. */
+export async function pushEnded(tokens, festival, alert, { title = null, why = null } = {}) {
+  if (!provider || tokens.length === 0) return { sent: 0, skipped: true };
+  if (!(alert.severity === 'extreme' || alert.severity === 'severe')) return { sent: 0, minor: true };
+  const hz = alert.hazard || alertHazard(alert.event) || 'storms', after = alert.channel === 'lightning' ? '' : ` ${(PREP[hz] || PREP.storms).after}`;
+  const note = new apn.Notification();
+  note.topic = process.env.APNS_BUNDLE_ID;
+  note.pushType = 'alert';
+  note.priority = 5;
+  note.expiry = Math.floor(Date.now() / 1000) + 3600;
+  note.collapseId = alert.id;
+  note.alert = { title: title || `Ended: ${alert.event}`, subtitle: festival.name, body: `${why || `The ${String(alert.event || 'alert').toLowerCase()} has ended.`}${after}`.slice(0, 180) };
+  note.payload = { festivalId: festival.id, ended: true, alertId: alert.id };
   const result = await provider.send(note, tokens);
   for (const f of result.failed) {
     if (f.status === '410' || f.response?.reason === 'BadDeviceToken') q.deleteDevice(f.device);

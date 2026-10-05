@@ -5,8 +5,8 @@ import { changed } from './live.js';
 import { headsUpAlert, incoming, spreadGrid } from './incoming.js';
 import { ensureGround, groundFor } from './ground.js';
 import { nowcastFor } from './nowcast.js';
-import { pushAlert } from './push.js';
-import { pushWeb } from './webpush.js';
+import { pushAlert, pushEnded } from './push.js';
+import { pushEnded as pushEndedWeb, pushWeb } from './webpush.js';
 import { isLive } from './festivals.js';
 import { iso, daysFromNow } from './util.js';
 
@@ -37,11 +37,17 @@ export async function pollFestival(f) {
     else { q.insertAlert(f.id, a); if (!(a.replaces || []).some(id => q.alert(f.id, id))) brandNew.push(a); }   // an update of a message we have is the same warning: stored, not pushed again
   }
   // Anything we had as active that NWS no longer lists, twice running, has ended. A staff post or a forecast heads-up is not NWS's to end.
-  let ended = 0;
+  let ended = 0; const over = [];
   for (const id of q.activeAlertIds(f.id)) {
-    if (replaced.has(id) || goneTwice(f.id, id, seenNow.has(id))) { const a = q.alert(f.id, id); if (a && (a.channel || 'weather') === 'weather') { q.updateAlert(f.id, { ...a, expiresAt: iso() }); ended++; } }
+    if (replaced.has(id) || goneTwice(f.id, id, seenNow.has(id))) { const a = q.alert(f.id, id); if (a && (a.channel || 'weather') === 'weather') { q.updateAlert(f.id, { ...a, expiresAt: iso() }); ended++; if (!replaced.has(id)) over.push(a); } }
   }
   if (brandNew.length || ended) changed(f.id, 'alerts');
+  // A warning that went out loud is said to be over, once, when nothing of its kind still stands; a message an update replaced is the same warning, not an end.
+  for (const a of over) {
+    if (!(a.severity === 'extreme' || a.severity === 'severe') || q.activeAlerts(f.id).some(x => x.event === a.event && (x.channel || 'weather') === 'weather')) continue;
+    const r = await pushEnded(q.tokensFor(f.id), f, a), w = await pushEndedWeb(f, a);
+    console.log(`[${f.id}] ended: ${a.event} push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
+  }
 
   if (brandNew.length) {
     const tokens = q.tokensFor(f.id);
@@ -74,8 +80,14 @@ export async function pollPoint(p) {
     if (q.alert(f.pointId, a.id)) q.updateAlert(f.pointId, a);
     else { q.insertAlert(f.pointId, a); if (!(a.replaces || []).some(id => q.alert(f.pointId, id))) brandNew.push(a); }
   }
+  const over = [];
   for (const id of q.activeAlertIds(f.pointId)) {
-    if (replaced.has(id) || goneTwice(f.pointId, id, seenNow.has(id))) { const a = q.alert(f.pointId, id); if (a) q.updateAlert(f.pointId, { ...a, expiresAt: iso() }); }
+    if (replaced.has(id) || goneTwice(f.pointId, id, seenNow.has(id))) { const a = q.alert(f.pointId, id); if (a) { q.updateAlert(f.pointId, { ...a, expiresAt: iso() }); if (!replaced.has(id)) over.push(a); } }
+  }
+  for (const a of over) {
+    if (!(a.severity === 'extreme' || a.severity === 'severe') || q.activeAlerts(f.pointId).some(x => x.event === a.event)) continue;
+    const w = await pushEndedWeb(f, a);
+    console.log(`[${f.pointId}] ended: ${a.event} web=${JSON.stringify(w)}`);
   }
   for (const a of brandNew) {
     const w = await pushWeb(f, a);

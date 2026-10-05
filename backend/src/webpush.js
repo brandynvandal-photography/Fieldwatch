@@ -6,7 +6,9 @@
 import webpush from 'web-push';
 import { q } from './db.js';
 import { SITE } from './site.js';
-import { ttlFor } from './util.js';
+import { iso, ttlFor } from './util.js';
+import { PREP, actionLines, alertHazard } from './incoming.js';
+import { effectiveGround } from './ground.js';
 
 let PUBLIC = process.env.VAPID_PUBLIC_KEY || '', PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
 const SUBJECT = process.env.VAPID_SUBJECT || SITE;
@@ -66,6 +68,13 @@ function fit(p) {
   p = { ...p, alert: { ...p.alert, body: sentences(p.alert.body || '', 200) } }; s = JSON.stringify(p); if (s.length <= 3800) return s;
   const { alert, ...rest } = p; return JSON.stringify(rest);
 }
+/** The line to act on, first: a weather warning's push opens with what to do and what not to do, in the festival's own setup. A heads-up and a lightning code already open with theirs. */
+export function actionLead(festival, alert) {
+  if (alert.channel && alert.channel !== 'weather') return '';
+  const g = effectiveGround(festival), act = actionLines(alert, { setup: g.camping === true ? 'camping' : 'day', indoor: g.indoor === true });
+  return act ? `${act[0]}. ${act[1]} ` : '';
+}
+const alertURL = (festival, alert) => (festival.id === 'here' ? `${SITE}?here=1&alert=${encodeURIComponent(alert.id)}` : `${SITE}?f=${encodeURIComponent(festival.id)}&alert=${encodeURIComponent(alert.id)}`);
 export async function pushWeb(festival, alert) {
   if (!enabled) return { sent: 0, skipped: true };
   if (!worthPushing(alert)) return { sent: 0, minor: true };
@@ -75,7 +84,7 @@ export async function pushWeb(festival, alert) {
   const urgent = alert.severity === 'extreme' || alert.severity === 'severe';
   const payload = fit({
     title: alert.event,
-    body: `${festival.name}. ${sentences(String(alert.headline || alert.body || '').replace(/\s+/g, ' '), 160)}`,
+    body: `${actionLead(festival, alert)}${festival.name}. ${sentences(String(alert.headline || alert.body || '').replace(/\s+/g, ' '), 160)}`,
     tag: alert.id, urgent, severity: alert.severity, channel: alert.channel || 'weather', issuedAt: alert.issuedAt || null, expiresAt: alert.expiresAt || null,
     url: here ? `${SITE}?here=1&alert=${encodeURIComponent(alert.id)}` : `${SITE}?f=${encodeURIComponent(festival.id)}&alert=${encodeURIComponent(alert.id)}`,
     alert: slim(alert),   // the alert itself, so the tap opens it with no signal
@@ -85,6 +94,34 @@ export async function pushWeb(festival, alert) {
     try { await transport(subscription, payload, { TTL: ttlFor(alert), urgency: urgent ? 'high' : 'normal' }); sent++; }
     catch (e) {
       // 404/410: the browser let the subscription go. 401/403: it was made against other keys; it can never work again.
+      if (e && [401, 403, 404, 410].includes(e.statusCode)) { q.deleteWebSubscription(endpoint); gone++; }
+      else { failed++; console.error(`[${festival.id}] web push failed: ${e?.statusCode || ''} ${e?.message || e}`); }
+    }
+  }));
+  q.count(festival.id, 'push.web', sent);
+  return { sent, gone, failed };
+}
+
+/**
+ * The warning is over: one quiet notification under the same tag, so it replaces the loud one on the phone, with what to do
+ * now. Only for what was pushed as urgent; an advisory ending is nothing to say. A lightning code's lift brings its own words.
+ */
+export async function pushEnded(festival, alert, { title = null, why = null } = {}) {
+  if (!enabled) return { sent: 0, skipped: true };
+  if (!(alert.severity === 'extreme' || alert.severity === 'severe')) return { sent: 0, minor: true };
+  const here = festival.id === 'here';
+  const subs = here ? q.webSubscriptionsAt(festival.latitude, festival.longitude) : q.webSubscriptionsFor(festival.id);
+  if (!subs.length) return { sent: 0 };
+  const hz = alert.hazard || alertHazard(alert.event) || 'storms', after = alert.channel === 'lightning' ? '' : ` ${(PREP[hz] || PREP.storms).after}`;
+  const payload = JSON.stringify({
+    title: title || `Ended: ${alert.event}`,
+    body: `${festival.name}. ${why || `The ${String(alert.event || 'alert').toLowerCase()} has ended.`}${after}`,
+    tag: alert.id, urgent: false, ended: true, severity: 'minor', channel: alert.channel || 'weather', issuedAt: iso(), expiresAt: null, url: alertURL(festival, alert),
+  });
+  let sent = 0, gone = 0, failed = 0;
+  await Promise.all(subs.map(async ({ endpoint, subscription }) => {
+    try { await transport(subscription, payload, { TTL: 3600, urgency: 'normal' }); sent++; }
+    catch (e) {
       if (e && [401, 403, 404, 410].includes(e.statusCode)) { q.deleteWebSubscription(endpoint); gone++; }
       else { failed++; console.error(`[${festival.id}] web push failed: ${e?.statusCode || ''} ${e?.message || e}`); }
     }

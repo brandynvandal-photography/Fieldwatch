@@ -15,7 +15,8 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..700,100,1&display=optional">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..700,100,1&display=optional" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT,WONK@9..144,500..700,100,1&display=optional"></noscript>
 <title>Fieldwatch</title>
 <style>
 :root{
@@ -437,6 +438,29 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .field{display:flex;align-items:center;gap:10px;padding:12px 16px}
 .field input{flex:1;border:0;background:none;outline:none;min-width:0}
 .field .k{color:var(--muted);font-size:14px;flex:none}
+.takeover{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:24px;background:rgba(26,21,51,.78);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.takeover .box{width:100%;max-width:380px;border-radius:28px;padding:24px 22px 20px;background:linear-gradient(160deg,var(--warn),var(--warn-2));color:#fff;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.4)}
+.takeover .eyebrow{color:inherit;opacity:.8}
+.takeover h2{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:28px;line-height:1.05;font-weight:600;margin:6px 0 16px}
+.takeover .do{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:36px;line-height:1.02;font-weight:700;letter-spacing:-.015em;text-wrap:balance}
+.takeover p{margin:10px auto 0;font-size:16px;line-height:1.35;max-width:30ch;opacity:.92}
+.takeover .until{font-size:14px;opacity:.75}
+.takeover .acts{display:flex;flex-direction:column;gap:8px;margin-top:18px}
+.takeover .btn{background:#fff;color:var(--warn)}
+.takeover .btn.quiet{background:rgba(255,255,255,.18);color:#fff}
+.thunder{display:flex;align-items:center;gap:12px;width:100%;padding:12px 14px 12px 16px;min-height:62px;border-radius:var(--radius);margin:12px 0 4px;text-align:left;color:var(--ink)}
+.thunder .lead{width:38px;height:38px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;background:var(--violet)}
+.thunder.over .lead{background:var(--ok)}
+.thunder .lead svg{width:20px;height:20px}
+.thunder .main{flex:1;min-width:0}
+.thunder .t{font-weight:600;font-size:16px}
+.thunder .s{color:var(--muted);font-size:13px;margin-top:2px;line-height:1.35}
+.thunder .acts{display:flex;flex-direction:column;gap:6px;flex:none}
+.thunder .btn.small{padding:8px 12px;font-size:13px;white-space:nowrap}
+.thunderbtn{margin:14px 0 4px}
+.sky.stale .glass{filter:saturate(.55)}
+.bolt.none .lead{background:rgba(26,21,51,.08);color:var(--muted)}
+.toast.tap{cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 24px);transform:translate(-50%,16px);opacity:0;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:60;transition:.25s;pointer-events:none;max-width:calc(100% - 32px);width:max-content;white-space:normal;text-align:center;line-height:1.35;border-radius:22px}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 .link{color:var(--accent);font-weight:600;text-decoration:none}
@@ -493,6 +517,7 @@ button.row.pressed,button.alert.pressed{background:rgba(255,255,255,.35)}
 <body>
 <div class="orbs" aria-hidden="true"><i class="o1"></i><i class="o2"></i><i class="o3"></i><i class="o4"></i><i class="o5"></i></div>
 <div id="app"></div>
+<div id="over"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <script>
 'use strict';
@@ -528,12 +553,13 @@ const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || na
 const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false, toured: false, geoSkip: false, walkStep: 0, introPlayed: false,
   fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
   staffScope: null, hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
-  post: { title: '', body: '', severity: 'minor', error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false };
+  post: { title: '', body: '', severity: 'minor', error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false,
+  sound: true, thunder: null, takeover: null, offline: navigator.onLine === false };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff, thunder: d.thunder && d.thunder.at ? d.thunder : null, sound: d.sound !== false }); }catch(e){}
 }
 /** What survives a reload: the chosen festival, the favorites and your own spot. Flashes are a minute of satellite and are fetched again. */
 function keepCache(){
@@ -542,7 +568,7 @@ function keepCache(){
   return out;
 }
 function save(){
-  const body = { fest: S.fest, cache: keepCache(), backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope };
+  const body = { fest: S.fest, cache: keepCache(), backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope, thunder: S.thunder, sound: S.sound !== false };
   try{ localStorage.setItem(STORE, JSON.stringify(body)); S.saveError = null; }
   catch(e){
     // Out of room: the settings matter more than the weather copy. Keep them, let the copy go, and say so in Diagnostics.
@@ -648,6 +674,9 @@ const gridAt = (f, key, t) => { const g = data(f).grid; const v = g && g[key] ? 
 /** The highest value of one grid series across these hours, and when. */
 function peak(f, key, hours){ let best = null; for (const h of hours) { const v = gridAt(f, key, h.startTime); if (v != null && (!best || v > best.v)) best = { v, t: h.startTime }; } return best; }
 
+// Every alert id this page has seen since it opened: a warning alarms once, the first time it shows up after the first load,
+// not again when the list comes back from the other source (the backend one minute, the weather service the next).
+const knownAlerts = new Set();
 /** Pull everything for the chosen festival. Whatever succeeds replaces the cache; whatever fails leaves the last good copy. */
 async function refresh(f){
   if (!f || S.busy) return;
@@ -666,11 +695,18 @@ async function refresh(f){
   let ok = false;
   if (al.status === 'fulfilled') {
     // A warning that was not there at the last check gets a buzz, even with the screen open.
-    const had = data(f).alerts, seen = new Set((had || []).map(a => a.id));
+    const had = data(f).alerts, seen = knownAlerts;
+    (had || []).forEach(a => seen.add(a.id));   // what the page opened with is known, however it was listed
     const fresh = had ? al.value.filter(a => isWarning(a) && !seen.has(a.id)) : [];
     next.alerts = al.value; ok = true;
     const heads = had ? al.value.filter(a => a.channel === 'headsup' && isActive(a) && !seen.has(a.id)) : [];
+    al.value.forEach(a => seen.add(a.id));
     if (fresh.length) alarm(fresh[0]); else if (heads.length) toast(heads[0].event, 6000);
+    // A warning that dropped out of the list, or ran out, is held for half an hour as ended: the all-clear is a moment, not a blank.
+    const now = Date.now(), listed = new Set(al.value.map(a => a.id));
+    const gone = (had || []).filter(a => isWarning(a) && a.channel !== 'headsup' && !listed.has(a.id) && (isActive(a) || (a.expiresAt && now - Date.parse(a.expiresAt) < ENDED_HOLD_MS)))
+      .map(a => ({ ...a, endedAt: isActive(a) ? new Date(now).toISOString() : a.expiresAt }));
+    next.ended = [...gone, ...(data(f).ended || [])].filter((e, i, arr) => arr.findIndex(x => x.id === e.id) === i && now - Date.parse(e.endedAt) < ENDED_HOLD_MS);
   }
   if (hr.status === 'fulfilled') { next.hourly = hr.value; ok = true; }
   if (po.status === 'fulfilled') next.posts = po.value;
@@ -679,7 +715,7 @@ async function refresh(f){
   if (gd.status === 'fulfilled') next.ground = gd.value;
   if (nc.status === 'fulfilled') next.nowcast = nc.value;
   if (dy.status === 'fulfilled') next.daily = dy.value;
-  if (lt.status === 'fulfilled') next.lightning = lt.value;
+  if (lt.status === 'fulfilled') { codeMoved(data(f).lightning, lt.value); next.lightning = lt.value; }
   next.checkedAt = new Date().toISOString();
   if (ok) { next.at = next.checkedAt; next.error = null; }
   else next.error = (al.reason && al.reason.message) || (hr.reason && hr.reason.message) || 'unreachable';
@@ -1153,7 +1189,8 @@ async function loadLightning(f){
   try{
     const l = await getJSON(`${b}/festivals/${f.id}/lightning`), was = data(f).lightning;
     S.cache[f.id] = { ...data(f), lightning: l }; save();
-    const changed = !was || was.code !== l.code || was.nearestMi !== l.nearestMi || was.allClearAt !== l.allClearAt;
+    codeMoved(was, l);
+    const changed = !was || was.code !== l.code || was.nearestMi !== l.nearestMi || was.allClearAt !== l.allClearAt || Boolean(was.held) !== Boolean(l.held) || Boolean(was.allClearHeld) !== Boolean(l.allClearHeld);
     if (l.code === 'red' && (!was || was.code !== 'red') && !S.busy) refresh(f);
     else if (changed && ['home', 'lightning', 'weather'].includes(S.screen)) render();
   }catch(e){}
@@ -1173,11 +1210,16 @@ const liveLightning = f => lightningState(data(f).lightning, data(f).alerts);
 function lightningTile(f){
   const l = liveLightning(f), g = data(f).ground;
   if ((l && l.code === 'indoor') || (g && g.indoor === true)) return `<button class="bolt glass indoor" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Indoors · No lightning codes</div><div class="s">Inside is shelter. The codes are for outdoor grounds.</div></div>${I.chev}</button>`;
-  const c = l && CODE[l.code]; if (!c) return '';
+  const c = l && CODE[l.code];
+  if (!c) {
+    // The mapper has gone quiet: said, with how long, rather than a tile that vanishes. Nothing when it never reported at all.
+    if (!l || !l.dataAt) return '';
+    return `<button class="bolt glass none" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">No lightning data · ${esc(dataAge(l))} min</div><div class="s">The mapper has not reported. The last code is not known.</div></div>${I.chev}</button>`;
+  }
   const head = l.nearestMi != null ? `Lightning ${l.nearestMi} mi` : l.code === 'red' && l.lastNearMi != null ? `Lightning ${l.lastNearMi} mi` : 'No lightning within 20 mi';
-  const n = l.within ? l.within[c.within] || 0 : 0;
-  const sub = l.code === 'red' ? `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`
-    : l.code === 'green' ? `${esc(c.text)} · nothing in the last 15 min` : `${esc(c.text)} · ${n} flash${n === 1 ? '' : 'es'} within ${c.within} mi in 15 min`;
+  const n = l.within ? l.within[c.within] || 0 : 0, age = l.dataAt ? dataAge(l) : null, old = age != null && age >= 3 ? `data ${age} min old` : '';
+  const sub = l.code === 'red' ? (l.allClearHeld ? `${esc(c.text)} · all-clear waits for data${old ? ` (${esc(old)})` : ''}` : `${esc(c.text)} · all clear <span data-countdown="${esc(l.allClearAt)}">${esc(countdownText(l.allClearAt))}</span>`)
+    : `${esc(c.text)} · ${l.code === 'green' ? 'nothing in the last 15 min' : `${n} flash${n === 1 ? '' : 'es'} within ${c.within} mi in 15 min`}${l.held && old ? ` · ${esc(old)}` : ''}`;
   return `<button class="bolt glass ${esc(l.code)}" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${esc(head)} · ${esc(c.label)}</div><div class="s">${sub}</div></div>${I.chev}</button>`;
 }
 
@@ -1417,6 +1459,29 @@ function timing(hazard, m) {
   return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes. Head for shelter with fifteen to spare.'
     : m <= 180 ? 'Secure camp now. Charge phones, fill water and pick your shelter.' : 'Secure what you would hate to lose. Check back in an hour.';
 }
+// One line to act on and one line of what not to do, for every alert: a person in a panic reads the first line and nothing
+// else, so the push opens with it and so does the alert screen. An imperative under eight words, then what not to do.
+const ACTION = {
+  tornado: { warn: ['Get to the shelter now', 'Lowest floor of a solid building. Not a tent or a car.'], watch: ['Know where the shelter is', 'Keep the phone on and charged.'] },
+  storms:  { warn: ['Get into a vehicle or building', 'Not a tent, canopy or stage.'], watch: ['Know your shelter', 'A hard-topped vehicle or a building. Not a tent.'] },
+  hail:    { warn: ['Get under a solid roof', 'Not a tent or canopy.'], watch: ['Know your shelter', 'Lay canopies flat before it comes.'] },
+  wind:    { warn: ['Stay clear of tents and stages', 'Get into a vehicle or building if it turns dangerous.'], watch: ['Tie everything down', 'Drop pop-up canopies.'] },
+  flood:   { warn: ['Move to high ground now', 'Never walk or drive through moving water.'], watch: ['Know the route to high ground', 'Move the tent off low ground.'] },
+  heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbors.'] },
+  rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
+};
+/** [do, and] for an alert: the protocol's line for a lightning code, the timing line and the first task of this setup's own list for a heads-up, the hazard's for a warning or a watch; null when the event names no hazard. */
+function actionLines(a, opts) {
+  const o = opts || {}, warn = a.severity === 'severe' || a.severity === 'extreme';
+  if (a.channel === 'lightning') return a.code === 'red' || warn ? ['Shelter now', 'Full work stoppage. Not a tent, canopy or stage.'] : ['Head for shelter', 'Evacuation procedures. Staff hold posts.'];
+  if (a.channel === 'headsup') {
+    const hz = a.hazard || alertHazard(a.event) || 'storms', m = a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - (o.now || Date.now())) / 60000)) : 999;
+    const first = campFor({ hazard: hz, indoor: Boolean(o.indoor) }, o.setup || 'day')[0];
+    return [timing(hz, m).replace(/\.$/, ''), first ? `${first}.` : ''];
+  }
+  const hz = alertHazard(a.event); if (!hz) return null;
+  return ACTION[hz][warn || /warning/i.test(a.event || '') ? 'warn' : 'watch'];
+}
 // ==== shared: end ====
 /** What is on the way at this festival: read from the forecast on the phone, or the backend's own heads-up when there is no forecast yet. */
 function incomingFor(f){
@@ -1433,7 +1498,8 @@ const countdownText = (t, bare) => { const c = fmtCountdown(Date.parse(t) - Date
 function tickCountdowns(){
   let arrived = false;
   document.querySelectorAll('[data-countdown]').forEach(el => { const t = el.dataset.left ? leftText(el.dataset.countdown) : countdownText(el.dataset.countdown, el.dataset.bare); if (el.textContent !== t) { if (t === 'now' || t === 'ending') arrived = true; el.textContent = t; } });
-  if (arrived && (S.screen === 'home' || S.screen === 'prep' || S.screen === 'weather')) render();
+  if (S.thunder && !S.thunder.rang && Date.parse(thunderDue()) <= Date.now()) { S.thunder = { ...S.thunder, rang: true }; save(); buzz([300, 100, 300]); toast('Thirty minutes since the thunder', 6000); arrived = true; }
+  if (arrived && ['home', 'prep', 'weather', 'lightning', 'alert'].includes(S.screen)) render();
 }
 function incomingLine(inc){
   const now = inc.minutes <= 0, span = `${now ? 'Since' : 'Around'} ${fmtTime(inc.startsAt)}${inc.endsAt ? ` until ${fmtTime(inc.endsAt)}` : ''}`;
@@ -1578,6 +1644,7 @@ const orb = (label, icon, h, onclick, badge) => `<button class="orb" style="--hu
 function statusLine(f){
   const d = data(f);
   if (S.busy && !d.at) return 'Checking the sky';
+  if (S.offline) return d.at ? `No signal. Last checked ${ago(d.at)}` : 'No signal';
   if (d.error && d.at) return `Last checked ${ago(d.at)}. No signal since`;
   if (d.error) return IN_PREVIEW ? 'This preview cannot reach the weather service' : 'No signal';
   if (d.at) return `Checked ${ago(d.at)}`;
@@ -1785,17 +1852,19 @@ function searchKey(e){
 screens.home = () => {
   const f = fest(); if (!f) return screens.picker();
   const d = data(f), al = skyAlerts(f), lv = d.alerts ? level(f) : (d.error ? 'none' : 'loading');
-  const strip = (d.hourly || []).slice(0, 6);
+  const strip = (d.hourly || []).slice(0, 6), over = lv === 'ok' ? endedRecently(f)[0] : null;   // a warning that ended in the last half hour: the all-clear is said, with what to do now
+  const stale = S.offline || Boolean(d.error && d.at && Date.now() - Date.parse(d.at) > 15 * 60000);
   const head = lv === 'warn' ? al.find(isWarning).event : lv === 'watch' ? (al.length === 1 ? al[0].event : `${al.length} advisories`) : lv === 'ok' ? 'All clear' : lv === 'none' ? 'No weather data' : '';
   const line = lv === 'warn' ? (act => act ? `${act[0]}. ${act[1]}` : 'Take shelter now. Stages and tents are not safe shelter.')(actionFor(al.find(isWarning)))
              : lv === 'watch' ? (al[0].expiresAt ? `Until ${fmtWhen(al[0].expiresAt)}` : 'Tap for details')
+             : over ? `${over.event} ended ${fmtTime(over.endedAt)}. ${afterLine(over)}`
              : lv === 'ok' ? outlook(f) || `No alerts for ${f.county || 'this spot'}`
              : lv === 'none' ? statusLine(f) : '';
-  const target = lv === 'ok' || lv === 'none' ? "go('weather')" : lv === 'loading' ? '' : `go('alert','${esc((al.find(isWarning) || al[0]).id)}')`;
+  const target = over ? `go('alert','${esc(over.id)}')` : lv === 'ok' || lv === 'none' ? "go('weather')" : lv === 'loading' ? '' : `go('alert','${esc((al.find(isWarning) || al[0]).id)}')`;
   const glow = lv === 'ok' ? 'var(--ok)' : lv === 'none' ? 'var(--muted)' : 'var(--violet)';
   const sky = lv === 'loading'
     ? `<div class="sky none" style="--c:var(--violet)" aria-busy="true"><i class="glow"></i><span class="glass"><div class="sk" style="width:38%;height:12px;margin:0 auto 12px"></div><div class="sk" style="width:72%;height:32px;margin:0 auto 10px"></div><div class="sk" style="width:60%;height:15px;margin:0 auto 18px"></div><div class="strip">${'<div class="sk" style="flex:1;height:66px"></div>'.repeat(6)}</div></span></div>`
-    : `<button class="sky ${lv}" style="--c:${glow}" onclick="later(function(){ ${target} })"><i class="glow"></i><span class="glass">
+    : `<button class="sky ${lv}${over ? ' ended' : ''}${stale ? ' stale' : ''}" style="--c:${glow}" onclick="later(function(){ ${target} })"><i class="glow"></i><span class="glass">
         <span class="eyebrow">Right now</span>
         <h2>${esc(head)}</h2><p>${esc(line)}</p>
         ${strip.length ? `<span class="strip">${strip.map((h, i) => `<span class="c"><span>${i === 0 ? 'Now' : esc(fmtHour(h.startTime))}</span>${glyph(h)}<b class="num">${Math.round(h.temperature)}°</b></span>`).join('')}</span>` : ''}
@@ -1808,6 +1877,7 @@ screens.home = () => {
     <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
     ${sky}
     ${lightningTile(f)}
+    ${thunderRow()}
     ${headsUpCard(f)}
     <div class="orbrow">
       ${orb('Radar', I.radar, 262, "go('radar')")}
@@ -1893,7 +1963,7 @@ async function lookupKeptAlert(id){
   if (S.keptAlert && S.keptAlert.id === id) { S.keptAlert = { id, alert }; if (S.screen === 'alert' && S.param === id) render(); }
 }
 screens.alert = id => {
-  const f = fest(), listed = (f ? data(f).alerts || [] : []).find(x => x.id === id), kept = S.keptAlert && S.keptAlert.id === id ? S.keptAlert : null;
+  const f = fest(), listed = (f ? [...(data(f).alerts || []), ...(data(f).ended || [])] : []).find(x => x.id === id), kept = S.keptAlert && S.keptAlert.id === id ? S.keptAlert : null;
   const a = listed || (kept && kept.alert) || null;
   if (!a) {
     if (!kept) lookupKeptAlert(id);
@@ -1902,15 +1972,17 @@ screens.alert = id => {
   }
   const warn = isWarning(a), hu = a.channel === 'headsup', { sections, paragraphs } = parseNWS(a.body), act = actionFor(a);
   const instruction = (a.instruction || '').replace(/\s+/g, ' ').trim(), ours = hu || a.channel === 'lightning';
+  const endedAt = a.endedAt || (a.expiresAt && !isActive(a) ? a.expiresAt : null);   // ended by the weather service, or by its own clock
   const when = hu && a.onset ? `Expected ${fmtTime(a.onset)} · <span data-countdown="${esc(a.onset)}">${esc(countdownText(a.onset))}</span>`
-    : a.expiresAt && !isActive(a) ? `Ended ${esc(fmtTime(a.expiresAt))}`
+    : endedAt ? `Ended ${esc(fmtTime(endedAt))}`
     : a.expiresAt ? `Until ${esc(fmtTime(a.expiresAt))} · <span data-countdown="${esc(a.expiresAt)}" data-left="1">${esc(leftText(a.expiresAt))}</span>` : esc(a.area);
   const todo = instruction ? `<div class="todo glass"><span class="ic">${I.check}</span><div><div class="t">${hu ? 'Solidify camp' : 'What to do'}</div><p>${esc(instruction)}</p></div></div>` : '';
   return topbar(backBtn(), '', `<button class="tb glass icon" onclick="share('${esc(a.id)}')" aria-label="Share">${I.share}</button>`) + `
     <div class="alerthead ${warn ? 'warn' : 'watch'}"><span class="eyebrow">${hu ? 'Heads-up' : a.channel === 'lightning' ? 'Lightning' : warn ? 'Warning' : 'Advisory'}</span><h2>${esc(a.event)}</h2><p class="num">${when}</p></div>
-    ${!listed ? `<p class="note">From the notification. The festival's own list has not loaded${isActive(a) ? '' : ', and this one has ended'}.</p>` : ''}
+    ${!listed ? `<p class="note">From the notification. The festival's own list has not loaded${endedAt ? ', and this one has ended' : ''}.</p>` : ''}
     ${act ? `<div class="donow ${warn ? 'warn' : ''}"><div class="t">${esc(act[0])}</div><div class="s">${esc(act[1])}</div></div>` : ''}
     ${ours ? todo : ''}
+    ${!hu && alertHazard(a.event) === 'storms' && f && !insideOf(f) ? thunderButton() + thunderRow() : ''}
     ${hu ? `<div class="group glass"><button class="row" onclick="later(function(){ go('prep') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">What to do, step by step</div><div class="s">Shelter, camp, a timeline and what to pack</div></div>${I.chev}</button></div>` : ''}
     ${a.channel === 'lightning' ? `<div class="group glass"><button class="row" onclick="later(function(){ go('lightning') })"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Lightning right now</div><div class="s">The code, the nearest flash, the all-clear</div></div>${I.chev}</button></div>` : ''}
     ${warn ? `<button class="btn warnbtn" onclick="share('${esc(a.id)}')">${I.share}<span>Warn people near you</span></button><p class="note">${IOS ? 'Works with no signal. They need AirDrop set to Everyone.' : 'Works with no signal. Or text it.'}</p>` : ''}
@@ -1922,28 +1994,8 @@ screens.alert = id => {
     </div>`;
 };
 
-// ---- the one line to act on. A person in a panic reads the first line and nothing else, so every alert opens with one ----
-// imperative under eight words and one line of what not to do; the long text folds away under it.
-const ACTION = {
-  tornado: { warn: ['Get to the shelter now', 'Lowest floor of a solid building. Not a tent or a car.'], watch: ['Know where the shelter is', 'Keep the phone on and charged.'] },
-  storms:  { warn: ['Get into a vehicle or building', 'Not a tent, canopy or stage.'], watch: ['Know your shelter', 'A hard-topped vehicle or a building. Not a tent.'] },
-  hail:    { warn: ['Get under a solid roof', 'Not a tent or canopy.'], watch: ['Know your shelter', 'Lay canopies flat before it comes.'] },
-  wind:    { warn: ['Stay clear of tents and stages', 'Get into a vehicle or building if it turns dangerous.'], watch: ['Tie everything down', 'Drop pop-up canopies.'] },
-  flood:   { warn: ['Move to high ground now', 'Never walk or drive through moving water.'], watch: ['Know the route to high ground', 'Move the tent off low ground.'] },
-  heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbors.'] },
-  rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
-};
-/** [do, and] for an alert: the festival's own protocol for lightning, the timing line for a heads-up, the hazard for a warning. */
-function actionFor(a){
-  if (a.channel === 'lightning') return a.code === 'red' || isWarning(a) ? ['Shelter now', 'Full work stoppage. Not a tent, canopy or stage.'] : ['Head for shelter', 'Evacuation procedures. Staff hold posts.'];
-  if (a.channel === 'headsup') {
-    // The timing line, then the first task of this festival's own list: camping, day lot or crew, inside or out.
-    const f = fest(), hz = a.hazard || alertHazard(a.event) || 'storms', first = campFor({ hazard: hz, indoor: f ? insideOf(f) : false }, f ? setupFor(f) : 'day')[0];
-    return [timing(hz, a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - Date.now()) / 60000)) : 999).replace(/\.$/, ''), first ? `${first}.` : ''];
-  }
-  const hz = alertHazard(a.event); if (!hz) return null;
-  return ACTION[hz][isWarning(a) || /warning/i.test(a.event || '') ? 'warn' : 'watch'];
-}
+// ---- the one line to act on (ACTION, actionLines in the shared block): the lines for this festival's own setup, camping, day lot or crew, inside or out ----
+function actionFor(a){ const f = fest(); return actionLines(a, { setup: f ? setupFor(f) : 'day', indoor: f ? insideOf(f) : false }); }
 /** How long an alert has left, for the head: "42 min left", or nothing once it is ending. */
 const leftText = t => { const c = fmtCountdown(Date.parse(t) - Date.now()); return c === 'now' ? 'ending' : `${c} left`; };
 /** Shelter, camp, a timeline you are somewhere on, and what to pack, for whatever is on the way. */
@@ -1992,7 +2044,8 @@ screens.lightning = () => {
     <h1 class="title">Lightning</h1>
     <p class="sub">${indoor ? 'No codes for this event' : live ? esc(c.text) : esc(statusLine(f))}</p>
     <div class="codehead ${live ? esc(l.code) : 'none'}"><span class="eyebrow">GOES lightning mapper</span><h2>${esc(head)}</h2><p>${esc(line)}</p>
-      ${live && l.code === 'red' && l.allClearAt ? `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">to the all-clear unless it strikes again</span>` : ''}</div>
+      ${live && l.code === 'red' && l.allClearAt ? (l.allClearHeld ? `<b class="num">Waiting for data</b><span class="s">thirty minutes have passed since the last close flash, but the mapper has not reported for ${esc(l.dataAt ? dataAge(l) : '?')} min, so nobody can call it clear</span>` : `<b class="num" data-countdown="${esc(l.allClearAt)}" data-bare="1">${esc(countdownText(l.allClearAt, true))}</b><span class="s">to the all-clear unless it strikes again</span>`) : ''}</div>
+    ${indoor ? '' : thunderButton() + thunderRow()}
     ${live ? `<div class="group glass">${kv('Within 8 mi, last 15 min', l.within[8])}${kv('Within 12 mi', l.within[12])}${kv('Within 20 mi', l.within[20])}</div>` : ''}
     ${live ? `<p class="h">This code</p><div class="group glass">${codeRow(l.code)}</div><details class="correct"><summary>The other codes${I.chev}</summary><div class="inner"><div class="group glass">${Object.keys(CODE).filter(k => k !== l.code).map(codeRow).join('')}</div></div></details>`
       : `<p class="h">The codes</p><div class="group glass">${Object.keys(CODE).map(codeRow).join('')}</div>`}
@@ -2307,7 +2360,7 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <p class="note">Empty uses the default. Type none to go without.</p>
   ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : S.geoDenied ? 'Blocked' : 'Off'}</span></button></div>
-  <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">Watch the intro and take the tour again</div></div>${I.chev}</button></div>
+  <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">Watch the intro and take the tour again</div></div>${I.chev}</button><button class="row" onclick="toggleSound()"><span class="lead">${I.bell}</span><div class="main"><div class="t">Sound on warnings</div><div class="s">A tone with the buzz when a warning lands or the code rises</div></div><span class="pill ${S.sound !== false ? 'on' : ''}">${S.sound !== false ? 'On' : 'Off'}</span></button></div>
   ${staffMode() ? `<p class="h">Admin</p>
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">Before they go out</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
   ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
@@ -2552,8 +2605,85 @@ function applyLink(){
 }
 
 let toastTimer;
-function toast(msg, ms){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2200); }
-function alarm(a){ try{ if (navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 600]); }catch(e){} toast(`New warning: ${a.event}`, 6000); }
+function toast(msg, ms, onTap){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); t.classList.toggle('tap', Boolean(onTap)); t.onclick = onTap ? () => { t.classList.remove('show'); onTap(); } : null; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2200); }
+// ---- a warning that lands while the page is open takes the screen: the line to act on, a buzz, a tone, and the screen stays lit ----
+function alarm(a){ buzz([300, 100, 300, 100, 600]); chime('warn'); S.takeover = { id: a.id, alert: a, at: Date.now() }; render(); }
+function takeover(){
+  const t = S.takeover, f = fest(); if (!t || !f) return '';
+  const listed = (data(f).alerts || []).find(x => x.id === t.id);   // the alert itself rides along: it lands in the cache a moment after the alarm
+  if (listed) t.seen = true; else if (t.seen) { S.takeover = null; return ''; }   // and once it has left the list, so does the screen
+  const a = listed || t.alert;
+  if (!a || !isActive(a)) { S.takeover = null; return ''; }
+  const act = actionFor(a) || ['Take shelter now', 'Stages and tents are not safe shelter.'];
+  return `<div class="takeover" role="alertdialog" aria-modal="true" aria-label="${esc(a.event)}"><div class="box">
+    <span class="eyebrow">${a.channel === 'lightning' ? 'Lightning' : 'Warning'} · ${esc(f.name)}</span><h2>${esc(a.event)}</h2>
+    <div class="do">${esc(act[0])}</div><p>${esc(act[1])}</p>${a.expiresAt ? `<p class="num until">Until ${esc(fmtTime(a.expiresAt))}</p>` : ''}
+    <div class="acts"><button class="btn" onclick="openTakeover()">Open the alert</button><button class="btn quiet" onclick="dismissTakeover()">Got it</button></div></div></div>`;
+}
+function openTakeover(){ const t = S.takeover; S.takeover = null; if (t) go('alert', t.id); else render(); }
+function dismissTakeover(){ S.takeover = null; render(); }
+// The tone needs a tap first (the browser's rule): the first tap anywhere unlocks it, and Settings can turn it off.
+const audio = { ctx: null };
+function unlockAudio(){ try{ if (!audio.ctx) audio.ctx = new (window.AudioContext || window.webkitAudioContext)(); if (audio.ctx.state === 'suspended') audio.ctx.resume(); }catch(e){} }
+document.addEventListener('pointerdown', unlockAudio, { once: true, capture: true });
+function chime(kind){
+  if (S.sound === false) return;
+  try{
+    const c = audio.ctx; if (!c || c.state !== 'running') return;
+    const notes = kind === 'warn' ? [[880, 0, .18], [660, .22, .3], [880, .6, .18], [660, .82, .3]] : kind === 'up' ? [[660, 0, .15], [880, .18, .25]] : [[660, 0, .15], [520, .18, .3]];
+    for (const [hz, at, len] of notes) {
+      const o = c.createOscillator(), g = c.createGain(); o.type = 'sine'; o.frequency.value = hz;
+      g.gain.setValueAtTime(0.0001, c.currentTime + at); g.gain.exponentialRampToValueAtTime(0.35, c.currentTime + at + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + at + len);
+      o.connect(g).connect(c.destination); o.start(c.currentTime + at); o.stop(c.currentTime + at + len + 0.05);
+    }
+  }catch(e){}
+}
+function toggleSound(){ S.sound = S.sound === false; save(); if (S.sound) { unlockAudio(); chime('up'); } render(); }
+/** The screen stays on through a warning or a Code Red, while the page is in front; the browser lets go when it goes behind, and it is asked again when it comes back. */
+let screenLock = null;
+const wantScreen = () => Boolean(S.takeover) || Boolean(fest() && data(fest()).alerts && (level(fest()) === 'warn' || (liveLightning(fest()) || {}).code === 'red'));
+async function holdScreen(on){
+  try{
+    if (on && !screenLock && navigator.wakeLock && document.visibilityState === 'visible') { screenLock = await navigator.wakeLock.request('screen'); screenLock.addEventListener('release', () => { screenLock = null; }); }
+    else if (!on && screenLock) { const l = screenLock; screenLock = null; await l.release(); }
+  }catch(e){ screenLock = null; }
+}
+/** The code moved: a rising tone and a buzz on the way up, a falling one when it settles back to green. */
+function codeMoved(was, now){
+  if (!was || !now || !CODE[now.code] || was.code === now.code) return;
+  const up = (CODE_RANK[now.code] || 0) > (CODE_RANK[was.code] || 0);
+  if (up) { chime('up'); buzz([200, 80, 200]); } else if (now.code === 'green') chime('down');
+}
+// ---- I heard thunder: the 30/30 rule as a clock. Thunder means lightning within reach; shelter, and stay thirty minutes past the last rumble ----
+const THUNDER_MS = 30 * 60000;
+const thunderDue = () => (S.thunder ? new Date(Date.parse(S.thunder.at) + THUNDER_MS).toISOString() : null);
+function heardThunder(){ S.thunder = { at: new Date().toISOString() }; save(); buzz(60); toast('Thirty minutes from now, unless it rumbles again', 4000); render(); }
+function clearThunder(){ S.thunder = null; save(); render(); }
+function thunderRow(){
+  if (!S.thunder) return '';
+  if (Date.now() - Date.parse(S.thunder.at) > 2 * THUNDER_MS) { S.thunder = null; save(); return ''; }   // an hour on, it is history
+  const due = thunderDue(), over = Date.parse(due) <= Date.now();
+  return `<div class="thunder glass ${over ? 'over' : ''}"><span class="lead">${I.bolt}</span><div class="main"><div class="t">${over ? 'Thirty minutes since the thunder' : `Thunder heard ${esc(fmtTime(S.thunder.at))}`}</div><div class="s">${over ? 'Nothing since: back out if your safety team agrees.' : `Stay in shelter until <span data-countdown="${esc(due)}">${esc(countdownText(due))}</span>`}</div></div><div class="acts"><button class="btn small" onclick="heardThunder()">Heard it again</button><button class="btn small quiet" onclick="clearThunder()">Clear</button></div></div>`;
+}
+const thunderButton = () => `<button class="btn quiet thunderbtn" onclick="heardThunder()">${I.bolt}<span>I heard thunder</span></button>`;
+// ---- the all-clear is a moment, not a blank: a warning that ended is held for half an hour with what to do now ----
+const ENDED_HOLD_MS = 30 * 60000;
+const afterLine = a => { const after = (PREP[a.hazard || alertHazard(a.event) || 'storms'] || PREP.storms).after || ''; return after.split('. ')[0].replace(/\.?$/, '.'); };
+function endedRecently(f){
+  const d = data(f), now = Date.now(), out = [...(d.ended || [])];
+  for (const a of d.alerts || []) if (isWarning(a) && a.channel !== 'headsup' && a.expiresAt && !isActive(a) && now - Date.parse(a.expiresAt) < ENDED_HOLD_MS && !out.some(e => e.id === a.id)) out.push({ ...a, endedAt: a.expiresAt });
+  return out.filter(e => now - Date.parse(e.endedAt) < ENDED_HOLD_MS).sort((a, b) => sevRank(b) - sevRank(a) || Date.parse(b.endedAt) - Date.parse(a.endedAt));
+}
+/** Back on the air: everything is asked again at once, rather than waiting for the next timer. */
+function catchUp(){
+  const f = fest();
+  if (f && !S.busy) refresh(f);
+  if (S.screen === 'feed') loadFeed();
+  connectLive();
+  if (f && backend()) loadLightning(f);
+  if (S.screen === 'radar' && f) startRadar(f);
+}
+const dataAge = l => Math.max(0, Math.round((Date.now() - Date.parse(l.dataAt)) / 60000));
 async function share(id){
   const f = fest(), a = (data(f).alerts || []).find(x => x.id === id); if (!f || !a) return;
   const text = `${a.event} for ${a.area}. ${(a.headline || a.body || '').slice(0, 200)}${a.instruction ? ` ${a.instruction.replace(/\s+/g, ' ').slice(0, 160)}` : ''}`;
@@ -2619,6 +2749,8 @@ function render(rev){
   const open = nav ? [] : [...app.querySelectorAll('details')].map(d => d.open);
   app.innerHTML = `<div class="screen${nav ? ' in' : ''}${rev ? ' rev' : ''}">${fn(S.param)}</div>`;
   if (!nav) app.querySelectorAll('details').forEach((d, i) => { if (open[i]) d.open = true; });
+  document.getElementById('over').innerHTML = takeover();
+  holdScreen(wantScreen());
   if (S.screen === 'radar') { fitStage(); showFrame(); updatePlay(); updateRadarNote(); }
   if (S.screen === 'weather') { chartHover(); crewHover(); }
   if (S.screen === 'welcome') walkMount();
@@ -2629,9 +2761,13 @@ function render(rev){
 
 async function boot(){
   load();
-  let bundled = [];
-  try{ bundled = await (await fetch('festivals.json', { cache: 'no-cache' })).json(); }catch(e){}
-  FESTS = backend() && S.fests ? mergeLists(bundled, S.fests) : bundled;
+  // The bundled list is fetched fresh, but the page waits on it only a moment when the list from the last open already holds the
+  // festival: on bad signal that fetch can take ten seconds, and a blank screen is the worst answer. The fresh copy lands behind.
+  const bundledP = fetch('festivals.json', { cache: 'no-cache' }).then(r => r.json()).catch(() => null);
+  const have = Boolean(backend() && S.fests && (!S.fest || S.fest === 'here' || S.fests.some(f => f.id === S.fest)));
+  let bundled = await (have ? Promise.race([bundledP, new Promise(r => setTimeout(() => r(undefined), 800))]) : bundledP);
+  if (bundled === undefined) { bundled = null; bundledP.then(list => { if (Array.isArray(list) && list.length) { FESTS = mergeLists(list, S.fests); render(); } }); }
+  FESTS = backend() && S.fests ? mergeLists(bundled || [], S.fests) : (bundled || []);
   const qs = new URLSearchParams(location.search);
   if (qs.get('staff')) { S.staff = true; save(); }
   if (qs.get('f') || qs.get('here')) {
@@ -2651,8 +2787,14 @@ async function boot(){
   ensurePush();
   connectLive();
   setInterval(tickCountdowns, 30000);
-  setInterval(() => { if (document.visibilityState === 'visible' && fest() && backend()) loadLightning(fest()); }, 60000);
-  setInterval(() => { if (document.visibilityState !== 'visible') return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);
+  setInterval(() => { if (document.visibilityState === 'visible' && navigator.onLine !== false && fest() && backend()) loadLightning(fest()); }, 60000);
+  setInterval(() => { if (document.visibilityState !== 'visible' || navigator.onLine === false) return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);
+  // Off the air: the card says so at once and the timers stand down. Back on: everything is asked again, now.
+  window.addEventListener('offline', () => { S.offline = true; render(); });
+  window.addEventListener('online', () => { S.offline = false; toast('Back online. Catching up', 3000); catchUp(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') holdScreen(wantScreen()); });
+  // A new build landed behind the page (the service worker keeps the copy that opened and fetches the fresh one behind it): one tap reloads.
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'updated') toast('Fieldwatch has an update. Tap to reload', 12000, () => location.reload()); });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     const d = fest() && data(fest()); if (d && d.at && Date.now() - Date.parse(d.at) > 5 * 60000 && !S.busy) refresh(fest());

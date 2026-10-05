@@ -428,9 +428,20 @@ test('web push: a browser subscribes to a festival and gets warnings and staff p
   assert.equal(sent.length, 2);
   assert.deepEqual(sent.map(x => x.endpoint).sort(), ['https://push.example.test/a', 'https://push.example.test/b']);
   assert.equal(sent[0].payload.title, 'Tornado Warning'); assert.equal(sent[0].payload.tag, 'urn:oid:web-1'); assert.equal(sent[0].payload.urgent, true);
-  assert.match(sent[0].payload.body, /^Suwannee Hulaween\. Tornado Warning until 3:30 PM/);
+  assert.match(sent[0].payload.body, /^Get to the shelter now\. Lowest floor of a solid building\. Not a tent or a car\. Suwannee Hulaween\. Tornado Warning until 3:30 PM/, 'the line to act on first, in this festival\'s own setup');
   assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&alert=urn%3Aoid%3Aweb-1`);
   assert.equal(sent[0].opts.urgency, 'high');
+
+  // The warning drops out of the listing twice running: both browsers hear it is over, quietly, under the same tag so it replaces the loud one.
+  sent.length = 0;
+  nwsState.features = [alertFeature({ id: 'urn:oid:web-2', '@id': 'https://api.weather.gov/alerts/urn:oid:web-2', event: 'Rip Current Statement', severity: 'Minor' })];
+  await pollFestival(q.festival(FEST));
+  assert.equal(sent.length, 0, 'one empty answer is not an end');
+  await pollFestival(q.festival(FEST));
+  assert.equal(sent.length, 2);
+  assert.equal(sent[0].payload.title, 'Ended: Tornado Warning'); assert.equal(sent[0].payload.tag, 'urn:oid:web-1'); assert.equal(sent[0].payload.ended, true); assert.equal(sent[0].payload.urgent, false); assert.equal(sent[0].opts.urgency, 'normal');
+  assert.match(sent[0].payload.body, /^Suwannee Hulaween\. The tornado warning has ended\. \S/, 'and what to do now');
+  assert.equal(sent[0].payload.url, `https://brandynvandal-photography.github.io/Fieldwatch/?f=${FEST}&alert=urn%3Aoid%3Aweb-1`);
 
   // A staff post reaches them too, whatever its severity.
   sent.length = 0;
@@ -586,7 +597,15 @@ test('the live stream: a page listening hears which festival changed and what ki
   const chunk = await heard;
   assert.match(chunk, /event: change\ndata: \{"festivalId":"hulaween-2026","kind":"alerts","at":"[^"]+"\}\n\n/);
   assert.equal((await api('GET', '/health')).json.live, 1, 'one page listening');
-  ctl.abort(); nwsState.features = before;
+  const id = Number((/id: (\d+)\nevent: change/.exec(chunk) || [])[1]);
+  assert.ok(id > 0, 'every event is numbered');
+  // A page that reconnects says where it left off (the browser sends Last-Event-ID by itself) and hears what it missed.
+  const ctl2 = new AbortController();
+  const res2 = await fetchReal(`${base}/events?f=${FEST}`, { signal: ctl2.signal, headers: { 'Last-Event-ID': String(id - 1) } });
+  const reader2 = res2.body.getReader(); let buf2 = '';
+  for (;;) { const { value, done } = await reader2.read(); if (done) break; buf2 += decoder.decode(value); if (buf2.includes(`id: ${id}\n`)) break; }
+  assert.match(buf2, new RegExp(`id: ${id}\\nevent: change\\ndata: \\{"festivalId":"hulaween-2026","kind":"alerts"`), 'the missed change is replayed first');
+  ctl.abort(); ctl2.abort(); nwsState.features = before;
   await new Promise(r => setTimeout(r, 50));
   assert.equal((await api('GET', '/health')).json.live, 0, 'and gone when it hangs up');
 });

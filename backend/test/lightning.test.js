@@ -77,6 +77,20 @@ test('the grade: red within 8 miles for 30 minutes after the last flash, orange 
   assert.equal(assess(fest, [at(3, 29)], now, fresh).code, 'red', 'still red 29 minutes after the last close flash');
   assert.equal(assess(fest, [at(3, 29)], now, now - 6 * MIN).code, 'red', 'and stale data does not clear a red');
   assert.equal(assess(fest, [at(3, 31)], now, fresh).code, 'green', 'clear 31 minutes after it');
+  // Files five to ten minutes late hold the last code, marked held with the age of the data; ten minutes without one is no data.
+  const green = assess(fest, [], now - 6 * MIN, now - 7 * MIN);
+  assert.equal(green.code, 'green'); assert.equal(green.held, false); assert.equal(green.stale, false); assert.equal(green.dataAgeSeconds, 60);
+  const heldGreen = assess(fest, [], now, now - 7 * MIN, null, green);
+  assert.equal(heldGreen.code, 'green'); assert.equal(heldGreen.held, true); assert.equal(heldGreen.stale, true); assert.equal(heldGreen.dataAgeSeconds, 420);
+  assert.equal(assess(fest, [], now, now - 11 * MIN, null, green).code, 'none', 'ten minutes without a file is no data, whatever stood');
+  assert.equal(assess(fest, [], now, now - 7 * MIN, null, null).code, 'none', 'nothing stood before: nothing to hold');
+  const orangeThen = assess(fest, [at(10, 8)], now - 6 * MIN, now - 7 * MIN), heldOrange = assess(fest, [at(10, 8)], now, now - 7 * MIN, null, orangeThen);
+  assert.equal(orangeThen.code, 'orange'); assert.equal(heldOrange.code, 'orange'); assert.equal(heldOrange.held, true); assert.equal(heldOrange.orangeUntil, orangeThen.orangeUntil, 'a held orange keeps its end');
+  // A red at its all-clear with late files holds, and says the all-clear is waiting for data; ten minutes more and it is no data.
+  const waiting = assess(fest, [at(3, 31)], now, now - 6 * MIN);
+  assert.equal(waiting.code, 'red'); assert.equal(waiting.allClearHeld, true); assert.equal(waiting.allClearAt, new Date(now - 31 * MIN + ALL_CLEAR_MS + 10 * MIN).toISOString().replace('.000Z', 'Z'));
+  assert.equal(assess(fest, [at(3, 29)], now, now - 6 * MIN).allClearHeld, false, 'before the all-clear nothing waits');
+  assert.equal(assess(fest, [at(3, 41)], now, now - 6 * MIN).code, 'none', 'held as long as it can be, then no data, never a green nobody confirmed');
 });
 
 test('a pass: list both satellites, read the new files, grade, push each change to orange or red once, move the ends out, clear, survive a restart', async () => {
@@ -127,20 +141,23 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   await lightningTick({ now: t2, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'green');
   assert.ok(Date.parse(q.alert(fest.id, alerts[0].id).expiresAt) < t2);
+  // The lift goes out quietly under the red's own tag, in the protocol's words, so the phone's loud notification becomes the all-clear.
+  assert.equal(sent.length, 2); assert.equal(sent[1].payload.title, 'All clear: Code Red lifted'); assert.equal(sent[1].payload.tag, alerts[0].id); assert.equal(sent[1].payload.ended, true); assert.equal(sent[1].opts.urgency, 'normal');
+  assert.equal(sent[1].payload.body, 'Bolt Test Fest. Thirty minutes since the last flash within 8 miles. Now Code Green: No lightning within 20 miles in the last 15 minutes.');
   // A flash 10 miles out: orange, pushed once (a normal push, not an urgent one), ending fifteen minutes after that flash.
   files.set(key('G19', t2 + 2 * MIN), lcfa(t2 + 2 * MIN, [north(10)]));
   await lightningTick({ now: t2 + 3 * MIN, fetchImpl, festivals: [fest] });
-  assert.equal(lightningFor(fest.id).code, 'orange'); assert.equal(sent.length, 2);
-  assert.equal(sent[1].payload.title, 'Code Orange: lightning within 12 miles'); assert.equal(sent[1].opts.urgency, 'normal');
-  assert.match(sent[1].payload.body, /^Bolt Test Fest\. Lightning 10 mi away at .*Execute evacuation procedures\. Staff hold posts to assist attendees\.$/);
+  assert.equal(lightningFor(fest.id).code, 'orange'); assert.equal(sent.length, 3);
+  assert.equal(sent[2].payload.title, 'Code Orange: lightning within 12 miles'); assert.equal(sent[2].opts.urgency, 'normal');
+  assert.match(sent[2].payload.body, /^Bolt Test Fest\. Lightning 10 mi away at .*Execute evacuation procedures\. Staff hold posts to assist attendees\.$/);
   const orange = q.activeAlerts(fest.id, t2 + 3 * MIN).filter(x => x.channel === 'lightning');
   assert.equal(orange.length, 1); assert.equal(orange[0].code, 'orange'); assert.equal(orange[0].severity, 'moderate'); assert.equal(orange[0].expiresAt, new Date(t2 + 17 * MIN).toISOString().replace('.000Z', 'Z'));
   await lightningTick({ now: t2 + 4 * MIN, fetchImpl, festivals: [fest] });
-  assert.equal(sent.length, 2, 'still orange: no second push');
+  assert.equal(sent.length, 3, 'still orange: no second push');
   // Then one 5 miles out: red, pushed, and the orange alert ends now, superseded.
   files.set(key('G19', t2 + 5 * MIN), lcfa(t2 + 5 * MIN, [north(5)]));
   await lightningTick({ now: t2 + 6 * MIN, fetchImpl, festivals: [fest] });
-  assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3); assert.equal(sent[2].payload.title, 'Code Red: lightning within 8 miles');
+  assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 4); assert.equal(sent[3].payload.title, 'Code Red: lightning within 8 miles', 'orange to red is the red push, not a lift');
   const live = q.activeAlerts(fest.id, t2 + 6 * MIN).filter(x => x.channel === 'lightning');
   assert.equal(live.length, 1); assert.equal(live[0].code, 'red'); assert.ok(Date.parse(q.alert(fest.id, orange[0].id).expiresAt) <= t2 + 6 * MIN, 'the orange alert is ended, not left beside the red');
   // A restart mid-red: before a single file is read again, the red alert already in the database keeps the grade red, with its own
@@ -150,13 +167,14 @@ test('a pass: list both satellites, read the new files, grade, push each change 
   assert.equal(lightningFor(fest.id).code, 'red', 'an empty buffer does not clear a red that is still out');
   assert.equal(lightningFor(fest.id).allClearAt, q.alert(fest.id, live[0].id).expiresAt, 'its all-clear is the alert\'s'); assert.equal(lightningFor(fest.id).lastNearMi, 5);
   await lightningTick({ now: t2 + 7 * MIN, fetchImpl, festivals: [fest] });
-  assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 3);
+  assert.equal(lightningFor(fest.id).code, 'red'); assert.equal(sent.length, 4);
   assert.equal(q.activeAlerts(fest.id, t2 + 7 * MIN).filter(x => x.channel === 'lightning').length, 1);
   // Past that all-clear with a quiet file: green, and the alert is over; a restart then carries nothing.
   const t3 = t2 + 5 * MIN + ALL_CLEAR_MS + MIN;
   files.set(key('G19', t3 - MIN), lcfa(t3 - MIN, []));
   await lightningTick({ now: t3, fetchImpl, festivals: [fest] });
   assert.equal(lightningFor(fest.id).code, 'green'); assert.ok(Date.parse(q.alert(fest.id, live[0].id).expiresAt) <= t3);
+  assert.equal(sent.length, 5); assert.equal(sent[4].payload.title, 'All clear: Code Red lifted'); assert.equal(sent[4].payload.tag, live[0].id);
   resetLightning();
   await lightningTick({ now: t3 + MIN, fetchImpl, festivals: [fest], maxFiles: 0 });
   assert.equal(lightningFor(fest.id).code, 'none', 'nothing read yet and nothing standing: no data, not a guess');

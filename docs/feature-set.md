@@ -29,6 +29,13 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - Staff settings out of sight: the backend address, its check and the admin key show in Settings after five taps on the credits line, `?staff=1`, or once a key is saved; the public sees location, forget, and the credits.
 - A festival's own staff key, issued by the admin from Settings and shown once with a staff link: its safety team posts updates, reviews reports, corrects the ground and moves the pin for their festival, and nothing admin-wide (`docs/partner.md`).
 - Staff screens behind the admin key: post an update (alert plus push), review reports before they go out, a sources screen with the last import and a run-now button, and an All festivals screen to search the whole list and hide a listing that is not a festival (an import keeps it hidden).
+- Pushes that act: a warning's notification opens with the line to act on and the line of what not to do, in the festival's own setup (`actionLines`, shared between the backend and the page), then the festival and the headline. When a warning ends, or a Code Red or Orange lifts, a quiet notification under the same tag replaces the loud one with what to do now (`pushEnded`, `liftWords`), so nobody is left sheltering from a warning that is over.
+- A warning that lands while the page is open takes the screen: the event, the line to act on, a buzz, a tone (after the first tap, off in Settings) and the screen stays lit through a warning or a Code Red (`alarm`, `takeover`, `chime`, `holdScreen`). A code that rises chimes; one that settles to green chimes down.
+- The all-clear is a moment, not a blank: a warning that ended is held on the sky card for half an hour, with when it ended and the first thing to do now, and still opens (`endedRecently`).
+- I heard thunder: the 30/30 rule as a clock, from the lightning screen or a storm alert, on the festival page, resets on the next rumble, buzzes at thirty minutes, survives a reload (`heardThunder`, `thunderRow`).
+- Honest lightning: the backend holds the last code with the age of the data when the mapper's files run five to ten minutes late and says no data after ten; a red at its all-clear with late files holds up to ten more minutes while the all-clear waits for data; the tile and the lightning screen say each of these, and no data is a tile, not a blank (`assess`, `lightningTile`).
+- No signal: the sky card says so at once and grays, the timers stand down, and back on the air the page asks for everything again without waiting (`catchUp`); the live stream numbers its events and replays what a reconnecting page missed (`Last-Event-ID`).
+- The shell opens from its copy at once, with or without signal, while the fresh build lands behind it and a toast offers the reload; the display face never blocks the first paint, and the page draws from the list it kept rather than waiting on the bundled one.
 - Works from the cached pack when signal drops.
 - iOS app with a Bluetooth relay: written, never compiled.
 
@@ -55,10 +62,6 @@ Needs: disk on the Railway volume (mounted). Prefetch only cells with subscriber
 **4. Warning polygon and storm line**
 How: keep geometry and eventMotionDescription in normalizeAlert (backend, web, Swift in step). Outline active warning polygons on the radar square beside your dot. Alert screen adds "Storm 18 mi west, moving toward you at 35 mph, about 30 min".
 Needs: nothing. Only storm-based warnings carry it; zone alerts draw nothing and the line hides. Turns "your county" into "is it us".
-
-**5. Thunder 30/30 timer**
-How: "I heard thunder" on the thunder panel and on any thunderstorm alert. 30-minute countdown on the home card, resets on tap, buzzes and banners at zero, works offline.
-Needs: nothing. The card must say the web build cannot buzz with the tab closed.
 
 **6. Measured wind and your thresholds**
 How: a "Now" gauge above the gust panel: sustained, gust, direction, station, distance, age, from NWS stations/observations/latest (CORS, no key), every 5 minutes. Per-phone thresholds (presets: tents 25/40, lift 28, inflatables 15/25, roof from its letter) drawn on the gauge and the forecast. Push "gusts over 40 forecast from 3 pm" an hour before the crossing.
@@ -95,16 +98,16 @@ Needs: nothing; iOS 15+ for files. Radar layer only from backend frames (IEM fra
 How: on any warning or hold, a full-bleed high-contrast page with the event and one instruction in the largest type that fits, Wake Lock keeps it on, optional tone. For a vendor row or a crew of six with no PA.
 Needs: nothing. The browser cannot set brightness; say "turn brightness up".
 
-**14. Catch-up digest and low-signal mode**
-How: the first sync after a gap shows "While you were out": warnings first, then holds, posts and incidents newer than the last sync. Two timed-out fetches switch to low-signal: alerts only, radar paused, age shown on everything; toggle in Settings.
-Needs: nothing. navigator.connection is absent on iOS Safari, so key it off timeouts.
+**14. Catch-up digest**
+How: the first sync after a gap shows "While you were out": warnings first, then holds, posts and incidents newer than the last sync. Done so far: the page catches up the moment the signal returns, the stream replays what it missed, and the card grays and says how old it is while the signal is out.
+Needs: nothing.
 
 **15. First-timer safety cards**
 How: short static cards in the pack, in the walkthrough and a "Know before you go" row: heat and water; a tent is not lightning shelter; crowd crush (stay on your feet, arms up, move diagonally); harm reduction, Never Use Alone and 988; keep carrier WEA on; what a warning sounds like; the county SAME code for a weather radio. Festival staff cards append.
 Needs: nothing. Highest value per line in this list.
 
 **16. Source and age on every card**
-How: "NWS Fort Worth, 4 min ago", "KDFW gust, 6 min ago". A card past its refresh grays to stale. The offline banner states the pack's age.
+How: "NWS Fort Worth, 4 min ago", "KDFW gust, 6 min ago". Done so far: the sky card grays past fifteen minutes and says when it last checked, the lightning tile says how old its data is when the mapper runs late. Still to do: the source and age on the forecast panels and the day rows.
 Needs: nothing. Nobody stakes a hold on a number with no age.
 
 **17. Getting home card**

@@ -29,6 +29,7 @@ sets, watches and tries, in order. `node backend/scripts/shakedown.mjs https://y
    buzz within seconds. On an iPhone this needs the site on the Home Screen first.
 8. **Lightning.** When a storm is within twenty miles, compare the code and the nearest flash with the festival's own detection and
    with the radar. The all-clear countdown should match thirty minutes after the last close flash.
+8b. **A warning lands with the page open.** Post a severe staff update from another phone (or wait for a real one): the open page takes the screen with the line to act on, buzzes, chimes if a tap came first, and the screen stays lit; Got it brings the page back. When it ends, the sky card says All clear with when and the first thing to do now, for half an hour.
 9. **No signal.** Airplane mode: the festival page opens from the cache, the last radar loop plays with "No signal. This is the
    loop from before it dropped." under it and the frames' real times on the stamp, an alert opens in full, and a warning that
    was pushed while the phone was out opens from the notification even before the list loads. Back online, the page catches

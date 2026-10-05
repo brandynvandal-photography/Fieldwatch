@@ -996,6 +996,10 @@ test('lightning codes: a red on the festival page with the all-clear countdown, 
     const redAlert = { id: 'lightning-hulaween-2026-red-1', event: 'Code Red: lightning within 8 miles', headline: 'Lightning 3.6 mi away at 6:40 PM. Rapid evacuation required. Full work stoppage.', body: 'Lightning has been detected in less than an 8 mile radius.', instruction: 'Get to shelter now.', severity: 'severe', area: 'Live Oak, FL', source: 'GOES lightning mapper, via Fieldwatch', issuedAt: minutesAgo(10), onset: minutesAgo(10), expiresAt: new Date(Date.now() + 20 * 60000).toISOString(), channel: 'lightning', relayCount: 0, code: 'red', nearestMi: 3.6 };
     store.alerts['hulaween-2026'] = [redAlert];
     await page.evaluate(() => refresh(fest())); await page.waitForSelector('.bolt.red');
+    // A Code Red landing on an open page takes the screen with the protocol's line; one tap and the page is back.
+    await page.waitForSelector('.takeover');
+    assert.equal(await page.textContent('.takeover h2'), 'Code Red: lightning within 8 miles'); assert.equal(await page.textContent('.takeover .do'), 'Shelter now');
+    await page.click('.takeover button:has-text("Got it")'); assert.equal(await page.$('.takeover'), null);
     assert.equal(await page.textContent('.bolt .t'), 'Lightning 3.6 mi · Code Red');
     assert.match(await page.textContent('.bolt .s'), /all clear in (19|20) min/, 'the countdown is the alert\'s own end');
     assert.equal(await page.textContent('.sky h2'), 'Code Red: lightning within 8 miles', 'the sky and the tile say the same thing');
@@ -1383,6 +1387,117 @@ test('no signal: the radar plays the loop from before it dropped, and says that 
     assert.equal(await page.$$eval('.frame', els => els.length), 24, 'the kept loop, not the archive\'s 48');
     assert.equal(await page.evaluate(() => radar.loop.kept), true);
     assert.match(await page.textContent('#radar-ago'), /ago/, 'the stamp is honest about the age');
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('a warning that lands while the page is open takes the screen with the line to act on; when it ends, the all-clear is a moment, not a blank', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  const p = alertFeature().properties, hour = new Date(Date.now() + 3600000).toISOString();
+  const storm = { id: p.id, event: p.event, headline: p.headline ?? null, body: p.description ?? '', instruction: p.instruction ?? null, severity: 'severe', area: p.areaDesc ?? '', source: 'NWS', issuedAt: p.effective, expiresAt: hour, channel: 'weather', relayCount: 0 };
+  store.alerts['hulaween-2026'] = [storm];
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn');
+    assert.equal(await page.$('.takeover'), null, 'what was already there when the page opened does not take the screen');
+    // A tornado warning lands: the stream says so, the page pulls, and the warning takes the screen.
+    const tornado = { ...storm, id: 'urn:oid:tornado-1', event: 'Tornado Warning', headline: 'Tornado Warning until 5:30 PM', severity: 'extreme' };
+    store.alerts['hulaween-2026'] = [tornado, storm];
+    store.emit({ festivalId: 'hulaween-2026', kind: 'alerts', at: new Date().toISOString() });
+    await page.waitForSelector('.takeover');
+    assert.equal(await page.textContent('.takeover h2'), 'Tornado Warning');
+    assert.equal(await page.textContent('.takeover .do'), 'Get to the shelter now');
+    assert.equal(await page.textContent('.takeover p'), 'Lowest floor of a solid building. Not a tent or a car.');
+    await page.click('.takeover button:has-text("Open the alert")'); await page.waitForSelector('.alerthead');
+    assert.match(await page.textContent('.alerthead h2'), /Tornado Warning/); assert.equal(await page.$('.takeover'), null);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('.sky h2'), 'Tornado Warning');
+    // Both warnings end: the sky says so for a while, with what to do now, and the ended one still opens.
+    store.alerts['hulaween-2026'] = [];
+    store.emit({ festivalId: 'hulaween-2026', kind: 'alerts', at: new Date().toISOString() });
+    await page.waitForSelector('.sky.ok.ended');
+    assert.equal(await page.textContent('.sky h2'), 'All clear');
+    assert.match(await page.textContent('.sky p'), /^Tornado Warning ended \d{1,2}:\d\d [AP]M\. [A-Z][^.]+\.$/, 'the worst one, when it ended, and the first thing to do now');
+    await page.click('.sky'); await page.waitForSelector('.alerthead');
+    assert.match(await page.textContent('.alerthead h2'), /Tornado Warning/);
+    assert.match(await page.textContent('.alerthead .num'), /^Ended \d{1,2}:\d\d [AP]M$/);
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('I heard thunder: a thirty-minute clock from a storm alert, on the festival page, that survives a reload and resets on the next rumble', async () => {
+  const { page, context, seen } = await newPage();
+  try {
+    await pickHulaween(page);
+    await page.click('.sky'); await page.waitForSelector('.alerthead');
+    await page.click('button.thunderbtn');
+    await page.waitForSelector('.thunder');
+    assert.match(await page.textContent('.thunder .t'), /^Thunder heard \d{1,2}:\d\d [AP]M$/);
+    assert.match(await page.textContent('.thunder .s'), /^Stay in shelter until in (29|30) min$/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    assert.ok(await page.$('.thunder'), 'on the festival page too');
+    // A reload opens on the home page; the festival is one tap away, and the clock is still running there.
+    await page.reload(); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    assert.ok(await page.$('.thunder'), 'and after a reload');
+    const first = await page.$eval('.thunder .t', el => el.textContent);
+    await page.evaluate(() => { S.thunder = { at: new Date(Date.now() - 31 * 60000).toISOString() }; save(); tickCountdowns(); });
+    await page.waitForSelector('.thunder.over');
+    assert.equal(await page.textContent('.thunder .t'), 'Thirty minutes since the thunder');
+    await page.waitForSelector('.toast.show:has-text("Thirty minutes since the thunder")');
+    await page.click('.thunder button:has-text("Heard it again")');
+    await page.waitForSelector('.thunder:not(.over)');
+    assert.match(await page.textContent('.thunder .t'), /^Thunder heard/); assert.notEqual(await page.textContent('.thunder .s'), first);
+    await page.click('.thunder button:has-text("Clear")');
+    assert.equal(await page.$('.thunder'), null);
+    assert.deepEqual(seen.errors, []);
+  } finally { await context.close(); }
+});
+
+test('no signal: the card says so at once and the page stops asking; back on the air, it catches up by itself', async () => {
+  const { page, context, seen } = await newPage();
+  try {
+    await pickHulaween(page);
+    const before = seen.alerts;
+    await context.setOffline(true);
+    await page.waitForFunction(() => /^No signal\. Last checked/.test(document.querySelector('.sky .foot')?.textContent || ''));
+    assert.ok(await page.$('.sky.stale'), 'the card reads as stale');
+    assert.equal(await page.textContent('.sky h2'), 'Severe Thunderstorm Warning', 'what it knows stays up');
+    await context.setOffline(false);
+    for (let i = 0; i < 50 && seen.alerts === before; i++) await new Promise(r => setTimeout(r, 100));
+    assert.ok(seen.alerts > before, 'back online, the page asked again without waiting for a timer');
+    await page.waitForFunction(() => /^Checked/.test(document.querySelector('.sky .foot')?.textContent || ''));
+    assert.equal(await page.$('.sky.stale'), null);
+    assert.deepEqual(seen.errors, []);
+  } finally { await context.close(); }
+});
+
+test('late lightning files: the tile says the data is old and holds the code; a red at its all-clear says the all-clear waits for data; no data is said, not hidden', async () => {
+  const { page, context, seen } = await newPage();
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  const minutesAgo = m => new Date(Date.now() - m * 60000).toISOString();
+  store.lightning['hulaween-2026'] = { code: 'yellow', nearestMi: 15, nearestAt: minutesAgo(9), within: { 8: 0, 12: 0, 20: 1 }, lastNearMi: null, lastNearAt: null, allClearAt: null, orangeUntil: null, held: true, stale: true, dataAgeSeconds: 420, at: minutesAgo(0), dataAt: minutesAgo(7), source: 'GOES GLM' };
+  try {
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.click('button:has-text("Use my location")');
+    await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
+    await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.bolt.yellow');
+    assert.match(await page.textContent('.bolt .s'), /· data 7 min old$/, 'a held code says how old its data is');
+    store.lightning['hulaween-2026'] = { code: 'red', nearestMi: null, nearestAt: null, within: { 8: 0, 12: 0, 20: 0 }, lastNearMi: 4, lastNearAt: minutesAgo(32), allClearAt: new Date(Date.now() + 8 * 60000).toISOString(), allClearHeld: true, orangeUntil: null, held: false, stale: true, dataAgeSeconds: 420, at: minutesAgo(0), dataAt: minutesAgo(7), source: 'GOES GLM' };
+    store.emit({ festivalId: 'hulaween-2026', kind: 'lightning', at: minutesAgo(0) });
+    await page.waitForSelector('.bolt.red');
+    assert.match(await page.textContent('.bolt .s'), /all-clear waits for data \(data 7 min old\)$/);
+    await page.click('.bolt'); await page.waitForSelector('.codehead.red');
+    assert.equal(await page.textContent('.codehead b'), 'Waiting for data');
+    assert.match(await page.textContent('.codehead .s'), /has not reported for 7 min/);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky');
+    store.lightning['hulaween-2026'] = { code: 'none', at: minutesAgo(0), dataAt: minutesAgo(12), dataAgeSeconds: 720, on: true, source: 'GOES GLM' };
+    store.emit({ festivalId: 'hulaween-2026', kind: 'lightning', at: minutesAgo(0) });
+    await page.waitForSelector('.bolt.none');
+    assert.equal(await page.textContent('.bolt .t'), 'No lightning data · 12 min');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
 });

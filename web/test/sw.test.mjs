@@ -11,14 +11,14 @@ function boot() {
   const stores = new Map();
   const caches = { open: async n => { if (!stores.has(n)) stores.set(n, mkCache()); return stores.get(n); }, keys: async () => [...stores.keys()], delete: async n => stores.delete(n),
     match: async k => { for (const c of stores.values()) { const r = await c.match(k); if (r) return r; } } };
-  const shown = [], on = {};
-  const self = { addEventListener: (t, fn) => { on[t] = fn; }, registration: { showNotification: async (title, opts) => { shown.push({ title, ...opts }); } }, clients: { claim: async () => {} }, skipWaiting: () => {}, location: new URL(SCOPE + 'sw.js') };
+  const shown = [], on = {}, posted = [];
+  const self = { addEventListener: (t, fn) => { on[t] = fn; }, registration: { showNotification: async (title, opts) => { shown.push({ title, ...opts }); } }, clients: { claim: async () => {}, matchAll: async () => [{ postMessage: m => posted.push(m) }] }, skipWaiting: () => {}, location: new URL(SCOPE + 'sw.js') };
   const ctx = { self, caches, location: self.location, fetches: [], answer: async () => new Response('png', { status: 200, headers: { 'content-type': 'image/png' } }), Response, Request, URL, console };
   ctx.fetch = async (...a) => { ctx.fetches.push(a); return ctx.answer(...a); };
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(new URL('../sw.js', import.meta.url), 'utf8'), ctx);
   const fire = async (type, ev) => { const waits = []; let out; ev.waitUntil = p => waits.push(p); ev.respondWith = p => { out = p; }; on[type](ev); await Promise.all(waits); return out ? await out : undefined; };
-  return { ctx, caches, stores, shown, fire };
+  return { ctx, caches, stores, shown, posted, fire };
 }
 
 test('a warning the push service held past its end says so, carries when it was issued, and its alert is kept for the screen', async () => {
@@ -76,4 +76,44 @@ test('activating a new worker clears an old shell and keeps the radar and the al
   for (const n of ['fieldwatch-shell-v1', 'fieldwatch-shell-v2', 'fieldwatch-radar-v1', 'fieldwatch-alerts-v1']) await caches.open(n);
   await fire('activate', {});
   assert.deepEqual((await caches.keys()).sort(), ['fieldwatch-alerts-v1', 'fieldwatch-radar-v1', 'fieldwatch-shell-v2']);
+});
+
+test('the shell answers from its copy at once, the network refreshes it behind, a changed page is announced, and no signal still opens the app', async () => {
+  const { ctx, posted, stores, fire } = boot();
+  const page = (body, etag) => new Response(body, { status: 200, headers: { 'content-type': 'text/html', etag } });
+  ctx.answer = async () => page('<html>one</html>', '"v1"');
+  const r1 = await fire('fetch', { request: new Request(SCOPE + 'index.html') });
+  assert.equal(await r1.text(), '<html>one</html>', 'nothing kept yet: the network answers');
+  await new Promise(r => setTimeout(r, 5));
+  const shellCache = stores.get('fieldwatch-shell-v2');
+  assert.ok(shellCache.m.has(SCOPE + 'index.html'), 'and the copy is kept');
+  // The same page again, now from the copy, while the network says it has not changed: nobody is told anything.
+  ctx.fetches.length = 0;
+  const r2 = await fire('fetch', { request: new Request(SCOPE + 'index.html?f=hulaween-2026&alert=x') });
+  assert.equal(await r2.text(), '<html>one</html>', 'the copy answers, whatever the query');
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(ctx.fetches.length, 1, 'the network was asked behind it'); assert.deepEqual(posted, []);
+  // A new build behind the copy: the copy still answers, the fresh one is kept, and every open page hears.
+  ctx.answer = async () => page('<html>two</html>', '"v2"');
+  const r3 = await fire('fetch', { request: new Request(SCOPE) });
+  assert.equal(await r3.text(), '<html>one</html>', 'the page that opened is the one that opened');
+  await new Promise(r => setTimeout(r, 5));
+  assert.deepEqual(posted.map(m => ({ ...m })), [{ type: 'updated' }]);
+  assert.equal(await (await shellCache.match(SCOPE + 'index.html')).text(), '<html>two</html>', 'the next open gets the new build');
+  // A data file changing is not an update of the app.
+  ctx.answer = async () => page('[]', '"d1"');
+  await fire('fetch', { request: new Request(SCOPE + 'festivals.json') });
+  ctx.answer = async () => page('[{}]', '"d2"');
+  await fire('fetch', { request: new Request(SCOPE + 'festivals.json') }); await new Promise(r => setTimeout(r, 5));
+  assert.equal(posted.length, 1);
+  // No signal: the copy, and for a page never seen, the app itself.
+  ctx.answer = async () => { throw new TypeError('Failed to fetch'); };
+  assert.equal(await (await fire('fetch', { request: new Request(SCOPE + 'index.html') })).text(), '<html>two</html>');
+  assert.equal(await (await fire('fetch', { request: new Request(SCOPE + 'somewhere') })).text(), '<html>two</html>', 'an unknown path opens the app rather than failing');
+});
+
+test('a warning that ended comes as a quiet notification under the same tag, so it replaces the loud one', async () => {
+  const { shown, fire } = boot();
+  await fire('push', { data: { json: () => ({ title: 'Ended: Severe Thunderstorm Warning', body: 'Suwannee Hulaween. The severe thunderstorm warning has ended. Wait thirty minutes after the last thunder before going back out.', tag: 'urn:oid:x', urgent: false, ended: true, issuedAt: '2026-10-23T18:00:00Z', expiresAt: null, url: './?f=hulaween-2026&alert=urn%3Aoid%3Ax' }) } });
+  assert.equal(shown[0].title, 'Ended: Severe Thunderstorm Warning'); assert.equal(shown[0].tag, 'urn:oid:x'); assert.equal(shown[0].requireInteraction, false); assert.equal(shown[0].renotify, false); assert.deepEqual([...shown[0].vibrate], [200]);
 });

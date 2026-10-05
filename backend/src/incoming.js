@@ -234,10 +234,33 @@ function timing(hazard, m) {
   return m <= 20 ? 'Go to shelter now and leave the gear.' : m <= 60 ? 'Finish securing camp in the next few minutes. Head for shelter with fifteen to spare.'
     : m <= 180 ? 'Secure camp now. Charge phones, fill water and pick your shelter.' : 'Secure what you would hate to lose. Check back in an hour.';
 }
+// One line to act on and one line of what not to do, for every alert: a person in a panic reads the first line and nothing
+// else, so the push opens with it and so does the alert screen. An imperative under eight words, then what not to do.
+const ACTION = {
+  tornado: { warn: ['Get to the shelter now', 'Lowest floor of a solid building. Not a tent or a car.'], watch: ['Know where the shelter is', 'Keep the phone on and charged.'] },
+  storms:  { warn: ['Get into a vehicle or building', 'Not a tent, canopy or stage.'], watch: ['Know your shelter', 'A hard-topped vehicle or a building. Not a tent.'] },
+  hail:    { warn: ['Get under a solid roof', 'Not a tent or canopy.'], watch: ['Know your shelter', 'Lay canopies flat before it comes.'] },
+  wind:    { warn: ['Stay clear of tents and stages', 'Get into a vehicle or building if it turns dangerous.'], watch: ['Tie everything down', 'Drop pop-up canopies.'] },
+  flood:   { warn: ['Move to high ground now', 'Never walk or drive through moving water.'], watch: ['Know the route to high ground', 'Move the tent off low ground.'] },
+  heat:    { warn: ['Shade and water now', 'Medical tent at confusion or no sweat.'], watch: ['Water every twenty minutes', 'Shade at midday. Check on neighbors.'] },
+  rain:    { warn: ['Get dry and off low ground', 'A vehicle or a building keeps you dry.'], watch: ['Move the tent off low ground', 'Bins and bags off the floor.'] },
+};
+/** [do, and] for an alert: the protocol's line for a lightning code, the timing line and the first task of this setup's own list for a heads-up, the hazard's for a warning or a watch; null when the event names no hazard. */
+function actionLines(a, opts) {
+  const o = opts || {}, warn = a.severity === 'severe' || a.severity === 'extreme';
+  if (a.channel === 'lightning') return a.code === 'red' || warn ? ['Shelter now', 'Full work stoppage. Not a tent, canopy or stage.'] : ['Head for shelter', 'Evacuation procedures. Staff hold posts.'];
+  if (a.channel === 'headsup') {
+    const hz = a.hazard || alertHazard(a.event) || 'storms', m = a.onset ? Math.max(0, Math.round((Date.parse(a.onset) - (o.now || Date.now())) / 60000)) : 999;
+    const first = campFor({ hazard: hz, indoor: Boolean(o.indoor) }, o.setup || 'day')[0];
+    return [timing(hz, m).replace(/\.$/, ''), first ? `${first}.` : ''];
+  }
+  const hz = alertHazard(a.event); if (!hz) return null;
+  return ACTION[hz][warn || /warning/i.test(a.event || '') ? 'warn' : 'watch'];
+}
 // ==== shared: end ====
 
 // ---- backend only: the wording of a push, in the festival's own clock ----
-export { THRESHOLDS, WIND_LINES, HEAT_FLAGS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, wbgtF, heatFlag, flagText, campFor, deadlines, taskMinutes, timing };
+export { THRESHOLDS, WIND_LINES, HEAT_FLAGS, LABEL, PREP, TIER, SHELTER_PACK, hourKey, spread, allocate, spreadGrid, cToF, kmhToMph, alertHazard, incoming, rainWords, mudTier, groundWords, windLine, lineWords, wbgtF, heatFlag, flagText, campFor, deadlines, taskMinutes, timing, ACTION, actionLines };
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 export const clock = (t, tz) => { try { return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz || 'UTC' }).format(new Date(t)); } catch { return new Date(t).toISOString().slice(11, 16) + 'Z'; } };
 /** One line for a notification: what, and when. */

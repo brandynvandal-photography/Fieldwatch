@@ -7,7 +7,9 @@
 //   orange   nearest flash in the last 15 minutes 8 to 12 miles out: evacuation procedures, staff hold posts to assist attendees
 //   yellow   12 to 20 miles: pay attention, prepare for orange and a work stoppage
 //   green    nothing within 20 miles in the last 15 minutes
-//   none     no data in the last 5 minutes (off, nothing is on, or the buckets are unreachable)
+//   none     no data in the last 10 minutes (off, nothing is on, or the buckets are unreachable). Files 5 to 10 minutes late
+//            hold the last code, marked held with the age of the data, rather than flipping to no data and back; a red at
+//            its all-clear with late files holds up to 10 more minutes while the all-clear waits for data
 //   indoor   the event is indoors (ground.js effectiveGround): the building is the shelter, so no code and no alert
 // A change to orange or red is stored and pushed like a warning (channel 'lightning'); red ends with the all-clear,
 // orange fifteen minutes after the last flash within 12 miles or when the code changes. The web build shows the code
@@ -20,15 +22,15 @@ import { q } from './db.js';
 import { clock } from './incoming.js';
 import { point } from './nws.js';
 import { festivalsInWindow } from './poller.js';
-import { pushAlert } from './push.js';
-import { pushWeb } from './webpush.js';
+import { pushAlert, pushEnded } from './push.js';
+import { pushEnded as pushEndedWeb, pushWeb } from './webpush.js';
 import { iso } from './util.js';
 import { changed } from './live.js';
 import { effectiveGround } from './ground.js';
 
 const MIN = 60_000, MI = 1609.344, J2000 = Date.UTC(2000, 0, 1, 12);   // GOES-R clocks count seconds from noon on 1 January 2000
 export const RINGS = { red: 8, orange: 12, yellow: 20 };
-export const RECENT_MS = 15 * MIN, ALL_CLEAR_MS = 30 * MIN, STALE_MS = 5 * MIN, REACH_MI = 40;
+export const RECENT_MS = 15 * MIN, ALL_CLEAR_MS = 30 * MIN, STALE_MS = 5 * MIN, LOST_MS = 10 * MIN, HOLD_MS = 10 * MIN, REACH_MI = 40;
 export const lightningOn = () => !/^(false|0|no|off)$/i.test(process.env.LIGHTNING || 'true');
 // GOES-East is GOES-19 since April 2025 (GOES-16 is in storage orbit and its bucket stops), GOES-West is GOES-18. Together they see all of the US.
 const buckets = () => (process.env.GLM_BUCKETS || 'noaa-goes19,noaa-goes18').split(',').map(s => s.trim()).filter(Boolean);
@@ -80,7 +82,7 @@ export async function readFlashes(bytes) {
  * `carry` is a red or orange alert already standing (issued before a restart, while the files are read again, newest first): the
  * flash it was issued on keeps its say until the alert's own end, so the grade never falls below an alert that is still out.
  */
-export function assess(f, flashes, now = Date.now(), lastFileAt = null, carry = null) {
+export function assess(f, flashes, now = Date.now(), lastFileAt = null, carry = null, prev = null) {
   const near = flashes.map(x => ({ ...x, mi: milesBetween(f.latitude, f.longitude, x.lat, x.lon) })).filter(x => x.mi <= RINGS.yellow);
   const recent = near.filter(x => now - x.t <= RECENT_MS);
   let nearest = recent.reduce((b, x) => (!b || x.mi < b.mi ? x : b), null);
@@ -91,12 +93,19 @@ export function assess(f, flashes, now = Date.now(), lastFileAt = null, carry = 
     if (carry.code === 'red' && c.mi <= RINGS.red && (!lastNear || c.t > lastNear.t)) lastNear = c;
     if (carry.code === 'orange' && now - c.t <= RECENT_MS && c.mi <= RINGS.orange) { if (!nearest || c.mi < nearest.mi) nearest = c; if (!lastMid || c.t > lastMid.t) lastMid = c; }
   }
-  const red = Boolean(lastNear && now - lastNear.t < ALL_CLEAR_MS), stale = lastFileAt == null || now - lastFileAt > STALE_MS;
-  const code = red ? 'red' : stale ? 'none' : !nearest ? 'green' : nearest.mi <= RINGS.orange ? 'orange' : 'yellow';
+  const age = lastFileAt == null ? Infinity : now - lastFileAt, stale = age > STALE_MS, lost = age > LOST_MS;
+  // Thirty minutes after the last close flash is the all-clear, when the mapper is current. With its files late the red holds
+  // up to HOLD_MS more while the all-clear waits for data: an all-clear nobody can confirm is not one.
+  const sinceNear = lastNear ? now - lastNear.t : Infinity;
+  const red = Boolean(lastNear) && (sinceNear < ALL_CLEAR_MS || (stale && sinceNear < ALL_CLEAR_MS + HOLD_MS)), held = red && sinceNear >= ALL_CLEAR_MS;
+  // Files late but not lost: the last code stands, marked held with the age of the data, rather than no data and back every time the bucket runs minutes behind.
+  const hold = !red && stale && !lost && prev && ['green', 'yellow', 'orange'].includes(prev.code) ? prev : null;
+  const code = red ? 'red' : hold ? hold.code : stale ? 'none' : !nearest ? 'green' : nearest.mi <= RINGS.orange ? 'orange' : 'yellow';
   const within = r => recent.filter(x => x.mi <= r).length, mi = x => Math.round(x.mi * 10) / 10;
   return { code, nearestMi: nearest ? mi(nearest) : null, nearestAt: nearest ? iso(nearest.t) : null, within: { [RINGS.red]: within(RINGS.red), [RINGS.orange]: within(RINGS.orange), [RINGS.yellow]: within(RINGS.yellow) },
-    lastNearMi: lastNear ? mi(lastNear) : null, lastNearAt: lastNear ? iso(lastNear.t) : null, allClearAt: red ? iso(lastNear.t + ALL_CLEAR_MS) : null,
-    orangeUntil: code === 'orange' && lastMid ? iso(lastMid.t + RECENT_MS) : null, at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
+    lastNearMi: lastNear ? mi(lastNear) : null, lastNearAt: lastNear ? iso(lastNear.t) : null, allClearAt: red ? iso(lastNear.t + ALL_CLEAR_MS + (held ? HOLD_MS : 0)) : null, allClearHeld: held,
+    orangeUntil: code === 'orange' && lastMid ? iso(lastMid.t + RECENT_MS) : hold && hold.code === 'orange' ? hold.orangeUntil || null : null,
+    held: Boolean(hold), stale, dataAgeSeconds: Number.isFinite(age) ? Math.round(age / 1000) : null, at: iso(now), dataAt: lastFileAt ? iso(lastFileAt) : null, source: 'GOES GLM' };
 }
 
 const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, duplicates: 0, lastFileAt: null, lastTickAt: null };
@@ -166,9 +175,9 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
       if (!prev || prev.code !== 'indoor') { for (const al of q.activeAlerts(f.id, now).filter(x => x.channel === 'lightning')) q.updateAlert(f.id, { ...al, expiresAt: iso(now) }); state.episodes.delete(f.id); changed(f.id, 'lightning'); }
       continue;
     }
-    const a = assess(f, state.flashes, now, state.lastFileAt, carried(f, now));
+    const a = assess(f, state.flashes, now, state.lastFileAt, carried(f, now), prev);
     state.per.set(f.id, a);
-    if (!prev || prev.code !== a.code || prev.nearestMi !== a.nearestMi) changed(f.id, 'lightning');
+    if (!prev || prev.code !== a.code || prev.nearestMi !== a.nearestMi || Boolean(prev.allClearHeld) !== a.allClearHeld || Boolean(prev.held) !== a.held) changed(f.id, 'lightning');
     try { await announce(f, prev, a, now); } catch (e) { console.error(`[${f.id}] lightning alert failed:`, errorText(e)); }
   }
   for (const id of state.per.keys()) if (!festivals.some(f => f.id === id)) state.per.delete(id);
@@ -190,6 +199,13 @@ export const PROTOCOL = {
   green: { text: 'No lightning within 20 miles in the last 15 minutes.' },
 };
 const until = a => a.code === 'red' ? a.allClearAt : a.code === 'orange' ? a.orangeUntil : null;
+const CODE_NAME = { red: 'Code Red', orange: 'Code Orange', yellow: 'Code Yellow', green: 'Code Green' };
+/** The lift, in the protocol's words: what has passed, and what the code is now, or that the mapper could not confirm it. */
+export function liftWords(prevCode, a) {
+  const since = prevCode === 'red' ? 'Thirty minutes since the last flash within 8 miles' : 'Fifteen minutes since the last flash within 12 miles';
+  const now = a.code === 'none' ? `No lightning data for ${Math.max(1, Math.round((a.dataAgeSeconds || 0) / 60))} minutes, so the mapper could not confirm it.` : `Now ${CODE_NAME[a.code]}: ${PROTOCOL[a.code].text}`;
+  return { title: `All clear: ${CODE_NAME[prevCode]} lifted`, why: `${since}. ${now}` };
+}
 function codeAlert(f, a, tz, now) {
   const p = PROTOCOL[a.code], mi = a.code === 'red' ? a.lastNearMi : a.nearestMi, at = a.code === 'red' ? a.lastNearAt : a.nearestAt;
   return { id: `lightning-${f.id}-${a.code}-${Math.floor(now / MIN)}`, event: p.event, headline: `Lightning ${mi} mi away at ${clock(at, tz)}. ${p.line}`,
@@ -204,8 +220,16 @@ async function announce(f, prev, a, now) {
     if (old && end && old.expiresAt !== end) q.updateAlert(f.id, { ...old, expiresAt: end, nearestMi: a.nearestMi ?? old.nearestMi });
     return;
   }
-  if (ep) { const old = q.alert(f.id, ep.id); if (old && (!old.expiresAt || Date.parse(old.expiresAt) > now)) q.updateAlert(f.id, { ...old, expiresAt: iso(now) }); state.episodes.delete(f.id); }
-  if (a.code !== 'red' && a.code !== 'orange') { if (prev && (prev.code === 'red' || prev.code === 'orange')) console.log(`[${f.id}] lightning: ${a.code}`); return; }
+  let was = null;
+  if (ep) { const old = q.alert(f.id, ep.id); if (old) { if (!old.expiresAt || Date.parse(old.expiresAt) > now) q.updateAlert(f.id, { ...old, expiresAt: iso(now) }); was = old; } state.episodes.delete(f.id); }   // an alert that ran out on its own is still the one lifted
+  if (a.code !== 'red' && a.code !== 'orange') {
+    // The code came down past orange: the alert that stood is lifted, and the phones that heard it hear that too, quietly.
+    if (prev && (prev.code === 'red' || prev.code === 'orange')) {
+      console.log(`[${f.id}] lightning: ${a.code}`);
+      if (was) { const lift = liftWords(prev.code, a); const r = await pushEnded(q.tokensFor(f.id), f, was, lift), w = await pushEndedWeb(f, was, lift); console.log(`[${f.id}] lightning lifted: ${lift.title} push=${JSON.stringify(r)} web=${JSON.stringify(w)}`); }
+    }
+    return;
+  }
   // After a restart the alert may already be there from before; adopt it rather than push it twice.
   const had = q.activeAlerts(f.id, now).find(x => x.channel === 'lightning' && x.code === a.code);
   if (had) { state.episodes.set(f.id, { code: a.code, id: had.id }); if (until(a) && had.expiresAt !== until(a)) q.updateAlert(f.id, { ...had, expiresAt: until(a) }); return; }
