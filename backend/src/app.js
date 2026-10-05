@@ -501,8 +501,12 @@ app.get('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => 
 app.delete('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => { q.deleteSetting(`partner:${req.festival.id}`); res.json({ festivalId: req.festival.id, issued: false }); });
 /** Use, with nobody in it: packs opened, alerts listed and stored, pushes sent, heads-ups, posts, reports, follows, per festival, for the last `days` (7, up to 90). */
 /** The numbers (metrics.js): counts per festival per day with nobody in them, summed over ?days= with a day-by-day series. Admin-wide here; a festival's own for its staff below. */
-app.get('/admin/stats', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(statsFor(Number(req.query.days) || 7)));
-app.get('/festivals/:id/stats', requireStaff, loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(statsFor(Number(req.query.days) || 7, req.festival.id)));
+// Counts with nobody in them are for everyone: built once a minute per window, so a hundred phones opening the screen cost one build.
+const statsMemo = new Map();
+const statsBody = (days, festivalId) => { const k = `${days}|${festivalId || ''}`, hit = statsMemo.get(k); if (hit && Date.now() - hit.at < 60_000) return hit.body; const body = JSON.stringify(statsFor(days, festivalId)); statsMemo.set(k, { at: Date.now(), body }); return body; };
+app.get('/stats', (req, res) => res.set('Cache-Control', 'no-store').type('json').send(statsBody(Number(req.query.days) || 7, null)));
+app.get('/festivals/:id/stats', loadFestival, (req, res) => res.set('Cache-Control', 'no-store').type('json').send(statsBody(Number(req.query.days) || 7, req.festival.id)));
+app.get('/admin/stats', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(statsFor(Number(req.query.days) || 7)));   // the same numbers, fresh, behind the key: the shakedown script's check that the key works
 /** The season report: the record and the counters of one festival, as rows or as one sheet with three sections (summary, days, events). */
 app.get('/festivals/:id/report', requireStaff, loadFestival, (req, res) => {
   const r = seasonReport(req.festival, Number(req.query.days) || 120);

@@ -934,7 +934,9 @@ test('metrics with nobody in them: a day-by-day series, a festival\'s own number
   assert.ok(st.festivals.some(f => f.id === FEST && 'following' in f && 'opens' in f && 'pushed' in f), 'per festival, by name, with the follow count');
   // A festival's staff see their own numbers and nothing admin-wide.
   const issued = await api('POST', `/festivals/${FEST}/partner-key`, { headers: admin }), staff = { 'x-admin-key': issued.json.key };
-  assert.equal((await api('GET', `/festivals/${FEST}/stats`)).status, 401);
+  const pub = (await api('GET', '/stats?days=7')).json;
+  assert.equal(pub.series.length, 7); assert.ok(Array.isArray(pub.festivals) && 'stale' in pub, 'the numbers are for everyone, no key');
+  assert.equal((await api('GET', `/festivals/${FEST}/stats`)).status, 200, 'a festival\'s numbers too');
   const mine = (await api('GET', `/festivals/${FEST}/stats?days=30`, { headers: staff })).json;
   assert.equal(mine.days, 30); assert.equal(mine.series.length, 30); assert.equal(mine.stale, undefined); assert.equal(mine.festivals, undefined);
   assert.equal(mine.totals.feed, undefined, 'the home page count belongs to no festival'); assert.equal(mine.codes.orange, st.codes.orange);

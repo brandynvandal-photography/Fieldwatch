@@ -46,8 +46,9 @@ Nothing to configure. `.env.example` lists every variable, all optional; copy it
 | GET | `/push/vapid` | The public VAPID key the web build subscribes with; 404 until keys are set |
 | POST | `/push/subscribe` | `{ subscription, festivalId }` a browser signs up for one festival's warnings, or `{ subscription, point: { latitude, longitude } }` for wherever it is; either way one test notification comes straight back |
 | GET | `/admin/import` | The last festival import report, plus `running` while one is in progress (admin key) |
-| GET | `/admin/stats` | The numbers for the last `?days=7` (up to 365), with nobody in them (`metrics.js`): totals, a day-by-day `series`, opens, phones following, the follow rate, pushes sent against gone and failed, issue-to-push seconds, minutes in each lightning code, minutes the data was behind, and a row per festival (admin key) |
-| GET | `/festivals/:id/stats` | The same for one festival, for its staff: no admin-wide numbers (admin key, or the festival's staff key) |
+| GET | `/stats` | The numbers for the last `?days=7` (up to 365), with nobody in them (`metrics.js`), for anyone: totals, a day-by-day `series`, opens, phones following, the follow rate, pushes sent against gone and failed, issue-to-push seconds, minutes in each lightning code, minutes the data was behind, and a row per festival. Built once a minute per window |
+| GET | `/festivals/:id/stats` | The same for one festival, for anyone: no fleet-wide numbers |
+| GET | `/admin/stats` | The fleet-wide numbers again, fresh, behind the admin key: the shakedown script's check that the key works |
 | GET | `/festivals/:id/report` | The season report: the record and the counters of the last `?days=120`, as rows or `?format=csv` as one sheet with a summary, a row per day and a row per event, each warning with how far it reached and how late it came (admin key, or the festival's staff key) |
 | GET | `/metrics` | A scrape for an uptime tool, in the plain text format Prometheus reads: the ages health knows, phones following, pages on the stream, and today's counters per festival. The admin key as the header, a bearer token or `?key=` |
 | GET | `/admin/backup` | The newest database backup as a file; `POST` takes one now (admin key) |

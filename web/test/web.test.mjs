@@ -359,6 +359,9 @@ function fakeBackend(list) {
       const path = req.url.split('?')[0], m = req.method, key = req.headers['x-admin-key'];
       store.calls.push(`${m} ${path}`);
       const send = (status, body) => { res.writeHead(status, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
+      const statsBodyPublic = fid => { const days = Number(new URL(req.url, 'http://x').searchParams.get('days') || 7); const series = Array.from({ length: days }, (_, i) => ({ day: new Date(Date.now() - (days - 1 - i) * 86400000).toISOString().slice(0, 10), counts: { alerts: 10 + i, pack: 2, follow: 1, 'alert.new': i % 3 ? 0 : 1, 'push.web': 20 } }));
+        return { days, at: new Date().toISOString(), totals: { alerts: 120, pack: 14, follow: 9, 'alert.new': 3, 'push.web': 140, headsup: 2, report: 4, post: 1 }, series, alertLatencySeconds: 41, opens: 134, following: 57, followRate: 7, delivered: { sent: 140, gone: 3, failed: 1, rate: 97 }, codes: { green: 600, yellow: 0, orange: 0, red: 25 },
+          ...(fid ? {} : { stale: { poll: 0, lightning: 2, radar: 0 }, festivals: store.list.filter(f => isLive(f)).map(f => ({ id: f.id, name: f.name, counts: {}, opens: 50, following: 12, pushed: 40 })) }) }; };
       if (m === 'OPTIONS') { res.writeHead(204, cors); return res.end(); }
       if (m === 'GET' && path === '/events') { res.writeHead(200, { ...cors, 'content-type': 'text/event-stream', 'cache-control': 'no-cache' }); res.write('retry: 5000\n: hello\n\n'); store.live.push(res); res.on('close', () => { store.live = store.live.filter(r => r !== res); }); return; }
       if (m === 'GET' && path === '/festivals') {
@@ -403,6 +406,9 @@ function fakeBackend(list) {
       const sameFollow = (s, b) => s.subscription.endpoint === b.endpoint && (b.festivalId ? s.festivalId === b.festivalId : !s.festivalId);
       if (m === 'POST' && path === '/push/subscribe') { const b = JSON.parse(raw); store.subs = store.subs.filter(s => !sameFollow(s, { endpoint: b.subscription.endpoint, festivalId: b.festivalId })); store.subs.push(b); return send(200, { ok: true }); }
       if (m === 'DELETE' && path === '/push/subscribe') { const b = JSON.parse(raw || '{}'); store.subs = store.subs.filter(s => b.festivalId || b.here ? !sameFollow(s, b) : s.subscription.endpoint !== b.endpoint); return send(200, { ok: true }); }
+      if (m === 'GET' && path === '/stats') return send(200, statsBodyPublic(null));
+      const fst = path.match(/^\/festivals\/([^/]+)\/stats$/);
+      if (m === 'GET' && fst) return send(200, statsBodyPublic(fst[1]));
       const postList = path.match(/^\/festivals\/([^/]+)\/posts$/);
       if (m === 'GET' && postList) return send(200, store.posts.map((p, i) => ({ id: String(i + 1), ...p, festival: undefined, key: undefined, postedAt: p.postedAt || new Date().toISOString(), kind: p.kind || 'notice', reach: 2 })).filter((p, i) => store.posts[i].festival === postList[1] && !store.retracted.includes(String(i + 1))));
       // The admin key does everything; a festival's staff key does that festival's staff routes.
@@ -415,13 +421,11 @@ function fakeBackend(list) {
       if (m === 'DELETE' && bolt) { const had = Boolean(store.staff[bolt[1]]); delete store.staff[bolt[1]]; return send(200, { ok: true, released: had, ...lightningOf(bolt[1]) }); }
       const lg = path.match(/^\/festivals\/([^/]+)\/log$/);
       if (m === 'GET' && lg) { const u = new URL(req.url, 'http://x'), rows = [['2026-10-23T14:02:00Z', 'alert', 'Severe Thunderstorm Warning', '{}'], ['2026-10-23T15:10:00Z', 'lightning-staff', 'orange', '{}']]; if (u.searchParams.get('format') !== 'csv') return send(200, { festivalId: lg[1], days: 30, rows: [] }); res.writeHead(200, { ...cors, 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${lg[1]}-record.csv"` }); return res.end(['at,kind,what,detail', ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n') + '\n'); }
-      // Metrics with nobody in them (backend/src/metrics.js): the admin over every festival, a festival's staff over theirs.
+      // Metrics with nobody in them (backend/src/metrics.js): the same body for everyone, by festival or over all of them.
       const statsBody = fid => { const days = Number(new URL(req.url, 'http://x').searchParams.get('days') || 7); const series = Array.from({ length: days }, (_, i) => ({ day: new Date(Date.now() - (days - 1 - i) * 86400000).toISOString().slice(0, 10), counts: { alerts: 10 + i, pack: 2, follow: 1, 'alert.new': i % 3 ? 0 : 1, 'push.web': 20 } }));
         return { days, at: new Date().toISOString(), totals: { alerts: 120, pack: 14, follow: 9, 'alert.new': 3, 'push.web': 140, headsup: 2, report: 4, post: 1 }, series, alertLatencySeconds: 41, opens: 134, following: 57, followRate: 7, delivered: { sent: 140, gone: 3, failed: 1, rate: 97 }, codes: { green: 600, yellow: 0, orange: 0, red: 25 },
           ...(fid ? {} : { stale: { poll: 0, lightning: 2, radar: 0 }, festivals: store.list.filter(f => isLive(f)).map(f => ({ id: f.id, name: f.name, counts: {}, opens: 50, following: 12, pushed: 40 })) }) }; };
       if (m === 'GET' && path === '/admin/stats') return key === 'k-admin' ? send(200, statsBody(null)) : send(401, { error: 'x-admin-key required' });
-      const fst = path.match(/^\/festivals\/([^/]+)\/stats$/);
-      if (m === 'GET' && fst) return send(200, statsBody(fst[1]));
       const frep = path.match(/^\/festivals\/([^/]+)\/report$/);
       if (m === 'GET' && frep) { res.writeHead(200, { ...cors, 'content-type': 'text/csv; charset=utf-8', 'content-disposition': `attachment; filename="${frep[1]}-season-report.csv"` }); return res.end('"Fieldwatch season report"\n"festival","Suwannee Hulaween"\n'); }
       const fe = path.match(/^\/festivals\/([^/]+)$/);
@@ -1780,49 +1784,49 @@ test('the later tier: storm reports and the warning\'s own area on the radar squ
   } finally { await second.context.close(); }
 });
 
-test('metrics: counts with nobody in them on a screen, seven or thirty days with a sparkline per tile, the admin over every festival and a festival\'s staff over theirs, and the season report as a sheet', async () => {
+test('metrics: counts with nobody in them on a screen for everyone, seven or thirty days with a sparkline per tile, a festival or all of them, and the season report as a sheet for the staff', async () => {
   const { page, context, seen } = await newPage();
   const { server, store, base: api } = await fakeBackend([...FESTS.map(f => (f.id === 'hulaween-2026' ? { ...f, isPartner: true } : f))]);
   store.partnerKeys['k-partner-hula'] = 'hulaween-2026';
   try {
-    // The admin, on a festival: that festival's numbers first, every festival on a tap.
-    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026&staff=1&key=k-admin`);
-    await page.waitForSelector('.sky.warn'); await page.waitForFunction(() => S.staffScope && S.staffScope.scope === 'admin'); await page.waitForFunction(() => !S.busy);
-    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button.row:has-text("Metrics")'); await page.waitForFunction(() => !S.queueBusy);
+    // Anyone, no key: the festival's numbers from its Settings, every festival on a tap.
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}&f=hulaween-2026`);
+    await page.waitForSelector('.sky.warn'); await page.waitForFunction(() => !S.busy);
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button.row:has-text("Metrics")');
+    assert.equal(await page.$('button.row:has-text("Season report")'), null, 'the sheet is the staff\'s');
     await page.click('button.row:has-text("Metrics")'); await page.waitForSelector('h1.title:has-text("Metrics")'); await page.waitForSelector('.tile');
-    assert.ok(store.calls.includes('GET /festivals/hulaween-2026/stats'), 'the festival\'s own numbers');
+    assert.ok(store.calls.includes('GET /festivals/hulaween-2026/stats'), 'the festival\'s own numbers, no key sent');
     assert.equal(await page.textContent('.tile:has-text("Opens") .n'), '134');
     assert.equal(await page.textContent('.tile:has-text("Following now") .n'), '57');
     assert.equal(await page.textContent('.tile:has-text("Delivered") .n'), '97%');
     assert.equal(await page.textContent('.tile:has-text("Issue to push") .n'), '41 s');
     assert.equal(await page.$$eval('.tile:has-text("Opens") .spark path', els => els.length), 1, 'a sparkline per counted tile');
     assert.equal(await page.textContent('.codecard p'), 'Red 25 min · Orange 0 min · Yellow 0 min · Green 600 min');
-    assert.equal(await page.$('.tile:has-text("Alert poll")'), null, 'nothing admin-wide on a festival\'s view');
+    assert.equal(await page.$('.tile:has-text("Alert poll")'), null, 'nothing fleet-wide on a festival\'s view');
     await page.click('button.chip:has-text("30 days")'); await page.waitForFunction(() => S.metrics && S.metrics.days === 30);
     assert.equal(await page.$$eval('.tile:has-text("Opens") .spark path', els => els.length), 1);
     await page.click('button.chip:has-text("All festivals")'); await page.waitForSelector('.tile:has-text("Alert poll")');
-    assert.ok(store.calls.includes('GET /admin/stats'));
+    assert.ok(store.calls.includes('GET /stats') && !store.calls.includes('GET /admin/stats'), 'the public route, never the admin one');
     assert.equal(await page.textContent('.tile:has-text("Lightning files") .n'), '2');
     assert.ok((await page.$$eval('.group .row .t', els => els.map(e => e.textContent))).includes('Suwannee Hulaween'), 'by festival');
     assert.deepEqual(await page.$$eval('.chips', els => els.map(e => e.getBoundingClientRect().height < 60)), [true, true], 'each chip row on one line');
-    // The season report comes down as a sheet.
-    await page.click('button[aria-label="Back"]'); await page.waitForSelector('button.row:has-text("Season report")');
-    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('button.row:has-text("Season report")')]);
-    assert.equal(dl.suggestedFilename(), 'hulaween-2026-season-report.csv');
-    assert.match(readFileSync(await dl.path(), 'utf8'), /^"Fieldwatch season report"\n/);
+    // The festivals list has the row too.
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('h1.title:has-text("Settings")'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('button.row:has-text("Metrics")');
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
-  // A festival's staff key: the festival's numbers, no scope to choose, nothing admin-wide asked for.
+  // The festival's staff: the season report comes down as a sheet.
   const second = await newPage();
   const { server: srv2, store: store2, base: api2 } = await fakeBackend([...FESTS.map(f => (f.id === 'hulaween-2026' ? { ...f, isPartner: true } : f))]);
   store2.partnerKeys['k-partner-hula'] = 'hulaween-2026';
   try {
     await second.page.goto(`${base}/index.html?backend=${encodeURIComponent(api2)}&f=hulaween-2026&staff=1&key=k-partner-hula`);
     await second.page.waitForSelector('.sky.warn'); await second.page.waitForFunction(() => S.staffScope && S.staffScope.scope === 'partner'); await second.page.waitForFunction(() => !S.busy);
-    await second.page.evaluate(() => go('metrics')); await second.page.waitForSelector('.tile');
-    assert.equal(await second.page.textContent('span.eyebrow'), 'Suwannee Hulaween');
-    assert.equal(await second.page.$('button.chip:has-text("All festivals")'), null, 'no scope to choose');
-    assert.ok(store2.calls.includes('GET /festivals/hulaween-2026/stats') && !store2.calls.includes('GET /admin/stats'));
+    await second.page.click('button[aria-label="Settings"]'); await second.page.waitForSelector('button.row:has-text("Season report")'); await second.page.waitForFunction(() => !S.queueBusy);
+    assert.equal(await second.page.$$eval('button.row:has-text("Metrics")', els => els.length), 1, 'one Metrics row, for everyone');
+    const [dl] = await Promise.all([second.page.waitForEvent('download'), second.page.click('button.row:has-text("Season report")')]);
+    assert.equal(dl.suggestedFilename(), 'hulaween-2026-season-report.csv');
+    assert.match(readFileSync(await dl.path(), 'utf8'), /^"Fieldwatch season report"\n/);
     assert.deepEqual(second.seen.errors, []);
   } finally { srv2.closeAllConnections(); srv2.close(); await second.context.close(); }
 });
