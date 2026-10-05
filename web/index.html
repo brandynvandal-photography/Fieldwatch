@@ -50,6 +50,24 @@
   --shadow:0 14px 44px rgba(0,0,0,.45); --shadow-2:0 2px 12px rgba(0,0,0,.3);
   color-scheme:dark;
 }
+/* Sun mode: for a phone read in full sun. Black on white, no glass, no glow, thicker lines; the colors that mean something stay saturated. */
+:root[data-theme="sun"]{
+  --bg:#FFFFFF; --ink:#000000; --ink-2:#111111; --muted:#333333; --line:rgba(0,0,0,.3);
+  --glass:#FFFFFF; --glass-2:#FFFFFF; --glass-border:rgba(0,0,0,.45);
+  --accent:#2A12C9; --accent-ink:#FFFFFF; --ok:#0A7A4C; --ok-2:#075A38; --watch:#FFB000; --watch-2:#E09A00; --watch-ink:#000000; --warn:#C80029; --warn-2:#A00020;
+  --rain:#0B6FBF; --temp:#C84A10; --wind:#0C7A5A; --storm:#5B2BD6; --orb-opacity:0;
+  --shadow:none; --shadow-2:none;
+  color-scheme:light;
+}
+:root[data-theme="sun"] .glass{-webkit-backdrop-filter:none;backdrop-filter:none;border-width:2px}
+:root[data-theme="sun"] .orbs,:root[data-theme="sun"] .sky .glow,:root[data-theme="sun"] .orb .glow{display:none}
+:root[data-theme="sun"] .muted,:root[data-theme="sun"] .note,:root[data-theme="sun"] .row .s{color:#222}
+/* Text size: the whole page scales, so nothing is squeezed beside a label at a larger size. */
+:root[data-text="large"]{zoom:1.12}
+:root[data-text="larger"]{zoom:1.25}
+/* Battery saver, by choice or under twenty percent: no orbs, no glow, and the timers check less often (see boot). */
+:root[data-saver="1"] .orbs,:root[data-saver="1"] .sky .glow,:root[data-saver="1"] .orb .glow{display:none}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
 html,body{height:100%}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -88,8 +106,8 @@ a{color:var(--accent)}
 .topbar::before{content:"";position:absolute;left:0;right:0;top:calc(-1 * env(safe-area-inset-top,0px));bottom:-18px;background:linear-gradient(var(--bg) 0%,var(--bg) 42%,transparent);opacity:.94;z-index:-1;pointer-events:none}
 .topbar .side{min-width:92px;display:flex;align-items:center;gap:8px}
 .topbar .side.r{justify-content:flex-end}
-.tb{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:42px;min-width:42px;padding:0 14px;border-radius:999px;color:var(--ink);font-weight:600;font-size:15px}
-.tb.icon{width:42px;padding:0}
+.tb{display:inline-flex;align-items:center;justify-content:center;gap:4px;height:44px;min-width:44px;padding:0 14px;border-radius:999px;color:var(--ink);font-weight:600;font-size:15px}
+.tb.icon{width:44px;padding:0}
 .tb svg{width:20px;height:20px}
 .tb[disabled]{opacity:.45}
 .tb.spin svg{animation:spin 1s linear infinite}
@@ -107,7 +125,7 @@ h1.title{font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WON
 .note{text-align:center;font-size:12px;color:var(--muted);margin:-4px auto 22px;line-height:1.5;max-width:36ch}
 .h .hlink{background:none;border:0;padding:0 0 0 8px;margin:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:var(--accent);cursor:pointer}
 details.correct{margin:0 0 18px}
-details.correct summary{display:flex;align-items:center;justify-content:center;gap:2px;list-style:none;cursor:pointer;padding:12px 0;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+details.correct summary{display:flex;align-items:center;justify-content:center;gap:2px;list-style:none;cursor:pointer;min-height:44px;padding:12px 0;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
 details.correct summary::-webkit-details-marker{display:none}
 details.correct summary .chev{width:16px;height:16px;transition:transform .2s}
 details.correct[open] summary .chev{transform:rotate(90deg)}
@@ -505,7 +523,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .share-link{text-align:center;color:var(--muted);font-size:14px;word-break:break-all;margin:0 auto 18px;max-width:34ch}
 .field textarea{flex:1;border:0;background:none;outline:none;min-width:0;min-height:88px;resize:none;font:inherit;color:inherit;line-height:1.4}
 .chips{display:flex;gap:6px;margin:0 0 16px}
-.chips .chip{flex:1 1 0;min-width:0;padding:8px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(12px,3.5vw,14px)}
+.chips .chip{flex:1 1 0;min-width:0;padding:12px 4px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:clamp(12px,3.5vw,14px)}
 .chips.setup{margin:0 0 12px}
 /* Warnings, asked once. */
 .ask{border-radius:var(--radius);padding:16px 18px 14px;margin:12px 0 4px;text-align:center}
@@ -513,7 +531,7 @@ input[type=range].scrub::-moz-range-thumb{width:18px;height:18px;border-radius:5
 .ask p{color:var(--muted);font-size:14px;line-height:1.4;margin-top:5px;max-width:34ch;margin-left:auto;margin-right:auto}
 .ask .acts{margin-top:12px}
 .kv .dim{color:var(--muted);font-size:13px}
-.chip{padding:8px 16px;border-radius:999px;font-size:14px;font-weight:600;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink)}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip{padding:12px 16px;min-height:44px;border-radius:999px;font-size:14px;font-weight:600;background:var(--glass);border:1px solid var(--glass-border);color:var(--ink)}.chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .pill{flex:none;font-size:13px;font-weight:700;letter-spacing:.04em;padding:5px 12px;border-radius:999px;background:rgba(26,21,51,.08);color:var(--muted)}
 .pill.on{background:var(--ok);color:#fff}
 
@@ -536,6 +554,7 @@ button.row.pressed,button.alert.pressed{background:rgba(255,255,255,.35)}
 <div id="app"></div>
 <div id="over"></div>
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="live" class="sr" role="status" aria-live="assertive"></div>
 <script>
 'use strict';
 // Fieldwatch on the web. Same festivals, same sources and the same data shapes as the iPhone app:
@@ -571,12 +590,12 @@ const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, ba
   fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
   staffScope: null, hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
   post: { title: '', body: '', severity: 'minor', kind: 'notice', minutes: 60, error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false,
-  sound: true, digest: true, thunder: null, takeover: null, offline: navigator.onLine === false };
+  sound: true, digest: true, thunder: null, takeover: null, offline: navigator.onLine === false, theme: 'auto', text: 'normal', saver: false, battery: null };
 let FESTS = [];
 const STORE = 'fieldwatch.web';
 
 function load(){
-  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff, thunder: d.thunder && d.thunder.at ? d.thunder : null, sound: d.sound !== false, digest: d.digest !== false }); }catch(e){}
+  try{ const d = JSON.parse(localStorage.getItem(STORE) || '{}'); Object.assign(S, { staffScope: d.staffScope || null, fest: d.fest || null, cache: d.cache || {}, backend: d.backend || '', welcomed: !!d.welcomed, toured: !!d.toured, geoSkip: !!d.geoSkip, fests: Array.isArray(d.fests) ? d.fests : null, admin: d.admin || '', push: d.push ? { endpoint: d.push.endpoint, checked: d.push.checked } : null, favorites: { ...(d.favorites || {}), ...(d.push && d.push.fest ? { [d.push.fest]: true } : {}) }, geoDenied: !!d.geoDenied, hereFest: d.hereFest || null, feed: d.feed || null, setups: d.setups || {}, asked: d.asked || {}, staff: !!d.staff, thunder: d.thunder && d.thunder.at ? d.thunder : null, sound: d.sound !== false, digest: d.digest !== false, theme: d.theme === 'sun' ? 'sun' : 'auto', text: ['large', 'larger'].includes(d.text) ? d.text : 'normal', saver: d.saver === true }); }catch(e){}
 }
 /** What survives a reload: the chosen festival, the favorites and your own spot. Flashes are a minute of satellite and are fetched again. */
 function keepCache(){
@@ -585,7 +604,7 @@ function keepCache(){
   return out;
 }
 function save(){
-  const body = { fest: S.fest, cache: keepCache(), backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope, thunder: S.thunder, sound: S.sound !== false, digest: S.digest !== false };
+  const body = { fest: S.fest, cache: keepCache(), backend: S.backend, welcomed: S.welcomed, toured: S.toured, geoSkip: S.geoSkip, fests: S.fests, admin: S.admin, push: S.push, favorites: S.favorites, geoDenied: S.geoDenied, hereFest: S.hereFest, feed: S.feed, setups: S.setups, asked: S.asked, staff: S.staff, staffScope: S.staffScope, thunder: S.thunder, sound: S.sound !== false, digest: S.digest !== false, theme: S.theme, text: S.text, saver: S.saver === true };
   try{ localStorage.setItem(STORE, JSON.stringify(body)); S.saveError = null; }
   catch(e){
     // Out of room: the settings matter more than the weather copy. Keep them, let the copy go, and say so in Diagnostics.
@@ -657,7 +676,7 @@ const activeAlerts = f => condenseAlerts((data(f).alerts || []).filter(isActive)
 const skyAlerts = f => activeAlerts(f).filter(a => a.channel !== 'headsup');   // a heads-up has its own card under the sky
 const level = f => { const al = skyAlerts(f); return al.some(isWarning) ? 'warn' : al.length ? 'watch' : 'ok'; };
 // A heads-up names its hour in the festival's own clock; the line under it counts down instead of saying the hour again in the phone's.
-const alertSub = a => a.channel === 'headsup' ? (a.onset ? (c => c === 'now' ? 'Now' : `In ${c}`)(countdownText(a.onset, true)) : 'On the way') : a.expiresAt ? `Until ${fmtWhen(a.expiresAt)}` : (a.area || '');
+const alertSub = a => a.channel === 'headsup' ? (a.onset ? (c => c === 'now' ? 'Now' : `In ${c}`)(countdownText(a.onset, true)) : 'On the way') : `${isWarning(a) ? 'Warning' : a.channel === 'official' ? 'Festival staff' : 'Advisory'} · ${a.expiresAt ? `Until ${fmtWhen(a.expiresAt)}` : (a.area || '')}`;   // the word beside the color, for anyone who cannot tell red from orange
 
 async function loadAlerts(f){
   const b = backend();
@@ -788,7 +807,7 @@ async function startRadar(f, kept){
   let loop = kept || null;
   if (!loop) try { loop = await radarLoop(f); } catch(e) { loop = keptRadar(f); if (!loop) { radar.loop = { error: e.message || 'unreachable', frames: [] }; render(); return; } }
   if (S.screen !== 'radar') return;
-  radar.loop = loop; radar.frames = loop.frames; radar.index = loop.frames.length - 1; radar.playing = true;
+  radar.loop = loop; radar.frames = loop.frames; radar.index = loop.frames.length - 1; radar.playing = !saving();   // in battery saver the loop opens on the present, paused
   render();
   fitStage();
   // Newest first, so the present shows while the past fills in.
@@ -863,11 +882,16 @@ document.addEventListener('pointercancel', release, { passive: true });
 const later = fn => setTimeout(fn, MOTION ? 160 : 0);
 
 // ---- navigation ------------------------------------------------------------------------------------------
+// Every move is a history entry too, so the phone's own back (a swipe, the Android button) pops the screen it came from.
+let popping = false, histDepth = 0;   // how many entries of ours stand above the one the app opened on
+const pushHistory = replace => { try{ if (replace) { history.replaceState({ fw: true }, ''); histDepth = 0; } else { history.pushState({ fw: true }, ''); histDepth++; } }catch(e){} };
+window.addEventListener('popstate', () => { histDepth = Math.max(0, histDepth - 1); if (!S.stack.length) return; popping = true; try{ popScreen(); } finally { popping = false; } });
 function go(name, param, opts){
   opts = opts || {};
   stopRadar();
   if (!opts.replace) S.stack.push({ name: S.screen, param: S.param });
   if (opts.reset) S.stack = [];
+  pushHistory(Boolean(opts.replace || opts.reset));
   S.screen = name; S.param = param || null;
   if (name === 'ground') startGroundEdit();   // the chips open on what the lookups found now, not on a visit from before they landed
   if (name === 'picker') S.query = '';        // the list opens whole, not filtered by what was typed last time
@@ -886,6 +910,11 @@ function go(name, param, opts){
   if (name === 'settings' && fest() && canStaff(fest()) && backend()) loadQueue();   // how many reports wait, on the row
 }
 function back(){
+  // The back button does what the phone's own back does, through the browser, so the two never disagree.
+  if (!popping && S.stack.length && histDepth > 0) { history.back(); return; }
+  popScreen();
+}
+function popScreen(){
   stopRadar();
   const p = S.stack.pop();
   if (!p) { S.screen = 'feed'; S.param = null; }
@@ -1580,7 +1609,7 @@ const countdownText = (t, bare) => { const c = fmtCountdown(Date.parse(t) - Date
 function tickCountdowns(){
   let arrived = false;
   document.querySelectorAll('[data-countdown]').forEach(el => { const t = el.dataset.left ? leftText(el.dataset.countdown) : countdownText(el.dataset.countdown, el.dataset.bare); if (el.textContent !== t) { if (t === 'now' || t === 'ending') arrived = true; el.textContent = t; } });
-  if (S.thunder && !S.thunder.rang && Date.parse(thunderDue()) <= Date.now()) { S.thunder = { ...S.thunder, rang: true }; save(); buzz([300, 100, 300]); toast('Thirty minutes since the thunder', 6000); arrived = true; }
+  if (S.thunder && !S.thunder.rang && Date.parse(thunderDue()) <= Date.now()) { S.thunder = { ...S.thunder, rang: true }; save(); buzz([300, 100, 300]); toast('Thirty minutes since the thunder', 6000); announce('Thirty minutes since the thunder.'); arrived = true; }
   if (arrived && ['home', 'prep', 'weather', 'lightning', 'alert'].includes(S.screen)) render();
 }
 function incomingLine(inc){
@@ -1823,6 +1852,7 @@ function openFeedAlert(fid, aid){
   S.fest = fid; save();
   stopRadar();
   S.stack = [{ name: 'feed', param: null }, { name: 'home', param: null }]; S.screen = aid ? 'alert' : 'lightning'; S.param = aid || null;
+  pushHistory(false); pushHistory(false);   // two screens deep in one move: two entries, so the phone's back walks them
   render(false); window.scrollTo(0, 0);
   refresh(fest());
 }
@@ -2534,6 +2564,10 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   ${backend() ? `<div class="group glass"><button class="row" onclick="checkBackend()" ${S.checkBusy ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Check the backend</div><div class="s">${S.checkBusy ? 'Checking' : S.check ? esc(S.check.summary) : 'Is it up and does the key match'}</div></div><span class="pill ${S.check && S.check.ok ? 'on' : ''}">${S.checkBusy ? '…' : S.check ? (S.check.ok ? 'OK' : 'Problem') : 'Run'}</span></button></div>${S.check ? `<p class="note">${esc(S.check.detail)}</p>` : ''}` : ''}` : ''}
   <div class="group glass"><button class="row" onclick="retryLocate()"><span class="lead">${I.pin}</span><div class="main"><div class="t">Use my location</div><div class="s">Opens the festival you are at and puts you on the radar</div></div><span class="pill ${S.here ? 'on' : ''}">${S.here ? 'On' : S.geoDenied ? 'Blocked' : 'Off'}</span></button></div>
   <div class="group glass"><button class="row" onclick="replayIntro()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Intro and tour</div><div class="s">Watch the intro and take the tour again</div></div>${I.chev}</button><button class="row" onclick="toggleSound()"><span class="lead">${I.bell}</span><div class="main"><div class="t">Sound on warnings</div><div class="s">A tone with the buzz when a warning lands or the code rises</div></div><span class="pill ${S.sound !== false ? 'on' : ''}">${S.sound !== false ? 'On' : 'Off'}</span></button><button class="row" onclick="toggleDigest()"><span class="lead">${I.sun}</span><div class="main"><div class="t">Morning brief</div><div class="s">One quiet push at seven, in the festival's own clock, with the day in a line</div></div><span class="pill ${S.digest !== false ? 'on' : ''}">${S.digest !== false ? 'On' : 'Off'}</span></button></div>
+  <p class="h">In the field</p>
+  <div class="group glass"><button class="row" onclick="toggleSun()"><span class="lead">${I.sun}</span><div class="main"><div class="t">Sun mode</div><div class="s">Black on white, no glass, for a screen in full sun</div></div><span class="pill ${S.theme === 'sun' ? 'on' : ''}">${S.theme === 'sun' ? 'On' : 'Off'}</span></button><button class="row" onclick="toggleSaver()"><span class="lead">${I.bolt}</span><div class="main"><div class="t">Battery saver</div><div class="s">${S.battery ? `${Math.round(S.battery.level * 100)}%${S.battery.charging ? ', charging' : ''} · ` : ''}Fewer checks, the radar paused. On by itself under 20%</div></div><span class="pill ${saving() ? 'on' : ''}">${saving() ? 'On' : 'Off'}</span></button></div>
+  <p class="h">Text size</p>
+  <div class="chips">${[['normal', 'Normal'], ['large', 'Large'], ['larger', 'Larger']].map(([v, l]) => `<button class="chip ${(S.text || 'normal') === v ? 'on' : ''}" onclick="setText('${v}')">${l}</button>`).join('')}</div>
   ${staffMode() ? `<p class="h">Admin</p>
   <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">${S.queue && S.queue.length ? `${S.queue.length} waiting` : 'Before they go out'}</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('record') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Shelter and medical</div><div class="s">${fest().shelter || fest().medical ? 'On the record' : 'Where to go, in your words'}</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
   ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
@@ -2794,7 +2828,7 @@ function applyLink(){
 let toastTimer;
 function toast(msg, ms, onTap){ const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show'); t.classList.toggle('tap', Boolean(onTap)); t.onclick = onTap ? () => { t.classList.remove('show'); onTap(); } : null; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms || 2200); }
 // ---- a warning that lands while the page is open takes the screen: the line to act on, a buzz, a tone, and the screen stays lit ----
-function alarm(a){ buzz([300, 100, 300, 100, 600]); chime('warn'); S.takeover = { id: a.id, alert: a, at: Date.now() }; render(); }
+function alarm(a){ buzz([300, 100, 300, 100, 600]); chime('warn'); S.takeover = { id: a.id, alert: a, at: Date.now() }; const act = actionFor(a); announce(`Warning: ${a.event}. ${act ? act[0] : 'Take shelter now'}.`); render(); }
 function takeover(){
   const t = S.takeover, f = fest(); if (!t || !f) return '';
   const listed = (data(f).alerts || []).find(x => x.id === t.id);   // the alert itself rides along: it lands in the cache a moment after the alarm
@@ -2826,6 +2860,25 @@ function chime(kind){
   }catch(e){}
 }
 function toggleSound(){ S.sound = S.sound === false; save(); if (S.sound) { unlockAudio(); chime('up'); } render(); }
+// ---- hard conditions: full sun, a phone held at arm's length, a battery at twenty percent ----
+const saving = () => S.saver === true || Boolean(S.battery && S.battery.level <= 0.2 && !S.battery.charging);
+function applyPrefs(){
+  const r = document.documentElement;
+  if (S.theme === 'sun') r.dataset.theme = 'sun'; else if (r.dataset.theme === 'sun') delete r.dataset.theme;
+  if (S.text === 'large' || S.text === 'larger') r.dataset.text = S.text; else delete r.dataset.text;
+  if (saving()) r.dataset.saver = '1'; else delete r.dataset.saver;
+}
+function toggleSun(){ S.theme = S.theme === 'sun' ? 'auto' : 'sun'; save(); applyPrefs(); render(); }
+function setText(v){ S.text = v; save(); applyPrefs(); render(); }
+function toggleSaver(){ S.saver = S.saver !== true; save(); applyPrefs(); render(); }
+function watchBattery(){
+  try{
+    if (!navigator.getBattery) return;
+    navigator.getBattery().then(b => { const read = () => { S.battery = { level: b.level, charging: b.charging }; applyPrefs(); }; read(); b.addEventListener('levelchange', read); b.addEventListener('chargingchange', read); }).catch(() => {});
+  }catch(e){}
+}
+/** Said out loud to a screen reader, at once: a warning landing, a code moving, the thunder clock. */
+function announce(text){ const el = document.getElementById('live'); if (!el) return; el.textContent = ''; setTimeout(() => { el.textContent = text; }, 50); }
 /** The morning brief is a flag on every favorite's subscription: flipping it registers each one again, quietly. */
 async function toggleDigest(){
   S.digest = S.digest === false; save(); render();
@@ -2846,6 +2899,7 @@ function codeMoved(was, now){
   if (!was || !now || !CODE[now.code] || was.code === now.code) return;
   const up = (CODE_RANK[now.code] || 0) > (CODE_RANK[was.code] || 0);
   if (up) { chime('up'); buzz([200, 80, 200]); } else if (now.code === 'green') chime('down');
+  announce(`Lightning: ${CODE[now.code].label}. ${CODE[now.code].text}.`);
 }
 // ---- I heard thunder: the 30/30 rule as a clock. Thunder means lightning within reach; shelter, and stay thirty minutes past the last rumble ----
 const THUNDER_MS = 30 * 60000;
@@ -2904,7 +2958,7 @@ const tour = { on: false, i: 0 };
 const tourSteps = () => TOUR.filter(st => document.querySelector(st.sel));   // a step whose element is not on this page (no tile, no heart for your own spot) is skipped
 function tourStart(){
   tour.on = true; tour.i = -1;
-  if (!document.getElementById('coach')) document.body.insertAdjacentHTML('beforeend', '<div class="coach" id="coach"><div class="dim" onclick="tourNext()"></div><div class="spot"></div><div class="card glass"></div></div>');
+  if (!document.getElementById('coach')) document.body.insertAdjacentHTML('beforeend', '<div class="coach" id="coach" role="dialog" aria-modal="true" aria-label="A tour of the festival page"><div class="dim" onclick="tourNext()"></div><div class="spot" aria-hidden="true"></div><div class="card glass"></div></div>');
   tourNext();
 }
 function tourNext(){ tour.i++; if (tour.i >= tourSteps().length) tourEnd(); else tourPlace(); }
@@ -2926,8 +2980,11 @@ function tourMeasure(){
   card.innerHTML = `<span class="k">${tour.i + 1} of ${steps.length}</span><div class="t">${esc(st.t)}</div><p>${esc(st.s)}</p><div class="acts"><button class="btn small quiet" onclick="tourEnd()">Skip the tour</button><button class="btn small" onclick="tourNext()">${last ? 'Got it' : 'Next'}</button></div>`;
   const below = r.bottom + 16, h = card.offsetHeight;
   card.style.top = `${below + h + 16 <= window.innerHeight ? below : Math.max(16, r.top - h - 16)}px`;
+  const nx = card.querySelector('.acts .btn:not(.quiet)');   // the card was just rebuilt, so whatever had focus in it is gone: Next takes it; Escape ends the tour
+  if (nx && !c.contains(document.activeElement)) { try{ nx.focus({ preventScroll: true }); }catch(e){} }
 }
-function tourEnd(){ tour.on = false; const c = document.getElementById('coach'); if (c) c.remove(); if (!S.toured) { S.toured = true; save(); } }
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && tour.on) tourEnd(); });
+function tourEnd(){ tour.on = false; tour.focused = -1; const c = document.getElementById('coach'); if (c) c.remove(); if (!S.toured) { S.toured = true; save(); } }
 let tourFrame = 0;
 const tourFollow = () => { if (tour.on && !tourFrame) tourFrame = requestAnimationFrame(() => { tourFrame = 0; tourMeasure(); }); };
 window.addEventListener('resize', tourFollow); window.addEventListener('scroll', tourFollow, true);
@@ -2940,8 +2997,10 @@ function render(rev){
   shown = key;
   if (nav && !entering) { entering = true; clearTimeout(enterTimer); enterTimer = setTimeout(() => { entering = false; }, 400); }
   const open = nav ? [] : [...app.querySelectorAll('details')].map(d => d.open);
+  const FOCUS = 'button, input, textarea, select, a[href], summary', at = nav ? -1 : [...app.querySelectorAll(FOCUS)].indexOf(document.activeElement);   // what had focus, by its place: data landing never takes it away
   app.innerHTML = `<div class="screen${nav ? ' in' : ''}${rev ? ' rev' : ''}">${fn(S.param)}</div>`;
   if (!nav) app.querySelectorAll('details').forEach((d, i) => { if (open[i]) d.open = true; });
+  if (at >= 0) { const again = [...app.querySelectorAll(FOCUS)][at]; if (again) { try{ again.focus({ preventScroll: true }); }catch(e){} } }
   document.getElementById('over').innerHTML = takeover();
   holdScreen(wantScreen());
   if (S.screen === 'radar') { fitStage(); showFrame(); updatePlay(); updateRadarNote(); }
@@ -2970,6 +3029,7 @@ async function boot(){
     qs.delete('f'); qs.delete('here'); qs.delete('alert');
     try{ history.replaceState(null, '', location.pathname + (qs.toString() ? `?${qs}` : '')); }catch(e){}
   }
+  applyPrefs();
   const linked = applyLink();
   if (S.fest && !(fest() && isLive(fest()))) S.fest = null;
   if (!linked) S.screen = !S.welcomed ? 'welcome' : 'feed';
@@ -2982,8 +3042,11 @@ async function boot(){
   ensurePush();
   connectLive();
   setInterval(tickCountdowns, 30000);
-  setInterval(() => { if (document.visibilityState === 'visible' && navigator.onLine !== false && fest() && backend()) loadLightning(fest()); }, 60000);
-  setInterval(() => { if (document.visibilityState !== 'visible' || navigator.onLine === false) return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);
+  let ticks = 0;   // in battery saver every third check runs: lightning every three minutes, the rest every fifteen
+  setInterval(() => { ticks++; if (saving() && ticks % 3) return; if (document.visibilityState === 'visible' && navigator.onLine !== false && fest() && backend()) loadLightning(fest()); }, 60000);
+  setInterval(() => { if (saving() && ticks % 3) return; if (document.visibilityState !== 'visible' || navigator.onLine === false) return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);
+  applyPrefs(); watchBattery();
+  pushHistory(true); S.stack.forEach(() => pushHistory(false));   // a link that opened deep gets a way back
   // Off the air: the card says so at once and the timers stand down. Back on: everything is asked again, now.
   window.addEventListener('offline', () => { S.offline = true; render(); });
   window.addEventListener('online', () => { S.offline = false; toast('Back online. Catching up', 3000); catchUp(); });

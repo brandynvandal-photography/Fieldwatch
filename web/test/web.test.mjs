@@ -136,6 +136,8 @@ test('the walkthrough opens once: an intro scene, pages that teach, a start page
   const steps = []; for (const a of anchors) if (await page.$(a[0])) steps.push(a);
   assert.equal(steps.length, 4, 'with no backend there is no lightning tile, so its step is skipped; the rest stand');
   await page.waitForTimeout(600);   // the page's own rise has ended; the spotlight has been measured against the settled page
+  assert.equal(await page.getAttribute('#coach', 'role'), 'dialog'); assert.equal(await page.getAttribute('#coach', 'aria-modal'), 'true');
+  assert.equal(await page.evaluate(() => document.activeElement && document.activeElement.textContent), 'Next', 'each step hands focus to Next');
   for (let i = 0; i < steps.length; i++) {
     await page.waitForTimeout(400);
     assert.equal(await page.textContent('#coach .card .k'), `${i + 1} of ${steps.length}`);
@@ -523,7 +525,7 @@ test('with a backend: its live list is the list, and the admin key unlocks posti
     store.emit({ festivalId: 'hulaween-2026', kind: 'ground', at: new Date().toISOString() });
     await page.waitForFunction(() => [...document.querySelectorAll('.kv')].some(k => /Gravel/.test(k.textContent)));
     assert.ok(await page.$('button.chip.on:has-text("Paved")'), 'the readout moved to gravel; the chip staff picked stays');
-    assert.ok((await page.$$eval('.chips', rs => rs.map(r => r.getBoundingClientRect().height))).every(h => h < 44), 'every section of chips is one line');
+    assert.ok((await page.$$eval('.chips', rs => rs.map(r => r.getBoundingClientRect().height))).every(h => h < 60), 'every section of chips is one line (a chip is 44 px tall; two lines would be near 90)');
     assert.deepEqual(await page.$$eval('.chips .chip', cs => cs.filter(c => c.scrollWidth > c.clientWidth).map(c => c.textContent)), [], 'and no chip is cut short');
     await page.click('button.btn:has-text("Save")'); await page.waitForSelector('.toast.show:has-text("Saved")');
     assert.ok(store.calls.includes('PUT /festivals/hulaween-2026/ground'));
@@ -619,6 +621,7 @@ test('a link opens straight to a festival and its alert, and warnings can be swi
     await page.click('.ask button:has-text("Not now")');
     assert.equal(await page.$('.ask'), null, 'answered');
     await page.reload(); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    assert.match(await page.textContent('.feedfest:has-text("Suwannee Hulaween") .alert .s'), /^Warning · Until /, 'the word beside the color');
     await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
     assert.equal(await page.$('.ask'), null, 'and not asked again');
     await page.click('button.row:has-text("Favorite")');
@@ -1611,4 +1614,49 @@ test('the safety team: the key rides in on a scanned link, shelter and medical g
     assert.match(await page.textContent('.sign-url'), /\?f=hulaween-2026$/);
     assert.deepEqual(seen.errors, []);
   } finally { server.closeAllConnections(); server.close(); await context.close(); }
+});
+
+test('hard conditions: sun mode, text size and battery saver from Settings, the phone\'s own back, focus that survives a redraw, a warning said out loud, and targets a thumb can hit', async () => {
+  const { page, context, seen } = await newPage();
+  try {
+    await pickHulaween(page);
+    // Every tappable thing is at least 44 px tall.
+    const short = await page.$$eval('button, summary, a[href]', els => els.filter(e => e.offsetParent !== null && e.getBoundingClientRect().height > 0 && e.getBoundingClientRect().height < 43.5).map(e => `${e.className || e.tagName}: ${Math.round(e.getBoundingClientRect().height)}`));
+    assert.deepEqual(short, [], 'nothing under 44 px');
+    // Focus stays where it was when data lands and the screen redraws in place.
+    await page.focus('button.row:has-text("Favorite")');
+    await page.evaluate(() => render());
+    assert.match(await page.evaluate(() => document.activeElement && document.activeElement.textContent), /Favorite/, 'the row kept focus through a redraw');
+    // Sun mode, text size and the saver, from Settings, kept across a reload.
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('h1.title:has-text("Settings")');
+    await page.click('button.row:has-text("Sun mode")');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'sun');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), 'rgb(255, 255, 255)');
+    await page.click('button.chip:has-text("Larger")');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.text), 'larger');
+    await page.click('button.row:has-text("Battery saver")');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.saver), '1');
+    assert.equal(await page.textContent('button.row:has-text("Battery saver") .pill'), 'On');
+    await page.reload(); await page.waitForSelector('span.eyebrow:has-text("Right now")');
+    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.theme, document.documentElement.dataset.text, document.documentElement.dataset.saver]), ['sun', 'larger', '1'], 'kept');
+    // In the saver the radar opens on the present, paused.
+    await page.click('.feedfest:has-text("Suwannee Hulaween") .alert'); await page.waitForSelector('.alerthead'); await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    await page.click('button.orb:has-text("Radar")'); await page.waitForSelector('#radar-play');
+    await page.waitForFunction(() => document.getElementById('radar-play')?.getAttribute('aria-label') === 'Play');
+    // The phone's own back pops the screen it came from: the browser's history and the app's stack agree.
+    await page.goBack(); await page.waitForSelector('.sky.warn');
+    await page.click('button.orb:has-text("Forecast")'); await page.waitForSelector('h1.title:has-text("Weather")');
+    await page.goBack(); await page.waitForSelector('.sky.warn');
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('h1.title:has-text("Settings")');
+    await page.click('button.row:has-text("Sun mode")'); await page.click('button.chip:has-text("Normal")'); await page.click('button.row:has-text("Battery saver")');
+    assert.deepEqual(await page.evaluate(() => [document.documentElement.dataset.theme, document.documentElement.dataset.text, document.documentElement.dataset.saver]), [undefined, undefined, undefined]);
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
+    // A warning landing is said out loud to a screen reader, with the line to act on.
+    await page.route(/api\.weather\.gov\/alerts\/active/, r => r.fulfill(json({ type: 'FeatureCollection', features: [alertFeature(), alertFeature({ id: 'urn:oid:tornado-2', '@id': 'https://api.weather.gov/alerts/urn:oid:tornado-2', event: 'Tornado Warning', severity: 'Extreme', headline: 'Tornado Warning until 5:30 PM' })] })));
+    await page.evaluate(() => refresh(fest()));
+    await page.waitForFunction(() => /Tornado Warning/.test(document.getElementById('live')?.textContent || ''));
+    assert.equal(await page.textContent('#live'), 'Warning: Tornado Warning. Get to the shelter now.');
+    await page.click('.takeover button:has-text("Got it")');
+    assert.deepEqual(seen.errors, []);
+  } finally { await context.close(); }
 });
