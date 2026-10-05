@@ -215,12 +215,14 @@ export function reportSummary(q, festivalId, now = Date.now()) {
 
 const attempted = new Map();
 /** A live festival without a lookup gets one, at most one festival per call and one try per festival per six hours (public services, fair use). */
+const lookups = { ok: 0, failed: 0, streak: 0, lastError: null, lastOkAt: null, lastErrorAt: null };
 export async function ensureGround(festivals, { now = Date.now(), fetchImpl = globalThis.fetch, save } = {}) {
   const stale = g => Boolean(g?.lookedUpAt) && (!g.surface || !g.soil || g.lookupError) && Date.parse(g.lookedUpAt) < now - DAY;   // found nothing, or hit an error: try again after a day
   const f = festivals.find(x => (!x.ground?.lookedUpAt || stale(x.ground)) && (attempted.get(x.id) || 0) < now - 6 * HOUR);
   if (!f) return null;
   attempted.set(f.id, now);
   const g = await lookupGround(f, { now, fetchImpl, save });
+  if (g.lookupError) { lookups.failed++; lookups.streak++; lookups.lastError = `${f.id}: ${g.lookupError}`; lookups.lastErrorAt = iso(now); } else { lookups.ok++; lookups.streak = 0; lookups.lastOkAt = iso(now); }
   console.log(`[${f.id}] ground: ${g.surface || 'surface unknown'}${g.soil ? `, soil ${g.soil} (${g.soilName})` : ''}${g.lookupError ? ` (${g.lookupError})` : ''}`);
   return g;
 }
@@ -240,4 +242,4 @@ export async function groundFor(f, { now = Date.now(), fetchImpl = globalThis.fe
   }
   return { ...effectiveGround(f), past, ...(pastError && !past ? { pastError } : {}), at: iso(now) };
 }
-export const groundStatus = () => ({ cached: cache.size, errors: [...cache.values()].filter(c => c.pastError).length });
+export const groundStatus = () => ({ cached: cache.size, errors: [...cache.values()].filter(c => c.pastError).length, lookups: { ...lookups } });

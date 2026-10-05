@@ -28,8 +28,17 @@ catch (e) { console.error('Web push not configured; bad VAPID keys:', e.message)
 
 export const webPushEnabled = () => enabled;
 export const vapidPublicKey = () => (enabled ? PUBLIC : null);
+// The push services a browser can hand us: a subscription is a URL this server will POST to on every warning, so only the
+// services browsers use, plus any named in PUSH_ENDPOINT_HOSTS (or 'any' to take all), are accepted.
+const PUSH_HOSTS = ['web.push.apple.com', 'fcm.googleapis.com', 'updates.push.services.mozilla.com', 'push.services.mozilla.com', 'notify.windows.com', 'push.apple.com'];
+export function allowedEndpoint(endpoint) {
+  const extra = String(process.env.PUSH_ENDPOINT_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (extra.includes('any')) return true;
+  let host; try { host = new URL(endpoint).hostname; } catch { return false; }
+  return [...PUSH_HOSTS, ...extra].some(h => host === h || host.endsWith(`.${h}`));
+}
 export const validSubscription = s => Boolean(s && typeof s.endpoint === 'string' && /^https:\/\/\S+$/.test(s.endpoint) && s.endpoint.length < 2048
-  && s.keys && typeof s.keys.p256dh === 'string' && typeof s.keys.auth === 'string');
+  && s.keys && typeof s.keys.p256dh === 'string' && typeof s.keys.auth === 'string' && allowedEndpoint(s.endpoint));
 
 let transport = (subscription, payload, options) => webpush.sendNotification(subscription, payload, options);
 /** Tests swap the wire for a fake. */
@@ -79,7 +88,8 @@ export async function pushWeb(festival, alert) {
   if (!enabled) return { sent: 0, skipped: true };
   if (!worthPushing(alert)) return { sent: 0, minor: true };
   const here = festival.id === 'here';
-  const subs = here ? q.webSubscriptionsAt(festival.latitude, festival.longitude) : q.webSubscriptionsFor(festival.id);
+  const all = here ? q.webSubscriptionsAt(festival.latitude, festival.longitude) : q.webSubscriptionsFor(festival.id);
+  const subs = alert.channel === 'digest' ? all.filter(s => s.digest !== false) : all;   // the morning brief goes only where it was asked for
   if (!subs.length) return { sent: 0 };
   const urgent = alert.severity === 'extreme' || alert.severity === 'severe';
   const payload = fit({

@@ -2,7 +2,7 @@
 
 Nothing in the weather chain has touched real data: the weather service, the lightning mapper's files, the radar
 archive, the ground lookups, the zone alerts, the live stream through Railway, push. This is the list of what a person
-sets, watches and tries, in order. `node backend/scripts/shakedown.mjs https://your-host ADMIN_KEY` does the reading.
+sets, watches and tries, in order. `node backend/scripts/shakedown.mjs https://your-host ADMIN_KEY` does the reading; add `--assert` for an exit code a monitor can read.
 
 ## Before the weekend, from a laptop
 
@@ -11,6 +11,7 @@ sets, watches and tries, in order. `node backend/scripts/shakedown.mjs https://y
    deploy's log and copy the admin key from the line that says it is shown once. Optional, in Variables: `NWS_USER_AGENT=Fieldwatch
    (a mailbox you read)` to give a mailbox instead; `TICKETMASTER_KEY` (developer.ticketmaster.com), `SEATGEEK_CLIENT_ID`
    (seatgeek.com/account/develop), `EDMTRAIN_KEY` (edmtrain.com/developer-api) for sources beside Wikidata and the festival sites.
+1b. **Run the contract check** against the outside world: `node backend/scripts/contract.mjs https://your-host`. Every line should say ok: the weather service's points, hourly, grid and alerts in the shapes the app parses, a lightning bucket listing the current hour, a radar frame that decodes, and the backend's health. It runs nightly in GitHub Actions too (`contract.yml`).
 2. **Run the shakedown script.** Good looks like: `health: ok` with no PROBLEM lines; `database on a volume`; lightning on with
    files arriving and no bucket error (a 403 or NoSuchKey means the bucket names moved: `GLM_BUCKETS`); polling ok within a minute;
    for each festival that is on: alerts counted, a lightning code with data a minute old, radar frames with the newest under twenty

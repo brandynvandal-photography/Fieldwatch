@@ -9,6 +9,7 @@ import { pushAlert, pushEnded } from './push.js';
 import { pushEnded as pushEndedWeb, pushWeb } from './webpush.js';
 import { isLive } from './festivals.js';
 import { iso, daysFromNow } from './util.js';
+import { sendDigests } from './digest.js';
 
 /** The festivals whose sky is worth watching: grounds open (see festivals.js) through the day after the end. */
 export function festivalsInWindow(now = Date.now()) {
@@ -161,6 +162,7 @@ async function pollPass() {
   await pool(q.webSubscriptionPoints(), POOL, async p => {
     try { await pollPoint(p); } catch (e) { console.error(`[pt:${p.latitude},${p.longitude}] poll failed:`, e.message, e.cause?.code || e.cause?.message || ''); }
   });
+  try { await sendDigests({ now: Date.now(), festivals: on }); } catch (e) { console.error('digest failed:', e.message); }
   q.purgeAlerts(daysFromNow(-7));
   q.purgeStats(90);
 }

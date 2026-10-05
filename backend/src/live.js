@@ -14,7 +14,13 @@ export const changed = (festivalId, kind) => { const e = { id: ++seq, festivalId
 export const liveCount = () => live.listenerCount('change');
 export const lastEventId = () => seq;
 
+const SSE_PER_IP = Number(process.env.SSE_PER_IP || 20), openBy = new Map();
 export function sse(req, res) {
+  // One phone holds one stream; a script that opens dozens from one address is told no before it costs anything.
+  const ip = req.ip || req.socket?.remoteAddress || '?', n = openBy.get(ip) || 0;
+  if (n >= SSE_PER_IP) return res.status(429).json({ error: 'too many open streams from this address' });
+  openBy.set(ip, n + 1);
+  res.on('close', () => { const left = (openBy.get(ip) || 1) - 1; if (left > 0) openBy.set(ip, left); else openBy.delete(ip); });
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.write('retry: 5000\n: hello\n\n');
   const only = req.query?.f ? String(req.query.f) : null;

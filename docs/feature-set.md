@@ -43,6 +43,8 @@ Fieldwatch tells anyone standing in a field what the sky is about to do and what
 - The safety team's own calls: a post is a notice, or a hold (shelter, evacuate, pause) with an end, from a template on the Post screen, always urgent for shelter and evacuate; a hold stands on the festival page in its own color with its own two lines until it ends, and the all-clear ends every hold standing (`kind`, `HOLD_ACTION`). Every post keeps its reach, and staff can take one back: off the list, its hold ended, the phones told quietly under the same tag (`DELETE /festivals/:id/posts/:pid`). The reports queue is live: a report landing shows up with no tap, and the Settings row counts what waits.
 - Shelter and medical on the record, in the team's words (`shelter`, `medical` on the festival): on the festival page, on every warning and hold, and on the prep screen's where-to-shelter line; staff set them from Settings.
 - The staff key hands off as a QR: scan it once per staff phone and the app opens on the festival with the key in place (`handoff`, `?key=`). A sign to print for the gates, the info booth and the medical tent, with the QR and the short link (Share, Print a sign).
+- The morning brief: one quiet push at seven in the festival's own clock to every phone that favorited it, with the day in a line (the high, the first window worth a heads-up and the first thing to do, sunset); off per phone from Settings, off everywhere with `DIGEST_HOUR=off`.
+- The operator's side: one rate limit for everything a stranger can write, bodies checked against a shape before they are stored, push subscriptions only from the push services browsers use, a cap on live streams per address, daily housekeeping with its counts on `/health`, ground lookups counted and warned about, CI on every push, a nightly contract check against the weather service, a lightning bucket and the radar archive, and a shakedown that exits with a code.
 - Works from the cached pack when signal drops.
 - iOS app with a Bluetooth relay: written, never compiled.
 
@@ -149,7 +151,7 @@ How: one button on the staff screens: every NWS alert, hold, post, incident and 
 Needs: the staff key, one GET route. An afternoon, and the reason an officer runs holds through the app instead of a chat.
 
 **24. Morning brief**
-How: on demand or at a chosen hour: alerts in effect, SPC category and any watch, peak gust and the thunder window, peak heat hour, rain timing, sunrise and dark. Rendered as a PNG for AirDrop and pushed to phones that opted in. The 7 a.m. toolbox talk on one card.
+How: on demand or at a chosen hour: alerts in effect, SPC category and any watch, peak gust and the thunder window, peak heat hour, rain timing, sunrise and dark. Rendered as a PNG for AirDrop and pushed to phones that opted in. The 7 a.m. toolbox talk on one card. Done so far: the push at seven with the high, the first window and the first thing to do, and sunset (`digest.js`). Still to do: the card, SPC, on demand.
 Needs: nothing new; compose from what exists and let SPC and WBGT attach when they land.
 
 ### Festival list

@@ -17,6 +17,8 @@ process.env.ADMIN_KEY = 'test-admin';
 process.env.NODE_KEY = 'test-node';
 process.env.NWS_USER_AGENT = 'Fieldwatch/test (test@fieldwatch.test)';
 process.env.NWS_RETRY_MS = '0';
+process.env.PUSH_ENDPOINT_HOSTS = 'push.example.test';   // the fake push service the tests subscribe to
+process.env.SSE_PER_IP = '2';
 delete process.env.OPENAI_API_KEY;
 delete process.env.APNS_KEY_PATH;
 delete process.env.TICKETMASTER_KEY; delete process.env.SEATGEEK_CLIENT_ID; delete process.env.EDMTRAIN_KEY; delete process.env.FESTIVAL_FEEDS;
@@ -771,4 +773,64 @@ test('the staff key hands off as a link and a QR, the record carries shelter and
   live.off('change', on);
   assert.ok(heard.some(e => e.festivalId === FEST && e.kind === 'reports'), 'the staff queue hears it land');
   await api('DELETE', `/festivals/${FEST}/partner-key`, { headers: admin });
+});
+
+test('operator: writes are rate limited and checked, push services are an allow-list, streams per address are capped, and health says so', async () => {
+  (await import('../src/app.js')).resetReportLimit();
+  // A subscription to a push service nobody has heard of is refused: it would make this server a webhook for strangers.
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: { endpoint: 'https://evil.example.org/hook', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }, festivalId: FEST } })).status, 400);
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: { endpoint: 'https://web.push.apple.com/QPx1', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } }, festivalId: FEST, quiet: true } })).status, 200, 'Apple is in');
+  await api('DELETE', '/push/subscribe', { body: { endpoint: 'https://web.push.apple.com/QPx1' } });
+  // Bodies are checked before anything is stored: too long says so, the wrong type says so.
+  assert.match((await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'x'.repeat(121), body: 'y' } })).json.error, /title is too long/);
+  assert.match((await api('POST', `/festivals/${FEST}/posts`, { headers: admin, body: { title: 'x', body: 'y', minutes: 'soon', kind: 'shelter' } })).json.error, /minutes must be a number/);
+  assert.match((await api('POST', `/festivals/${FEST}/reports`, { body: { summary: 'z'.repeat(1001) } })).json.error, /summary is too long/);
+  assert.match((await api('POST', `/festivals/${FEST}/reports`, { body: { summary: 'Fence down by the north gate', latitude: 'here' } })).json.error, /latitude must be a number/);
+  // Streams per address: the third from one address is told no, and the count falls when one hangs up.
+  const open = [];
+  for (let i = 0; i < 2; i++) { const ctl = new AbortController(); const res = await fetchReal(`${base}/events`, { signal: ctl.signal }); assert.equal(res.status, 200); open.push(ctl); }
+  assert.equal((await fetchReal(`${base}/events`)).status, 429);
+  open.forEach(c => c.abort()); await new Promise(r => setTimeout(r, 50));
+  assert.equal((await api('GET', '/health')).json.live, 0);
+  const h = (await api('GET', '/health')).json;
+  assert.ok('tracked' in h.limits); assert.ok('lastRunAt' in h.housekeeping); assert.ok('streak' in h.ground.lookups);
+});
+
+test('housekeeping sheds old incidents and their audio, old posts and stale radar frames, once a day and on demand', async () => {
+  const { runHousekeeping } = await import('../src/housekeeping.js');
+  const { writeFileSync, existsSync, mkdirSync, utimesSync } = await import('node:fs');
+  const old = new Date(Date.now() - 40 * 86_400_000).toISOString(), fresh = new Date().toISOString();
+  writeFileSync(join(audioDir, 'old-clip.wav'), 'x');
+  q.insertIncident({ id: 'inc-old', festivalId: FEST, category: 'fire', level: 'warning', summary: 'old', transcript: 'old', source: 'scanner', talkgroup: null, location: null, latitude: null, longitude: null, audioFile: 'old-clip.wav', occurredAt: old, published: 1 });
+  q.insertIncident({ id: 'inc-new', festivalId: FEST, category: 'fire', level: 'warning', summary: 'new', transcript: 'new', source: 'scanner', talkgroup: null, location: null, latitude: null, longitude: null, audioFile: null, occurredAt: fresh, published: 1 });
+  const stale = join(process.env.RADAR_DIR, 'gone-fest-2020'); mkdirSync(stale, { recursive: true }); writeFileSync(join(stale, 'f.png'), 'x');
+  const ago = new Date(Date.now() - 5 * 86_400_000); utimesSync(stale, ago, ago);
+  const removed = runHousekeeping();
+  assert.equal(removed.incidents, 1); assert.equal(removed.audio, 1); assert.equal(removed.radarDirs, 1);
+  assert.equal(existsSync(join(audioDir, 'old-clip.wav')), false); assert.equal(existsSync(stale), false);
+  assert.ok(q.publishedIncidents(FEST, 0).some(i => i.id === 'inc-new'), 'the new one stays');
+  const r = await api('POST', '/admin/housekeeping', { headers: admin });
+  assert.equal(r.status, 200); assert.ok(r.json.removed); assert.ok(r.json.lastRunAt);
+  assert.equal((await api('POST', '/admin/housekeeping')).status, 401);
+});
+
+test('the morning brief: once a day at the festival\'s own hour, to the phones that asked for it, with the day in a line', async () => {
+  const { sendDigests, digestFor } = await import('../src/digest.js');
+  const sent = []; setWebPushTransport(async (sub, payload, opts) => { sent.push({ endpoint: sub.endpoint, payload: JSON.parse(payload), opts }); });
+  const sub = n => ({ endpoint: `https://push.example.test/${n}`, expirationTime: null, keys: { p256dh: 'p', auth: 'a' } });
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('brief-on'), festivalId: FEST, quiet: true } })).json.ok, true);
+  assert.equal((await api('POST', '/push/subscribe', { body: { subscription: sub('brief-off'), festivalId: FEST, quiet: true, digest: false } })).json.ok, true);
+  const seven = Date.UTC(2026, 9, 23, 11, 0);   // 7 AM in Live Oak on the fixture's day
+  for (const a of q.activeAlerts(FEST)) q.updateAlert(FEST, { ...a, expiresAt: new Date().toISOString() });   // what earlier tests left standing is not today's weather
+  const d = await digestFor(q.festival(FEST), { now: seven, tz: 'America/New_York' });
+  assert.equal(d.title, 'Today at Suwannee Hulaween');
+  assert.match(d.body, /^High \d+°, storms expected around 5:00 PM\. [A-Z][^.]+ by \d+:\d\d [AP]M\. Sunset \d+:\d\d [AP]M\.$/, d.body);
+  assert.deepEqual(await sendDigests({ now: seven - 3_600_000, festivals: [q.festival(FEST)] }), [], 'six in the morning is not the hour');
+  const out = await sendDigests({ now: seven, festivals: [q.festival(FEST)] });
+  assert.equal(out.length, 1); assert.equal(out[0].festivalId, FEST);
+  assert.equal(sent.length, 1); assert.equal(sent[0].endpoint, 'https://push.example.test/brief-on', 'the phone that said no digest hears nothing');
+  assert.equal(sent[0].payload.title, 'Today at Suwannee Hulaween'); assert.equal(sent[0].payload.urgent, false); assert.equal(sent[0].payload.channel, 'digest'); assert.equal(sent[0].opts.urgency, 'normal');
+  assert.deepEqual(await sendDigests({ now: seven + 600_000, festivals: [q.festival(FEST)] }), [], 'once a day');
+  assert.deepEqual(await sendDigests({ now: seven, hour: 'off', festivals: [q.festival(FEST)] }), [], 'or never');
+  for (const n of ['brief-on', 'brief-off']) await api('DELETE', '/push/subscribe', { body: { endpoint: `https://push.example.test/${n}` } });
 });

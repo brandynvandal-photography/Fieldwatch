@@ -75,7 +75,10 @@ function print(r) {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
-  const [base, key] = process.argv.slice(2);
-  if (!base) { console.error('usage: node scripts/shakedown.mjs https://host [ADMIN_KEY]'); process.exit(2); }
-  print(await shakedown(base, { key }));
+  const args = process.argv.slice(2), assert = args.includes('--assert'), [base, key] = args.filter(a => a !== '--assert');
+  if (!base) { console.error('usage: node scripts/shakedown.mjs https://host [ADMIN_KEY] [--assert]'); process.exit(2); }
+  const r = await shakedown(base, { key });
+  print(r);
+  // --assert: a monitor or a pre-weekend check wants an exit code, not a read: 1 when health has a problem or a read failed.
+  if (assert) process.exit((r.health?.problems || []).length || r.errors.length ? 1 : 0);
 }

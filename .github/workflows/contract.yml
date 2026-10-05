@@ -1,0 +1,19 @@
+# Nightly: the outside services this app reads still answer in the shapes it parses. The weather service's points, hourly,
+# grid and alerts; a GOES lightning bucket listing; a radar frame from the archive; and, when FIELDWATCH_URL is set as a
+# repository variable, the deployed backend's /health. A failure here is a change out there, not a bug in a push.
+name: contract
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: node backend/scripts/contract.mjs
+        env:
+          FIELDWATCH_URL: ${{ vars.FIELDWATCH_URL }}

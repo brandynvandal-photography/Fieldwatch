@@ -93,6 +93,7 @@ if (!db.prepare(`PRAGMA table_info(festivals)`).all().some(c => c.name === 'stat
   db.exec(`ALTER TABLE festivals ADD COLUMN status TEXT NOT NULL DEFAULT 'published'`);
 }
 // Added later: a browser may follow a point on the map (wherever the phone is) instead of a festival.
+if (!db.prepare(`PRAGMA table_info(web_subscriptions)`).all().some(c => c.name === 'digest')) db.exec(`ALTER TABLE web_subscriptions ADD COLUMN digest INTEGER NOT NULL DEFAULT 1`);
 if (!db.prepare(`PRAGMA table_info(web_subscriptions)`).all().some(c => c.name === 'latitude')) {
   db.exec(`ALTER TABLE web_subscriptions ADD COLUMN latitude REAL; ALTER TABLE web_subscriptions ADD COLUMN longitude REAL`);
 }
@@ -133,11 +134,14 @@ const s = {
   deleteDevice: db.prepare(`DELETE FROM devices WHERE token = ?`),
   tokensFor: db.prepare(`SELECT token FROM devices WHERE festival_id = ?`),
 
-  upsertWebSubscription: db.prepare(`INSERT INTO web_subscriptions (endpoint, festival_id, json, updated_at, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(endpoint) DO UPDATE SET festival_id = excluded.festival_id, json = excluded.json, updated_at = excluded.updated_at, latitude = excluded.latitude, longitude = excluded.longitude`),
+  upsertWebSubscription: db.prepare(`INSERT INTO web_subscriptions (endpoint, festival_id, json, updated_at, latitude, longitude, digest) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET festival_id = excluded.festival_id, json = excluded.json, updated_at = excluded.updated_at, latitude = excluded.latitude, longitude = excluded.longitude, digest = excluded.digest`),
   deleteWebSubscription: db.prepare(`DELETE FROM web_subscriptions WHERE endpoint = ?`),
-  webSubscriptionsFor: db.prepare(`SELECT endpoint, json FROM web_subscriptions WHERE festival_id = ?`),
-  webSubscriptionsAt: db.prepare(`SELECT endpoint, json FROM web_subscriptions WHERE festival_id IS NULL AND round(latitude, 2) = ? AND round(longitude, 2) = ?`),
+  webSubscriptionsFor: db.prepare(`SELECT endpoint, json, digest FROM web_subscriptions WHERE festival_id = ?`),
+  webSubscriptionsAt: db.prepare(`SELECT endpoint, json, digest FROM web_subscriptions WHERE festival_id IS NULL AND round(latitude, 2) = ? AND round(longitude, 2) = ?`),
+  incidentAudioOlderThan: db.prepare(`SELECT audio_file FROM incidents WHERE occurred_at < ? AND audio_file IS NOT NULL`),
+  purgeIncidents: db.prepare(`DELETE FROM incidents WHERE occurred_at < ?`),
+  purgePosts: db.prepare(`DELETE FROM posts WHERE posted_at < ?`),
   webSubscriptionPoints: db.prepare(`SELECT DISTINCT round(latitude, 2) AS latitude, round(longitude, 2) AS longitude FROM web_subscriptions WHERE festival_id IS NULL AND latitude IS NOT NULL AND longitude IS NOT NULL`),
 
   setting: db.prepare(`SELECT value FROM settings WHERE key = ?`),
@@ -184,10 +188,13 @@ export const q = {
   deleteDevice: token => s.deleteDevice.run(token),
   tokensFor: festivalId => s.tokensFor.all(festivalId).map(r => r.token),
 
-  upsertWebSubscription: (endpoint, festivalId, subscription, point) => s.upsertWebSubscription.run(endpoint, festivalId || null, JSON.stringify(subscription), iso(), point?.latitude ?? null, point?.longitude ?? null),
+  upsertWebSubscription: (endpoint, festivalId, subscription, point, digest = true) => s.upsertWebSubscription.run(endpoint, festivalId || null, JSON.stringify(subscription), iso(), point?.latitude ?? null, point?.longitude ?? null, digest === false ? 0 : 1),
+  incidentAudioOlderThan: olderThan => s.incidentAudioOlderThan.all(olderThan).map(r => r.audio_file),
+  purgeIncidents: olderThan => s.purgeIncidents.run(olderThan).changes,
+  purgePosts: olderThan => s.purgePosts.run(olderThan).changes,
   deleteWebSubscription: endpoint => s.deleteWebSubscription.run(endpoint),
-  webSubscriptionsFor: festivalId => s.webSubscriptionsFor.all(festivalId).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json) })),
-  webSubscriptionsAt: (latitude, longitude) => s.webSubscriptionsAt.all(Math.round(latitude * 100) / 100, Math.round(longitude * 100) / 100).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json) })),
+  webSubscriptionsFor: festivalId => s.webSubscriptionsFor.all(festivalId).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json), digest: r.digest !== 0 })),
+  webSubscriptionsAt: (latitude, longitude) => s.webSubscriptionsAt.all(Math.round(latitude * 100) / 100, Math.round(longitude * 100) / 100).map(r => ({ endpoint: r.endpoint, subscription: JSON.parse(r.json), digest: r.digest !== 0 })),
   webSubscriptionPoints: () => s.webSubscriptionPoints.all(),
 
   setting: key => s.setting.get(key)?.value ?? null,

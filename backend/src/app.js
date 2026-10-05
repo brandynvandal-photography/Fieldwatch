@@ -8,6 +8,9 @@ import { q } from './db.js';
 import { buildPack } from './pack.js';
 import { festivalsInWindow, pollFestival, polledRecently, pollingStatus } from './poller.js';
 import { pushAlert, pushEnded } from './push.js';
+import { limit, limitStatus, resetLimits } from './limits.js';
+import { expect } from './expect.js';
+import { housekeepingStatus, runHousekeeping } from './housekeeping.js';
 import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled, pushEnded as pushEndedWeb } from './webpush.js';
 import { SITE, USER_AGENT, placeholderAgent } from './site.js';
 import { adminKeyStatus, ensureAdminKey, hashKey, isAdminKey, sameKey } from './adminkey.js';
@@ -116,6 +119,8 @@ export function healthProblems({ on = festivalsInWindow().length } = {}) {
   if (process.env.RAILWAY_ENVIRONMENT && !process.env.RAILWAY_VOLUME_MOUNT_PATH) warnings.push('no volume: the database, the admin key and the push keys are lost on every deploy');
   if (!webPushEnabled()) warnings.push('web push off: no VAPID keys');
   if (b.lastError) warnings.push(`backup: ${b.lastError}`);
+  const g = groundStatus().lookups; if (g.streak >= 3) warnings.push(`ground: ${g.streak} lookups failed in a row (${g.lastError})`);
+  const h = housekeepingStatus(); if (h.lastError) warnings.push(`housekeeping: ${h.lastError}`);
   return { problems, warnings };
 }
 // ?strict=1 answers 503 while there is a problem, for a monitor that only reads status codes. Without it the body says.
@@ -131,6 +136,8 @@ app.get('/health', (req, res) => { const { problems, warnings } = healthProblems
   sources: { ticketmaster: Boolean(process.env.TICKETMASTER_KEY), seatgeek: Boolean(process.env.SEATGEEK_CLIENT_ID), edmtrain: Boolean(process.env.EDMTRAIN_KEY), wikidata: wikidataSkipped() || 'on', feeds: Boolean(process.env.FESTIVAL_FEEDS) },
   lightning: lightningStatus(),
   ground: groundStatus(),
+  housekeeping: housekeepingStatus(),
+  limits: limitStatus(),
   live: liveCount(),
   imports: { running: imports.running, lastStartedAt: imports.last?.startedAt || null, lastFinishedAt: imports.last?.finishedAt || null,
     // Per source, what the last run managed and the last error it hit, so a failing key or a blocked host shows here.
@@ -183,12 +190,7 @@ app.get('/festivals/:id/qr.svg', loadFestival, wrap(async (req, res) => {
 }));
 
 // Anyone can add a festival; it waits for an admin, and nothing a stranger sends becomes a partner feed or a site map.
-const suggestTimes = new Map();
-app.post('/festivals', (req, res) => {
-  const ip = req.ip, now = Date.now();
-  const recent = (suggestTimes.get(ip) || []).filter(t => now - t < 3_600_000);
-  if (recent.length >= 3) return res.status(429).json({ error: 'too many suggestions, try again later' });
-  suggestTimes.set(ip, [...recent, now]);
+app.post('/festivals', limit('suggest', 3, 3_600_000, 'suggestions'), (req, res) => {
   const body = req.body || {};
   const { festival: raw, error } = normalizeFestival(body, { origin: 'community', status: 'pending', id: `sub-${slug(body.name || 'festival') || 'festival'}-${randomUUID().slice(0, 6)}` });
   if (error) return res.status(400).json({ error });
@@ -225,12 +227,10 @@ app.get('/festivals/:id/pack', loadFestival, wrap(async (req, res) => {
 /** The ground under the festival: what the record says about it, and the rain of the last two days (ground.js). */
 app.get('/festivals/:id/ground', loadFestival, wrap(async (req, res) => res.set('Cache-Control', 'no-store').json({ ...(await groundFor(req.festival)), reports: reportSummary(q, req.festival.id) })));
 /** One tap from the field: fine, soft, mud or water. Stored with the rain the model counts right now, so the venue learns what it takes. */
-const groundReportTimes = new Map();
 app.post('/festivals/:id/ground/report', loadFestival, wrap(async (req, res) => {
   if (!GROUND_STATES.includes(String(req.body?.state || ''))) return res.status(400).json({ error: `state must be one of ${GROUND_STATES.join(', ')}` });
-  const ip = req.ip, now = Date.now(), recent = (groundReportTimes.get(ip) || []).filter(t => now - t < 600_000);
-  if (recent.length >= 5) return res.status(429).json({ error: 'too many reports, try again later' });
-  groundReportTimes.set(ip, [...recent, now]);
+  if ((await import('./limits.js')).limited('ground-report', req.ip, 5, 600_000)) return res.status(429).json({ error: 'too many reports, try again later' });
+  const now = Date.now();
   const r = await reportGround(req.festival, String(req.body?.state || ''), { now, q, save: f => q.upsertFestival(f) });
   if (r.error) return res.status(400).json({ error: r.error });
   changed(req.festival.id, 'ground'); q.count(req.festival.id, 'ground.report');
@@ -294,11 +294,10 @@ app.get('/festivals/:id/posts', loadFestival, (req, res) => res.json(q.posts(req
 // with the alerts so the page carries them; a notice is a post and a push, as before. The reach of every post is kept on it.
 const KINDS = ['notice', 'shelter', 'evacuate', 'pause', 'allclear'], HOLDS = ['shelter', 'evacuate', 'pause'];
 app.post('/festivals/:id/posts', requireStaff, loadFestival, wrap(async (req, res) => {
-  const { title, body, kind = 'notice' } = req.body || {};
-  let { severity = 'minor', minutes } = req.body || {};
-  if (!title || !body) return res.status(400).json({ error: 'title and body required' });
-  if (!SEVERITIES.includes(severity)) return res.status(400).json({ error: `severity must be one of ${SEVERITIES.join(', ')}` });
-  if (!KINDS.includes(kind)) return res.status(400).json({ error: `kind must be one of ${KINDS.join(', ')}` });
+  const checked = expect(req.body, { title: 'string:120', body: 'string:2000', severity: [...SEVERITIES, null], kind: [...KINDS, null], minutes: 'number?' });
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const { title, body, kind = 'notice' } = checked.value;
+  let { severity = 'minor', minutes } = checked.value;
   const hold = HOLDS.includes(kind), now = Date.now();
   if (kind === 'shelter' || kind === 'evacuate') severity = 'severe'; else if (kind === 'pause' && severity === 'minor') severity = 'moderate';
   minutes = hold ? Math.min(720, Math.max(5, Number(minutes) || 60)) : null;
@@ -377,17 +376,13 @@ app.post('/festivals/:id/incidents', requireNode, loadFestival, upload.single('a
 }));
 
 // Attendee reports always go to the moderation queue.
-const reportTimes = new Map();
 /** Tests send reports from one address all day. */
-export const resetReportLimit = () => reportTimes.clear();
-app.post('/festivals/:id/reports', loadFestival, (req, res) => {
-  const ip = req.ip; const now = Date.now();
-  const recent = (reportTimes.get(ip) || []).filter(t => now - t < 600_000);
-  if (recent.length >= 5) return res.status(429).json({ error: 'too many reports, try again later' });
-  reportTimes.set(ip, [...recent, now]);
-
-  const { summary, category, location, latitude, longitude } = req.body || {};
-  if (!summary || String(summary).length < 8) return res.status(400).json({ error: 'summary required' });
+export const resetReportLimit = resetLimits;
+app.post('/festivals/:id/reports', limit('report', 5, 600_000, 'reports'), loadFestival, (req, res) => {
+  const checked = expect(req.body, { summary: 'string:1000', category: 'string?:40', location: 'string?:200', latitude: 'number?', longitude: 'number?' });
+  if (checked.error) return res.status(400).json({ error: checked.error });
+  const { summary, category, location, latitude, longitude } = checked.value;
+  if (summary.length < 8) return res.status(400).json({ error: 'summary required' });
   q.count(req.festival.id, 'report');
   const hit = classify(summary) || { category: category || 'other', level: 'advisory' };
   const incident = {
@@ -423,7 +418,7 @@ app.put('/festivals/:id', requireStaff, (req, res) => {
   res.json(festival);
 });
 
-app.post('/devices', (req, res) => {
+app.post('/devices', limit('devices', 30, 600_000, 'registrations'), (req, res) => {
   const { token, festivalId } = req.body || {};
   if (!token || !/^[0-9a-f]{64}$/i.test(token)) return res.status(400).json({ error: 'valid APNs token required' });
   q.upsertDevice(token, festivalId || null);
@@ -434,11 +429,11 @@ app.delete('/devices/:token', (req, res) => { q.deleteDevice(req.params.token); 
 // ---- Web push: the web build's warnings, same alerts as APNs -------------
 
 app.get('/push/vapid', (req, res) => (webPushEnabled() ? res.json({ key: vapidPublicKey() }) : res.status(404).json({ error: 'web push not configured' })));
-app.post('/push/subscribe', wrap(async (req, res) => {
+app.post('/push/subscribe', limit('subscribe', 30, 600_000, 'subscriptions'), wrap(async (req, res) => {
   if (!webPushEnabled()) return res.status(404).json({ error: 'web push not configured' });
   // quiet: a phone registering again on open (after a redeploy, say) wants no welcome notification.
-  const { subscription, festivalId, point, quiet } = req.body || {};
-  if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys is required' });
+  const { subscription, festivalId, point, quiet, digest } = req.body || {};
+  if (!validSubscription(subscription)) return res.status(400).json({ error: 'a push subscription with endpoint and keys from a known push service is required' });
   if (festivalId && !q.festival(festivalId)) return res.status(404).json({ error: 'no such festival' });
   q.count(festivalId || 'here', 'follow');
   // A phone with no festival follows a point: wherever it is, rounded to about a kilometer, so a warning for that spot reaches it.
@@ -446,7 +441,7 @@ app.post('/push/subscribe', wrap(async (req, res) => {
   const at = !festivalId && Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { latitude: Math.round(lat * 100) / 100, longitude: Math.round(lon * 100) / 100 } : null;
   if (!festivalId && !at) return res.status(400).json({ error: 'festivalId or point required' });
   const clean = { endpoint: subscription.endpoint, keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth } };
-  q.upsertWebSubscription(subscription.endpoint, festivalId || null, clean, at);
+  q.upsertWebSubscription(subscription.endpoint, festivalId || null, clean, at, digest !== false);
   const target = festivalId ? q.festival(festivalId) : { id: 'here', name: 'Where you are', ...at };
   res.json({ ok: true, welcome: quiet ? false : await pushWelcome(clean, target) });
 }));
@@ -480,6 +475,7 @@ app.get('/admin/stats', requireAdmin, (req, res) => {
 });
 /** The newest backup as a file, and a way to take one now. */
 app.get('/admin/backup', requireAdmin, (req, res) => { const [b] = backups(); if (!b) return res.status(404).json({ error: 'no backup yet' }); res.download(b.path, b.name); });
+app.post('/admin/housekeeping', requireAdmin, (req, res) => res.json({ removed: runHousekeeping(), ...housekeepingStatus() }));
 app.post('/admin/backup', requireAdmin, wrap(async (req, res) => { const r = await backupNow(); res.json({ ...backupStatus(), bytes: r.bytes }); }));
 app.delete('/push/subscribe', (req, res) => {
   const endpoint = req.body?.endpoint || req.query.endpoint;

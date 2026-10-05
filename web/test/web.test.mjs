@@ -629,7 +629,15 @@ test('a link opens straight to a festival and its alert, and warnings can be swi
     assert.equal(store.subs.length, 1);
     assert.equal(store.subs[0].festivalId, 'hulaween-2026');
     assert.deepEqual(store.subs[0].subscription, { endpoint: 'https://push.example.test/abc', expirationTime: null, keys: { p256dh: 'p', auth: 'a' } });
+    assert.equal(store.subs[0].digest, true, 'the morning brief comes unless switched off');
     await shot(page, '11-home-push');
+    // Switching the brief off in Settings registers the favorite again with the flag down.
+    await page.click('button[aria-label="Settings"]'); await page.waitForSelector('h1.title:has-text("Settings")');
+    await page.click('button.row:has-text("Morning brief")');
+    await page.waitForFunction(() => /Off/.test(document.querySelector('button.row:has-text("Morning brief") .pill')?.textContent || '')).catch(() => {});
+    for (let i = 0; i < 50 && store.subs[0]?.digest !== false; i++) await new Promise(r => setTimeout(r, 100));
+    assert.equal(store.subs[0].digest, false); assert.equal(store.subs.length, 1, 'the same phone, not a second row');
+    await page.click('button[aria-label="Back"]'); await page.waitForSelector('.sky.warn');
     await page.click('button.tb.fav');
     await page.waitForSelector('.pill:not(.on)');
     await page.waitForFunction(() => /^Removed Suwannee Hulaween/.test(document.querySelector('.toast.show')?.textContent || ''));

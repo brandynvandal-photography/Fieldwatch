@@ -36,6 +36,9 @@ python3 test_uploader.py      # stdlib only; whisper is stubbed, the backend is 
 # web
 cd web && npm start           # http://localhost:8090; any static host works
 npm install && npm test       # headless Chromium against fixture NWS and radar responses
+
+# both suites run in GitHub Actions on every push (.github/workflows/ci.yml); contract.yml checks the outside services nightly
+node backend/scripts/contract.mjs [https://backend]   # the weather service, a lightning bucket, the radar archive, in the shapes we parse
 ```
 
 `backend/.env` is read by `src/env.js` (Node 20.12+, `process.loadEnvFile`); variables already in the environment win. `npm start` runs `src/server.js`, which is only the listener; the Express app lives in `src/app.js` so tests can import it without binding a port.
