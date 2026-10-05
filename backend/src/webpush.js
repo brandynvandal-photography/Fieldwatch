@@ -108,7 +108,7 @@ export async function pushWeb(festival, alert) {
       else { failed++; console.error(`[${festival.id}] web push failed: ${e?.statusCode || ''} ${e?.message || e}`); }
     }
   }));
-  q.count(festival.id, 'push.web', sent);
+  q.count(festival.id, 'push.web', sent); if (gone) q.count(festival.id, 'push.web.gone', gone); if (failed) q.count(festival.id, 'push.web.failed', failed);
   return { sent, gone, failed };
 }
 
@@ -136,6 +136,6 @@ export async function pushEnded(festival, alert, { title = null, why = null } = 
       else { failed++; console.error(`[${festival.id}] web push failed: ${e?.statusCode || ''} ${e?.message || e}`); }
     }
   }));
-  q.count(festival.id, 'push.web', sent);
+  q.count(festival.id, 'push.web', sent); if (gone) q.count(festival.id, 'push.web.gone', gone); if (failed) q.count(festival.id, 'push.web.failed', failed);
   return { sent, gone, failed };
 }

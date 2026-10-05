@@ -11,6 +11,7 @@ import { pushAlert, pushEnded } from './push.js';
 import { limit, limitStatus, resetLimits } from './limits.js';
 import { expect } from './expect.js';
 import { housekeepingStatus, runHousekeeping } from './housekeeping.js';
+import { prometheus, reportCSV, seasonReport, statsFor } from './metrics.js';
 import { pushWeb, pushWelcome, validSubscription, vapidPublicKey, webPushEnabled, pushEnded as pushEndedWeb } from './webpush.js';
 import { SITE, USER_AGENT, placeholderAgent } from './site.js';
 import { adminKeyStatus, ensureAdminKey, hashKey, isAdminKey, sameKey } from './adminkey.js';
@@ -499,13 +500,20 @@ app.post('/festivals/:id/partner-key', requireAdmin, loadFestival, wrap(async (r
 app.get('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => res.json({ festivalId: req.festival.id, issued: Boolean(q.setting(`partner:${req.festival.id}`)) }));
 app.delete('/festivals/:id/partner-key', requireAdmin, loadFestival, (req, res) => { q.deleteSetting(`partner:${req.festival.id}`); res.json({ festivalId: req.festival.id, issued: false }); });
 /** Use, with nobody in it: packs opened, alerts listed and stored, pushes sent, heads-ups, posts, reports, follows, per festival, for the last `days` (7, up to 90). */
-app.get('/admin/stats', requireAdmin, (req, res) => {
-  const days = Math.min(90, Math.max(1, Number(req.query.days) || 7));
-  const totals = {}, per = {};
-  for (const { festivalId, key, n } of q.stats(days)) { totals[key] = (totals[key] || 0) + n; (per[festivalId] ||= {})[key] = n; }
-  const latency = totals['alert.latency_n'] ? Math.round(totals['alert.latency_s'] / totals['alert.latency_n']) : null;
-  const festivals = Object.entries(per).filter(([id]) => id !== '*').map(([id, counts]) => ({ id, name: q.festival(id)?.name || id, counts })).sort((a, b) => (b.counts.pack || 0) - (a.counts.pack || 0));
-  res.set('Cache-Control', 'no-store').json({ days, totals, alertLatencySeconds: latency, festivals });
+/** The numbers (metrics.js): counts per festival per day with nobody in them, summed over ?days= with a day-by-day series. Admin-wide here; a festival's own for its staff below. */
+app.get('/admin/stats', requireAdmin, (req, res) => res.set('Cache-Control', 'no-store').json(statsFor(Number(req.query.days) || 7)));
+app.get('/festivals/:id/stats', requireStaff, loadFestival, (req, res) => res.set('Cache-Control', 'no-store').json(statsFor(Number(req.query.days) || 7, req.festival.id)));
+/** The season report: the record and the counters of one festival, as rows or as one sheet with three sections (summary, days, events). */
+app.get('/festivals/:id/report', requireStaff, loadFestival, (req, res) => {
+  const r = seasonReport(req.festival, Number(req.query.days) || 120);
+  if (req.query.format !== 'csv') return res.set('Cache-Control', 'no-store').json(r);
+  res.set('Cache-Control', 'no-store').set('Content-Disposition', `attachment; filename="${req.festival.id}-season-report.csv"`).type('text/csv').send(reportCSV(r));
+});
+/** A scrape for an uptime tool, with the admin key (the header, a bearer token, or ?key=): today's counters and the ages health knows. */
+app.get('/metrics', (req, res) => {
+  const bearer = (req.get('authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!(isAdmin(req) || isAdminKey(bearer) || isAdminKey(String(req.query.key || '')))) return res.status(401).type('text/plain').send('x-admin-key required\n');
+  res.set('Cache-Control', 'no-store').type('text/plain; version=0.0.4; charset=utf-8').send(prometheus());
 });
 /** The newest backup as a file, and a way to take one now. */
 app.get('/admin/backup', requireAdmin, (req, res) => { const [b] = backups(); if (!b) return res.status(404).json({ error: 'no backup yet' }); res.download(b.path, b.name); });

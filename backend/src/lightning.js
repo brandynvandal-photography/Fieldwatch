@@ -142,6 +142,12 @@ export function lightningAt(p, now = Date.now()) {
 }
 
 const state = { flashes: [], seen: new Map(), per: new Map(), buckets: {}, episodes: new Map(), files: 0, duplicates: 0, lastFileAt: null, lastTickAt: null };
+// The time each festival spends in each code, as seconds on the day's counters (`lightning.s.<code>`): the metrics say minutes in red.
+const clocks = new Map(), TIMED = new Set(['green', 'yellow', 'orange', 'red']);
+export function clockCode(id, code, now = Date.now()) {
+  const prev = clocks.get(id); clocks.set(id, now);
+  if (prev && TIMED.has(code) && now > prev) q.count(id, `lightning.s.${code}`, Math.min(600, Math.round((now - prev) / 1000)));   // a gap longer than ten minutes (downtime) is not time in a code
+}
 /** A red or orange alert still standing for this festival, as the flash it stands on: its end, less the window that end was set from. */
 function carried(f, now) {
   const ep = state.episodes.get(f.id);
@@ -171,7 +177,7 @@ export const flashesFor = (f, now = Date.now(), limit = 300) => state.flashes
 export const lightningStatus = () => ({ on: lightningOn(), lastTickAt: state.lastTickAt ? iso(state.lastTickAt) : null, lastFileAt: state.lastFileAt ? iso(state.lastFileAt) : null,
   files: state.files, flashes: state.flashes.length, duplicates: state.duplicates, buckets: buckets().map(b => ({ bucket: b, files: 0, lastFileAt: null, lastError: null, ...state.buckets[b] })) });
 /** Tests start from nothing. */
-export function resetLightning() { state.flashes = []; state.seen.clear(); state.per.clear(); state.buckets = {}; state.episodes.clear(); state.files = 0; state.duplicates = 0; state.lastFileAt = state.lastTickAt = null; interest.clear(); }
+export function resetLightning() { clocks.clear(); state.flashes = []; state.seen.clear(); state.per.clear(); state.buckets = {}; state.episodes.clear(); state.files = 0; state.duplicates = 0; state.lastFileAt = state.lastTickAt = null; interest.clear(); }
 const errorText = e => `${e?.message || e}${e?.cause?.code ? ` (${e.cause.code})` : ''}`;
 
 /** One pass: list, fetch what is new, trim the buffer, grade every festival that is on, announce a turn to red. */
@@ -224,7 +230,7 @@ export async function lightningTick({ now = Date.now(), fetchImpl = globalThis.f
       continue;
     }
     const a = assess(f, state.flashes, now, state.lastFileAt, carried(f, now), prev);
-    state.per.set(f.id, a);
+    state.per.set(f.id, a); clockCode(f.id, a.code, now);
     if (!prev || prev.code !== a.code || prev.nearestMi !== a.nearestMi || Boolean(prev.allClearHeld) !== a.allClearHeld || Boolean(prev.held) !== a.held) changed(f.id, 'lightning');
     try { await announce(f, prev, a, now); } catch (e) { console.error(`[${f.id}] lightning alert failed:`, errorText(e)); }
   }

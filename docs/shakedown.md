@@ -45,6 +45,6 @@ sets, watches and tries, in order. `node backend/scripts/shakedown.mjs https://y
 
 ## After
 
-13. Read `/admin/stats`: packs, pushes, alert latency. Read the log for `poll failed`, `radar:`, `lightning alert failed`,
+13. Settings, Metrics: opens, following, pushes delivered, issue to push, minutes in red, and the minutes the data was behind, for the weekend. Season report: the sheet for the promoter. `/admin/stats` has the same numbers for the shakedown script. Read the log for `poll failed`, `radar:`, `lightning alert failed`,
     `backup failed`. Download `/admin/backup`.
 14. Put every wrong thing in `docs/roadmap.md`, with the screen it was on.

@@ -68,7 +68,7 @@ function print(r) {
   if (r.live) console.log(`  live stream: ${r.live.opened ? `open for ${r.live.seconds} s, hello ${r.live.hello ? 'yes' : 'NO'}, ${r.live.pings} pings, ${r.live.changes} changes` : `did not open${r.live.error ? ` (${r.live.error})` : ''}`}`);
   if (r.admin) {
     const t = r.admin.stats.totals || {};
-    console.log(`  last 7 days: ${t.pack || 0} packs, ${t.alerts || 0} alert lists, ${t['alert.new'] || 0} alerts stored, ${(t['push.web'] || 0) + (t['push.apns'] || 0)} pushes, ${t.headsup || 0} heads-ups, ${t.follow || 0} follows${r.admin.stats.alertLatencySeconds != null ? `, alert latency ${r.admin.stats.alertLatencySeconds} s` : ''}`);
+    console.log(`  last 7 days: ${r.admin.stats.opens ?? ((t.pack || 0) + (t.alerts || 0))} opens, ${r.admin.stats.following ?? '?'} following, ${t['alert.new'] || 0} alerts stored, ${(t['push.web'] || 0) + (t['push.apns'] || 0)} pushes${r.admin.stats.delivered?.rate != null ? ` (${r.admin.stats.delivered.rate}% delivered)` : ''}, ${t.headsup || 0} heads-ups, ${t.report || 0} reports${r.admin.stats.alertLatencySeconds != null ? `, issue to push ${r.admin.stats.alertLatencySeconds} s` : ''}${r.admin.stats.codes ? `, ${r.admin.stats.codes.red || 0} min in red` : ''}${r.admin.stats.stale ? `, behind: poll ${r.admin.stats.stale.poll} min, lightning ${r.admin.stats.stale.lightning} min, radar ${r.admin.stats.stale.radar} min` : ''}`);
     const im = r.admin.imports; console.log(`  last import: ${im.never ? 'never' : im.startedAt}${im.running ? ' (running)' : ''}`);
   }
   for (const e of r.errors) console.log(`  error: ${e}`);

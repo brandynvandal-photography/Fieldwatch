@@ -43,7 +43,6 @@ export async function pollFestival(f, given = null) {
     if (replaced.has(id) || goneTwice(f.id, id, seenNow.has(id))) { const a = q.alert(f.id, id); if (a && (a.channel || 'weather') === 'weather') { q.updateAlert(f.id, { ...a, expiresAt: iso() }); ended++; if (!replaced.has(id)) over.push(a); } }
   }
   if (brandNew.length || ended) changed(f.id, 'alerts');
-  for (const a of brandNew) q.log(f.id, 'alert', { id: a.id, event: a.event, severity: a.severity, expiresAt: a.expiresAt });
   for (const a of over) q.log(f.id, 'ended', { id: a.id, event: a.event });
   // A warning that went out loud is said to be over, once, when nothing of its kind still stands; a message an update replaced is the same warning, not an end.
   for (const a of over) {
@@ -60,6 +59,7 @@ export async function pollFestival(f, given = null) {
       if (Number.isFinite(latency) && latency >= 0) { q.count(f.id, 'alert.latency_s', latency); q.count(f.id, 'alert.latency_n'); }
       const r = await pushAlert(tokens, f, a);
       const w = await pushWeb(f, a);
+      q.log(f.id, 'alert', { id: a.id, event: a.event, severity: a.severity, expiresAt: a.expiresAt, latencySeconds: Number.isFinite(latency) && latency >= 0 ? latency : null, reach: { web: w.sent || 0, apns: r.sent || 0, gone: w.gone || 0, failed: (w.failed || 0) + (r.failed || 0) } });
       console.log(`[${f.id}] new: ${a.event} (${a.severity}) push=${JSON.stringify(r)} web=${JSON.stringify(w)}`);
     }
   }

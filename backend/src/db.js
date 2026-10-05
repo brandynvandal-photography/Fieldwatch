@@ -163,6 +163,11 @@ const s = {
   groundReports: db.prepare(`SELECT state, effective, tier, created_at FROM ground_reports WHERE festival_id = ? AND created_at >= ? ORDER BY created_at DESC`),
   count: db.prepare(`INSERT INTO stats (day, festival_id, key, n) VALUES (?, ?, ?, ?) ON CONFLICT(day, festival_id, key) DO UPDATE SET n = n + excluded.n`),
   stats: db.prepare(`SELECT festival_id, key, SUM(n) AS n FROM stats WHERE day >= ? GROUP BY festival_id, key`),
+  statsSeries: db.prepare(`SELECT day, festival_id, key, n FROM stats WHERE day >= ? ORDER BY day`),
+  webSubscriptionCount: db.prepare(`SELECT COUNT(*) AS n FROM web_subscriptions WHERE festival_id = ?`),
+  webSubscriptionTotal: db.prepare(`SELECT COUNT(*) AS n FROM web_subscriptions`),
+  deviceCount: db.prepare(`SELECT COUNT(*) AS n FROM devices WHERE festival_id = ?`),
+  deviceTotal: db.prepare(`SELECT COUNT(*) AS n FROM devices`),
   purgeStats: db.prepare(`DELETE FROM stats WHERE day < ?`),
 };
 
@@ -221,6 +226,9 @@ export const q = {
   // Counters with no one in them: how much each festival's pack, alerts and pushes are used, by day. Nothing names a phone.
   count: (festivalId, key, n = 1) => { if (n) s.count.run(iso().slice(0, 10), festivalId || '*', key, n); },
   stats: days => s.stats.all(new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)).map(r => ({ festivalId: r.festival_id, key: r.key, n: r.n })),
+  statsSeries: days => s.statsSeries.all(new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)).map(r => ({ day: r.day, festivalId: r.festival_id, key: r.key, n: r.n })),
+  /** Phones following: web subscriptions plus registered app devices, for one festival or for all of them. A count, never a list. */
+  following: festivalId => (festivalId ? s.webSubscriptionCount.get(festivalId).n + s.deviceCount.get(festivalId).n : s.webSubscriptionTotal.get().n + s.deviceTotal.get().n),
   purgeStats: days => s.purgeStats.run(new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10)),
 };
 

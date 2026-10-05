@@ -913,3 +913,48 @@ test('the ground under a spot, festival or not: the lookups once a day per cell,
   assert.equal(r.status, 200); assert.equal(r.json.surface, 'grass'); assert.equal(r.json.surfaceSource, 'OpenStreetMap: leisure=park'); assert.equal(r.json.soil, 'A');
   assert.equal((await api('GET', '/point/nope/ground')).status, 400);
 });
+
+test('metrics with nobody in them: a day-by-day series, a festival\'s own numbers for its staff, what the push services let through, the minutes in each lightning code, the minutes the data was old, a season report as rows and a sheet, and a scrape for an uptime tool', async () => {
+  const { clockCode } = await import('../src/lightning.js');
+  const { freshnessTick, STALE } = await import('../src/metrics.js');
+  // Counters a festival earns: two pushes gone and one failed; twenty seconds green, then orange across a gap longer than the cap.
+  q.count(FEST, 'push.web.gone', 2); q.count(FEST, 'push.web.failed', 1);
+  const before = (await api('GET', '/admin/stats?days=7', { headers: admin })).json.codes;
+  const t0 = Date.now(); clockCode(FEST, 'green', t0); clockCode(FEST, 'green', t0 + 20_000); clockCode(FEST, 'orange', t0 + 60_000); clockCode(FEST, 'orange', t0 + 60_000 + 15 * 60_000);
+  // A stale minute: the poll three minutes behind and the lightning files six minutes old while a festival is on; the radar fine.
+  const now = Date.now(), at = ms => new Date(now - ms).toISOString();
+  assert.deepEqual(freshnessTick(now, { polling: { lastRunAt: at(0), lastOkAt: at(STALE.pollMs + 1000) }, lightning: { on: true, lastTickAt: at(0), lastFileAt: at(6 * 60_000) }, radar: { festivals: 1, lastOkAt: at(0) }, on: 1 }), ['poll', 'lightning']);
+  assert.deepEqual(freshnessTick(now, { polling: { lastRunAt: at(0), lastOkAt: at(0) }, lightning: { on: true, lastTickAt: null, lastFileAt: null }, radar: { festivals: 0, lastOkAt: null }, on: 1 }), [], 'nothing stale: a fresh poll, lightning not ticked yet, no radar loops');
+  const st = (await api('GET', '/admin/stats?days=7', { headers: admin })).json;
+  assert.equal(st.series.length, 7, 'a point per day'); assert.equal(st.series[6].day, new Date().toISOString().slice(0, 10));
+  assert.ok(st.delivered.gone >= 2 && st.delivered.failed >= 1 && st.delivered.rate != null, JSON.stringify(st.delivered));
+  assert.ok([10, 11].includes(st.codes.orange - before.orange), `seconds in a code become minutes, a long gap capped at ten: ${st.codes.orange - before.orange}`); assert.ok([0, 1].includes(st.codes.green - before.green), 'twenty seconds of green rounds to no minute');
+  assert.equal(st.stale.poll, 1); assert.equal(st.stale.lightning, 1); assert.equal(st.stale.radar, 0);
+  assert.ok(typeof st.following === 'number' && typeof st.opens === 'number' && st.totals.pack >= 1);
+  assert.ok(st.festivals.some(f => f.id === FEST && 'following' in f && 'opens' in f && 'pushed' in f), 'per festival, by name, with the follow count');
+  // A festival's staff see their own numbers and nothing admin-wide.
+  const issued = await api('POST', `/festivals/${FEST}/partner-key`, { headers: admin }), staff = { 'x-admin-key': issued.json.key };
+  assert.equal((await api('GET', `/festivals/${FEST}/stats`)).status, 401);
+  const mine = (await api('GET', `/festivals/${FEST}/stats?days=30`, { headers: staff })).json;
+  assert.equal(mine.days, 30); assert.equal(mine.series.length, 30); assert.equal(mine.stale, undefined); assert.equal(mine.festivals, undefined);
+  assert.equal(mine.totals.feed, undefined, 'the home page count belongs to no festival'); assert.equal(mine.codes.orange, st.codes.orange);
+  // The season report: the record and the counters, as rows and as one sheet with three sections.
+  const rep = (await api('GET', `/festivals/${FEST}/report?days=30`, { headers: staff })).json;
+  assert.equal(rep.festival.id, FEST); assert.ok(rep.summary.warnings >= 1, 'the warnings on the record'); assert.ok(rep.events.some(e => e.kind === 'alert' && e.reach != null), 'a warning row says how far it reached');
+  assert.equal(rep.days_series.length, 30); assert.ok('minutesInCode' in rep.summary && 'delivered' in rep.summary && 'followRate' in rep.summary);
+  const csv = await fetchReal(`${base}/festivals/${FEST}/report?format=csv&days=30`, { headers: staff });
+  assert.match(csv.headers.get('content-type'), /text\/csv/); assert.match(csv.headers.get('content-disposition'), /season-report\.csv/);
+  const text = await csv.text();
+  assert.match(text, /^"Fieldwatch season report"\n/); assert.match(text, /\n"summary","value"\n/); assert.match(text, /\n"day","opens","follows","warnings","pushed","headsUps","reports","minutesRed"\n/); assert.match(text, /\n"at","kind","what","reach","latencySeconds","detail"\n/);
+  assert.ok(!text.includes('push.example'), 'no endpoint in the sheet');
+  assert.equal((await api('GET', `/festivals/${FEST}/report`)).status, 401);
+  // The scrape: the admin key as the header, a bearer token or ?key=; plain text an uptime tool reads.
+  assert.equal((await api('GET', '/metrics')).status, 401);
+  const m = await fetchReal(`${base}/metrics`, { headers: { authorization: 'Bearer test-admin' } });
+  assert.equal(m.status, 200); assert.match(m.headers.get('content-type'), /text\/plain/);
+  const body = await m.text();
+  assert.match(body, /^# HELP fieldwatch_up /m); assert.match(body, /^fieldwatch_festivals_on \d+$/m); assert.match(body, /^fieldwatch_following \d+$/m);
+  assert.match(body, /^fieldwatch_today_push_web_gone\{festival="hulaween-2026"\} \d+$/m, 'today\'s counters, per festival, with nobody in them');
+  assert.equal((await fetchReal(`${base}/metrics?key=test-admin`)).status, 200);
+  await api('DELETE', `/festivals/${FEST}/partner-key`, { headers: admin });
+});

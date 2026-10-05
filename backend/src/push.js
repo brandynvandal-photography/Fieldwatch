@@ -51,7 +51,7 @@ export async function pushAlert(tokens, festival, alert) {
   for (const f of result.failed) {
     if (f.status === '410' || f.response?.reason === 'BadDeviceToken') q.deleteDevice(f.device);
   }
-  q.count(festival.id, 'push.apns', result.sent.length);
+  q.count(festival.id, 'push.apns', result.sent.length); if (result.failed.length) q.count(festival.id, 'push.apns.failed', result.failed.length);
   return { sent: result.sent.length, failed: result.failed.length };
 }
 
@@ -72,6 +72,6 @@ export async function pushEnded(tokens, festival, alert, { title = null, why = n
   for (const f of result.failed) {
     if (f.status === '410' || f.response?.reason === 'BadDeviceToken') q.deleteDevice(f.device);
   }
-  q.count(festival.id, 'push.apns', result.sent.length);
+  q.count(festival.id, 'push.apns', result.sent.length); if (result.failed.length) q.count(festival.id, 'push.apns.failed', result.failed.length);
   return { sent: result.sent.length, failed: result.failed.length };
 }

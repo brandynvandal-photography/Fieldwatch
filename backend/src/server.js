@@ -8,6 +8,7 @@ import { startImporters } from './importers/index.js';
 import { startLightning } from './lightning.js';
 import { startBackups } from './backup.js';
 import { startHousekeeping } from './housekeeping.js';
+import { startFreshness } from './metrics.js';
 
 const seeded = seedIfEmpty();
 if (seeded) console.log(`Empty database; seeded ${seeded} festivals from data/festivals.json`);
@@ -22,6 +23,7 @@ app.listen(port, () => {
   startRadarLoop();
   startBackups();
   startHousekeeping();
+  startFreshness();
   if (startImporters()) console.log('Festival imports on (Wikidata, plus any source with a key)');
   console.log(startLightning() ? `Lightning on: GOES GLM from ${process.env.GLM_BUCKETS || 'noaa-goes19,noaa-goes18'} every ${process.env.LIGHTNING_SECONDS || 60} s while a festival is on` : 'Lightning off (LIGHTNING=false)');
 });

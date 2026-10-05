@@ -439,6 +439,10 @@ details.more .inner{padding:0 16px 6px}
 .rmap .poly path{fill:rgba(244,63,94,.14);stroke:#ff5f7e;stroke-width:2.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .rmap .poly path.watch{fill:rgba(255,176,59,.14);stroke:#ffb03b}
 .codehead .motion.staffed{font-weight:600}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px} .tiles.three{grid-template-columns:1fr 1fr 1fr}
+.tile{border-radius:22px;padding:14px 14px 12px;text-align:left;min-height:92px} .tile .k{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)} .tile .n{display:block;font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:30px;font-weight:600;line-height:1.1;margin:4px 0 6px;letter-spacing:-.01em}
+.spark{display:block;width:100%;height:26px;overflow:visible} .spark path{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round} .spark circle{fill:var(--accent)} .spark.warn path{stroke:var(--warn)} .spark.warn circle{fill:var(--warn)}
+.codecard{text-align:left;padding:14px 16px} .codecard p{max-width:none;margin:0;font-size:14px} .codebar{display:flex;height:12px;border-radius:999px;overflow:hidden;margin:0 0 10px;background:var(--line)} .codebar i{display:block;height:100%;min-width:4px} .codebar .red{background:var(--warn)} .codebar .orange{background:#FF7A1A} .codebar .yellow{background:var(--watch)} .codebar .green{background:var(--ok)}
 .lsr-row .s{white-space:normal}
 .rmap .pinlabel{position:absolute;left:256px;top:272px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#1A1533;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
 .rmap .stamp{position:absolute;left:12px;top:12px;background:rgba(255,255,255,.94);color:#1A1533;border-radius:16px;padding:8px 12px 7px;line-height:1.1;text-align:left}
@@ -919,6 +923,7 @@ function go(name, param, opts){
   if (name === 'report') locate();
   if (name === 'moderate') loadQueue();
   if (name === 'sources') loadSources();
+  if (name === 'metrics') loadMetrics();
   if (name === 'catalog') loadCatalog();
   if (name === 'feed') loadFeed();
   if (name === 'ground') startGroundEdit();
@@ -2516,8 +2521,7 @@ screens.sources = () => {
     ${r && !r.never ? `<div class="group glass">${Object.keys(SOURCE_NAMES).filter(k => r[k]).map(k => `<div class="row"><div class="main"><div class="t">${SOURCE_NAMES[k]}</div><div class="s">${esc(line(k, r[k]))}</div></div><span class="pill ${r[k].skipped || r[k].error ? '' : 'on'}">${r[k].skipped ? 'Off' : r[k].error ? 'Error' : 'On'}</span></div>`).join('')}</div>` : ''}
     <button class="btn quiet" ${S.sourcesBusy ? 'disabled' : ''} onclick="runSources()">${S.sourcesBusy ? 'Running' : 'Run now'}</button>
     <p class="note">Keys go in the backend's variables: TICKETMASTER_KEY, SEATGEEK_CLIENT_ID, EDMTRAIN_KEY.</p>
-    ${S.stats && S.stats.totals ? (t => `<p class="h">Last ${S.stats.days} days</p><div class="group glass">${[['Packs opened', t.pack], ['Alerts stored', t['alert.new']], ['Pushes sent', (t['push.web'] || 0) + (t['push.apns'] || 0)], ['Heads-ups', t.headsup], ['Follows', t.follow], ['Alert latency', S.stats.alertLatencySeconds != null ? `${S.stats.alertLatencySeconds} s` : null]]
-      .filter(([, v]) => v != null).map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v num">${esc(String(v || 0))}</span></div>`).join('')}</div><p class="note">Counts with nobody in them.</p>`)(S.stats.totals) : ''}`;
+    <div class="group glass"><button class="row" onclick="later(function(){ go('metrics') })"><span class="lead">${I.chart}</span><div class="main"><div class="t">Metrics</div><div class="s">Opens, following, pushes delivered, minutes in red</div></div>${I.chev}</button></div>`;
 };
 // ---- the whole list, for staff: search it, hide a listing the importers got wrong, unhide one hidden by mistake ----
 async function loadCatalog(){
@@ -2561,7 +2565,6 @@ async function loadSources(){
   const b = backend(); if (!b || !S.admin) { S.sources = null; return; }
   S.sourcesBusy = true; render();
   try{ S.sources = await getJSON(`${b}/admin/import`, adminHeaders()); S.sourcesErr = null; }catch(e){ S.sources = null; S.sourcesErr = e; }
-  try{ S.stats = await getJSON(`${b}/admin/stats?days=7`, adminHeaders()); }catch(e){ S.stats = null; }
   S.sourcesBusy = false; render();
 }
 /** Starts a run on the backend and watches it finish; a run can take minutes when it reads festival sites. */
@@ -2620,6 +2623,73 @@ async function shareFestival(){
 }
 
 /** For the phone-in-a-field test: what this phone holds, what it hears, what it can do. Nothing here leaves the phone. */
+// ---- metrics: counts with nobody in them (backend/src/metrics.js), for the admin over every festival and for a festival's staff over theirs ----
+const metricsRow = () => `<button class="row" onclick="later(function(){ go('metrics') })"><span class="lead">${I.chart}</span><div class="main"><div class="t">Metrics</div><div class="s">Opens, following, pushes delivered, minutes in red</div></div>${I.chev}</button>`;
+const metricsAll = () => { const f = fest(); return S.metricsScope === 'all' || !(f && canStaff(f)); };
+async function loadMetrics(){
+  const b = backend(), f = fest(); if (!b || !S.admin) { S.metrics = null; return; }
+  const all = metricsAll(), days = S.metricsDays || 7;
+  S.metricsBusy = true; render();
+  try{ S.metrics = { ...(await getJSON(all ? `${b}/admin/stats?days=${days}` : `${b}/festivals/${encodeURIComponent(f.id)}/stats?days=${days}`, adminHeaders())), scope: all ? 'all' : f.id }; S.metricsErr = null; }
+  catch(e){ S.metrics = null; S.metricsErr = e; }
+  S.metricsBusy = false; render();
+}
+function setMetrics(k, v){ S[k] = v; loadMetrics(); }
+/** A line per day, the last day dotted, scaled to its own high: the shape of the week, not an axis. */
+function spark(pts, cls){
+  const n = pts.length; if (n < 2) return '';
+  const max = Math.max(1, ...pts), w = 100, h = 26, x = i => (i / (n - 1) * (w - 4) + 2).toFixed(1), y = v => (h - 3 - (v / max) * (h - 8)).toFixed(1);
+  return `<svg class="spark ${cls || ''}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><path d="${pts.map((v, i) => `${i ? 'L' : 'M'}${x(i)},${y(v)}`).join('')}"/><circle cx="${x(n - 1)}" cy="${y(pts[n - 1])}" r="2.2"/></svg>`;
+}
+const tile = (label, value, pts, cls) => `<div class="tile glass"><span class="k">${esc(label)}</span><b class="n num">${esc(value)}</b>${pts ? spark(pts, cls) : ''}</div>`;
+screens.metrics = () => {
+  const f = fest(), m = S.metrics, days = S.metricsDays || 7, all = m ? m.scope === 'all' : metricsAll();
+  const sub = m ? `Last ${m.days} days · counts with nobody in them` : S.metricsBusy ? 'Counting' : S.metricsErr ? staffFail(S.metricsErr) : 'Needs the backend and a key';
+  const per = key => (m ? m.series.map(d => d.counts[key] || 0) : null), n = v => (v == null ? '–' : Number(v).toLocaleString());
+  const opensPts = m ? m.series.map(d => (d.counts.alerts || 0) + (d.counts.pack || 0)) : null, pushedPts = m ? m.series.map(d => (d.counts['push.web'] || 0) + (d.counts['push.apns'] || 0)) : null;
+  const codes = m && m.codes ? ['red', 'orange', 'yellow', 'green'].map(c => [c, m.codes[c] || 0]) : [], codeTotal = codes.reduce((s, [, v]) => s + v, 0);
+  return topbar(backBtn(), '', `<button class="tb glass icon ${S.metricsBusy ? 'spin' : ''}" onclick="loadMetrics()" aria-label="Refresh" ${S.metricsBusy ? 'disabled' : ''}>${I.refresh}</button>`) + `
+    <span class="eyebrow">${esc(all || !f ? 'All festivals' : f.name)}</span>
+    <h1 class="title">Metrics</h1>
+    <p class="sub">${esc(sub)}</p>
+    <div class="chips">${[[7, '7 days'], [30, '30 days'], [90, '90 days']].map(([d, l]) => `<button class="chip ${days === d ? 'on' : ''}" onclick="setMetrics('metricsDays', ${d})">${l}</button>`).join('')}</div>
+    ${adminScope() && f && canStaff(f) ? `<div class="chips">${[['festival', f.name], ['all', 'All festivals']].map(([v, l]) => `<button class="chip ${(all ? 'all' : 'festival') === v ? 'on' : ''}" onclick="setMetrics('metricsScope', '${v}')">${esc(l)}</button>`).join('')}</div>` : ''}
+    ${m ? `
+    <p class="h">Reach</p>
+    <div class="tiles">
+      ${tile('Opens', n(m.opens), opensPts)}
+      ${tile('Following now', n(m.following), null)}
+      ${tile('Follow rate', m.followRate == null ? '–' : `${m.followRate}%`, per('follow'))}
+      ${tile('Pushed', n(m.delivered.sent), pushedPts)}
+      ${tile('Delivered', m.delivered.rate == null ? '–' : `${m.delivered.rate}%`, null)}
+      ${tile('Issue to push', m.alertLatencySeconds == null ? '–' : `${m.alertLatencySeconds} s`, null)}
+    </div>
+    <p class="h">What happened</p>
+    <div class="tiles">
+      ${tile('Warnings', n(m.totals['alert.new']), per('alert.new'), 'warn')}
+      ${tile('Heads-ups', n(m.totals.headsup), per('headsup'))}
+      ${tile('Reports', n(m.totals.report), per('report'))}
+      ${tile('Posts', n(m.totals.post), per('post'))}
+    </div>
+    ${codeTotal ? `<p class="h">Lightning, minutes in each code</p><div class="card glass codecard"><div class="codebar">${codes.filter(([, v]) => v).map(([c, v]) => `<i class="${c}" style="flex:${v}" title="${esc(CODE[c].label)} ${v} min"></i>`).join('')}</div><p>${codes.map(([c, v]) => `${esc(CODE[c].label.replace('Code ', ''))} ${n(v)} min`).join(' · ')}</p></div>` : ''}
+    ${m.stale ? `<p class="h">Minutes behind</p><div class="tiles three">${tile('Alert poll', n(m.stale.poll), null)}${tile('Lightning files', n(m.stale.lightning), null)}${tile('Radar', n(m.stale.radar), null)}</div><p class="note">Minutes in which the data was older than it should be: the poll past three minutes, the lightning files past five while a festival was on, the radar past forty-five.</p>` : ''}
+    ${m.festivals && m.festivals.length ? `<p class="h">By festival</p><div class="group glass">${m.festivals.slice(0, 20).map(x => `<div class="row"><div class="main"><div class="t">${esc(x.name)}</div><div class="s num">${n(x.opens)} opens · ${n(x.following)} following · ${n(x.pushed)} pushed</div></div></div>`).join('')}</div>` : ''}
+    <p class="note">Opens are alert lists and packs fetched. Following is phones with warnings on right now. Delivered is what the push services took, over gone and failed. Nothing here can name a phone.</p>` : S.metricsBusy ? `<div class="tiles">${'<div class="tile glass"><div class="sk" style="height:48px"></div></div>'.repeat(4)}</div>` : ''}`;
+};
+/** The season report as a sheet: fetched with the key and handed to the phone as a file, like the record. */
+async function downloadReport(){
+  const f = fest(), b = backend(); if (!f || !b || !canStaff(f) || S.reportDl) return;
+  S.reportDl = true; render();
+  try{
+    const r = await fetch(`${b}/festivals/${encodeURIComponent(f.id)}/report?format=csv&days=120`, { headers: adminHeaders() });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const url = URL.createObjectURL(await r.blob()), a = document.createElement('a');
+    a.href = url; a.download = `${f.id}-season-report.csv`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('The season report is on its way to your files');
+  }catch(e){ toast(staffFail(e)); }
+  S.reportDl = false; render();
+}
 async function loadDiagnostics(){
   const d = { at: Date.now() };
   try{ const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : null; d.sw = !('serviceWorker' in navigator) ? 'Not in this browser' : reg ? (reg.active ? `Active${navigator.serviceWorker.controller ? ', controlling this page' : ''}` : reg.installing ? 'Installing' : 'Registered') : 'Not registered'; }catch(e){ d.sw = `Error: ${e.message}`; }
@@ -2679,7 +2749,7 @@ screens.settings = () => topbar(backBtn(), '', '') + `
   <div class="chips">${[['en', 'English'], ['es', 'Español']].map(([v, l]) => `<button class="chip ${(S.lang || 'en') === v ? 'on' : ''}" onclick="setLang('${v}')">${l}</button>`).join('')}</div>
   <p class="note">${S.lang === 'es' ? 'Las líneas para actuar, los códigos de rayos y las palabras de cada alerta, en español. Lo demás sigue en inglés por ahora.' : 'The lines to act on, the lightning codes and the words on every alert, in Spanish. The rest stays in English for now.'}</p>
   ${staffMode() ? `<p class="h">Admin</p>
-  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">${S.queue && S.queue.length ? `${S.queue.length} waiting` : 'Before they go out'}</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('record') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Shelter and medical</div><div class="s">${fest().shelter || fest().medical ? 'On the record' : 'Where to go, in your words'}</div></div>${I.chev}</button><button class="row" onclick="downloadRecord()" ${S.recordDl ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Download the record</div><div class="s">${S.recordDl ? 'Fetching' : 'Every alert, hold, post and code of the last 30 days, as a sheet'}</div></div>${I.chev}</button>` : ''}${adminScope() ? `<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
+  <div class="group glass"><label class="field"><span class="k">Key</span><input id="admin" type="password" value="${esc(S.admin)}" placeholder="admin or festival staff key" autocapitalize="off" autocorrect="off" onchange="setAdmin(this.value)"></label><button class="row" onclick="later(function(){ go('diagnostics') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Diagnostics</div><div class="s">What this phone holds and hears</div></div>${I.chev}</button>${S.admin && backend() ? `${canStaff(fest()) ? `<button class="row" onclick="later(function(){ go('post') })"><span class="lead">${I.megaphone}</span><div class="main"><div class="t">Post an update</div><div class="s">As ${esc(fest().name)} staff</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('moderate') })"><span class="lead">${I.check}</span><div class="main"><div class="t">Review reports</div><div class="s">${S.queue && S.queue.length ? `${S.queue.length} waiting` : 'Before they go out'}</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('record') })"><span class="lead">${I.shield}</span><div class="main"><div class="t">Shelter and medical</div><div class="s">${fest().shelter || fest().medical ? 'On the record' : 'Where to go, in your words'}</div></div>${I.chev}</button><button class="row" onclick="downloadRecord()" ${S.recordDl ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Download the record</div><div class="s">${S.recordDl ? 'Fetching' : 'Every alert, hold, post and code of the last 30 days, as a sheet'}</div></div>${I.chev}</button>${metricsRow()}<button class="row" onclick="downloadReport()" ${S.reportDl ? 'disabled' : ''}><span class="lead">${I.check}</span><div class="main"><div class="t">Season report</div><div class="s">${S.reportDl ? 'Fetching' : 'The record and the numbers of the last 120 days, as a sheet'}</div></div>${I.chev}</button>` : ''}${adminScope() ? `${fest() && canStaff(fest()) ? '' : metricsRow()}<button class="row" onclick="later(function(){ go('sources') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Festival sources</div><div class="s">What feeds the list</div></div>${I.chev}</button><button class="row" onclick="later(function(){ go('catalog') })"><span class="lead">${I.check}</span><div class="main"><div class="t">All festivals</div><div class="s">Everything imported. Hide what is not a festival</div></div>${I.chev}</button>${fest() && fest().id !== 'here' ? `<button class="row" onclick="issueKey()" ${S.keyBusy ? 'disabled' : ''}><span class="lead">${I.shield}</span><div class="main"><div class="t">Staff key for ${esc(fest().name)}</div><div class="s">Issue one for its safety team</div></div>${I.chev}</button>` : ''}` : ''}` : ''}</div>
   ${S.staffScope && S.staffScope.scope === 'partner' ? `<p class="note">Staff key for ${esc(S.staffScope.name || S.staffScope.festivalId)}.</p>` : S.staffScope && S.staffScope.scope === 'none' ? '<p class="note">The backend does not know this key.</p>' : ''}
   ${S.issued ? `<div class="card glass"><h3>Staff key for ${esc(S.issued.name)}</h3><p>Shown once. Send it and the link to the safety team; they put the key in Settings here.</p><p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.key)}</p>${S.issued.qr ? `<div class="qr glass handoff">${S.issued.qr}</div><p>Or have each staff phone scan this once: it opens the app on the festival with the key in place.</p>` : ''}<p class="num" style="user-select:all;word-break:break-all">${esc(S.issued.link)}</p><div class="acts"><button class="btn small" onclick="copyText('${esc(S.issued.key)}\\n${esc(S.issued.link)}')">Copy</button><button class="btn small quiet" onclick="S.issued = null; render()">Done</button></div></div>` : ''}` : ''}
   ${IOS && !STANDALONE && !IN_PREVIEW ? `<div class="card glass"><h3>Add to Home Screen</h3><p>Share, then "Add to Home Screen". Full screen with an icon. Works with no signal.</p></div>` : ''}
