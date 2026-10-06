@@ -439,9 +439,10 @@ details.more .inner{padding:0 16px 6px}
 .rmap .poly path{fill:rgba(244,63,94,.14);stroke:#ff5f7e;stroke-width:2.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .rmap .poly path.watch{fill:rgba(255,176,59,.14);stroke:#ffb03b}
 .codehead .motion.staffed{font-weight:600}
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px} .tiles.three{grid-template-columns:1fr 1fr 1fr}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px} .tiles .tile{min-width:0;overflow:hidden} .tiles.three{grid-template-columns:1fr 1fr 1fr}
 .tile{border-radius:22px;padding:14px 14px 12px;text-align:left;min-height:92px} .tile .k{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)} .tile .n{display:block;font-family:var(--font-display);font-variation-settings:"SOFT" 100,"WONK" 1;font-size:30px;font-weight:600;line-height:1.1;margin:4px 0 6px;letter-spacing:-.01em}
 .spark{display:block;width:100%;height:26px;overflow:visible} .spark path{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round} .spark circle{fill:var(--accent)} .spark.warn path{stroke:var(--warn)} .spark.warn circle{fill:var(--warn)}
+.tile.kpi{width:100%;min-height:96px;padding:12px 12px 10px} .tiles.dash .n{font-size:26px} .tile .s{display:block;color:var(--muted);font-size:12px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .tiles.three.dash{gap:8px}
 .codecard{text-align:left;padding:14px 16px} .codecard p{max-width:none;margin:0;font-size:14px} .codebar{display:flex;height:12px;border-radius:999px;overflow:hidden;margin:0 0 10px;background:var(--line)} .codebar i{display:block;height:100%;min-width:4px} .codebar .red{background:var(--warn)} .codebar .orange{background:#FF7A1A} .codebar .yellow{background:var(--watch)} .codebar .green{background:var(--ok)}
 .lsr-row .s{white-space:normal}
 .rmap .pinlabel{position:absolute;left:256px;top:272px;transform:translateX(-50%);background:rgba(255,255,255,.92);color:#1A1533;font-size:22px;font-weight:600;padding:6px 12px;border-radius:999px;white-space:nowrap}
@@ -632,7 +633,7 @@ const backend = () => { const v = cleanURL(new URLSearchParams(location.search).
 const fest = () => (S.fest === 'here' ? hereFest() : FESTS.find(f => f.id === S.fest));
 function hereFest(){
   const h = S.hereFest; if (!h) return null;
-  return { id: 'here', origin: 'here', name: 'Right here', location: h.location || '', county: h.county || '', latitude: h.latitude, longitude: h.longitude,
+  return { id: 'here', origin: 'here', name: h.shared ? 'Shared spot' : 'Right here', shared: Boolean(h.shared), location: h.location || '', county: h.county || '', latitude: h.latitude, longitude: h.longitude,
     startDate: new Date(Date.now() - DAY).toISOString(), endDate: new Date(Date.now() + 7 * DAY).toISOString(), isPartner: false, feeds: [], site: [], at: h.at };
 }
 const data = f => S.cache[f.id] || {};
@@ -1929,6 +1930,7 @@ async function loadFeed(){
     let feed = null;
     // The backend first; without one, or with it down, the weather service directly for the nearest dozen, like the festival page does.
     if (b) { try{ const r = await getJSON(`${b}/alerts`); feed = { at: r.at || new Date().toISOString(), on: r.on, items: r.items || [], codes: r.codes || {} }; }catch(e){} }
+    if (b) getJSON(`${b}/stats?days=1`).then(d => { S.dash = d; if (S.screen === 'feed') render(); }).catch(() => {});   // the tiles' counts, with nobody in them
     if (!feed) {
       const on = live().sort((a, b) => (S.here ? away(a) - away(b) : 0) || Date.parse(a.startDate) - Date.parse(b.startDate)).slice(0, 12);
       const got = await Promise.allSettled(on.map(f => loadAlerts(f, { quick: true }).then(alerts => ({ festival: f, alerts }))));
@@ -2024,13 +2026,33 @@ screens.feed = () => {
   for (const i of cards) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
   const card = (i, inFold) => feedCard(i, { fav: isFav(i.festival.id), inFold: Boolean(inFold) });
   const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'Ungraded'))}</p>` : ''}${g.items.map(i => card(i)).join('')}`).join('');
+  // The dashboard: the numbers that matter as tiles a tap opens, then every alert in effect, then the festivals by code.
+  const allAlerts = items.flatMap(i => i.alerts.filter(isActive).map(a => ({ a, f: i.festival }))).sort((x, y) => (isWarning(y.a) - isWarning(x.a)) || (sevRank(y.a) - sevRank(x.a)));
+  const warnings = allAlerts.filter(x => isWarning(x.a)).length;
+  const nearest = S.here ? live().map(x => ({ f: x, km: away(x) })).sort((a, b) => a.km - b.km)[0] : null;
+  const worst = cards.filter(i => isLive(i.festival)).map(i => ({ i, code: feedCode(i) })).sort((a, b) => (CODE_ORDER[b.code] || 0) - (CODE_ORDER[a.code] || 0))[0];
+  const codeWord = c => (CODE[c] ? CODE[c].label.replace('Code ', '') : c === 'indoor' ? 'Indoors' : 'None');
+  const kpi = (label, value, line, onclick) => `<button class="tile glass kpi" onclick="${onclick}"><span class="k">${esc(label)}</span><b class="n num">${esc(value)}</b><span class="s">${esc(line)}</span></button>`;
+  const dash = S.dash;
+  const kpis = `<div class="tiles three dash">
+    ${kpi('Festivals', on, 'on this week', "later(function(){ go('picker') })")}
+    ${kpi('Warnings', warnings, warnings ? 'in effect now' : 'none in effect', warnings ? "document.getElementById('dash-alerts').scrollIntoView({ behavior: 'smooth', block: 'start' })" : "later(function(){ go('picker') })")}
+    ${nearest ? kpi('Nearest', fmtDist(nearest.km), nearest.f.name, `later(function(){ pick('${esc(nearest.f.id)}') })`) : kpi('Nearest', '–', S.geoDenied ? 'location blocked' : 'turn on location', 'later(function(){ useHere() })')}
+    ${worst && worst.code !== 'none' ? kpi('Lightning', codeWord(worst.code), worst.i.festival.name, worst.code === 'indoor' ? `later(function(){ pick('${esc(worst.i.festival.id)}') })` : `openFeedAlert('${esc(worst.i.festival.id)}','')`) : kpi('Lightning', 'None', backend() ? 'no code anywhere' : 'needs the backend', "later(function(){ go('picker') })")}
+    ${dash ? kpi('Following', Number(dash.following || 0).toLocaleString(), 'phones with warnings on', "later(function(){ go('metrics') })") : ''}
+    ${dash ? kpi('Pushed', Number(dash.delivered && dash.delivered.sent || 0).toLocaleString(), 'warnings today', "later(function(){ go('metrics') })") : ''}
+  </div>`;
+  const alertsNow = allAlerts.length ? `<p class="h" id="dash-alerts">Alerts</p><div class="group glass dash-alerts">${allAlerts.slice(0, 8).map(({ a, f: x }) => `<button class="alert" onclick="openFeedAlert('${esc(x.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(x.name)} · ${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}${allAlerts.length > 8 ? `<div class="row"><div class="main"><div class="s">${allAlerts.length - 8} more below, by festival</div></div></div>` : ''}</div>` : '';
   return topbar(S.stack.length ? backBtn() : '', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
     <h1 class="title">Festivals</h1>
     <p class="sub">${esc(sub)}</p>
+    ${kpis}
+    ${alertsNow}
     ${cards.length ? list : `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>`}
     <div class="group glass">
       ${f && f.id === 'here' ? '' : `<button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button>`}
+      ${S.here ? shareSpotRow() : ''}
       <button class="row" onclick="later(function(){ go('picker') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Search festivals</div><div class="s">By name or place</div></div>${I.chev}</button>
       ${backend() ? `<button class="row" onclick="later(function(){ go('metrics') })"><span class="lead">${I.chart}</span><div class="main"><div class="t">Metrics</div><div class="s">How the festivals are doing, in counts with nobody in them</div></div>${I.chev}</button>` : ''}
     </div>
@@ -2104,7 +2126,7 @@ screens.home = () => {
       </span></button>`;
   const here = f.id === 'here';
   return topbar(`<button class="tb glass" onclick="changeFestival()">${I.list}<span>Festivals</span></button>`, '', (here ? '' : favBtn() + shareBtn()) + refreshBtn() + gearBtn()) + `
-    <span class="eyebrow num">${here ? `Your location${f.at ? ' · ' + esc(ago(new Date(f.at).toISOString())) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
+    <span class="eyebrow num">${here ? `${f.shared ? 'Shared with you' : 'Your location'}${f.at ? ' · ' + esc(ago(new Date(f.at).toISOString())) : ''}` : `${esc(fmtRange(f))} · ${esc(phase(f).text)}`}</span>
     <h1 class="title">${esc(f.name)}</h1>
     <p class="sub">${esc(f.location || (here ? 'Alerts, forecast and radar for this spot' : ''))}</p>
     ${sky}
@@ -2125,6 +2147,7 @@ screens.home = () => {
       ${canStaff(f) && backend() ? `<button class="row" onclick="later(function(){ go('ground') })"><span class="lead">${I.ground}</span><div class="main"><div class="t">Ground and what is standing</div><div class="s">${esc(groundLine(d.ground) || 'What the rain and wind advice assumes')}</div></div>${I.chev}</button>` : ''}`}
       ${groundNowRow(f)}
       ${pushRow()}
+      ${here && !f.shared && S.here ? shareSpotRow() : ''}
     </div>
     ${listingNote(f)}`;
 };
@@ -2825,6 +2848,15 @@ const adminHeaders = () => ({ 'x-admin-key': S.admin });
 // ---- where you are ------------------------------------------------------------------------------------------
 const NOMINATIM_REVERSE = 'https://nominatim.openstreetmap.org/reverse';
 /** Alerts, forecast and radar for wherever the phone is, festival listed or not. */
+/** Where you are, as a link: whoever opens it gets this spot as their festival, with its warnings one tap away. The spot, never a name. */
+const spotURL = () => `${location.origin}${location.pathname}?spot=${S.here.latitude.toFixed(4)},${S.here.longitude.toFixed(4)}`;
+const shareSpotRow = () => `<button class="row" onclick="shareSpot()"><span class="lead">${I.share}</span><div class="main"><div class="t">Share my spot</div><div class="s">They get this spot's warnings on their phone too</div></div>${I.chev}</button>`;
+async function shareSpot(){
+  if (!S.here) { S.wantHere = false; toast('Finding you'); locate(true); return; }
+  const url = spotURL(), text = 'Where I am, with the weather warnings for this spot. Open it and turn on warnings to get them too.';
+  if (navigator.share) { try{ await navigator.share({ title: 'My spot on Fieldwatch', text, url }); return; }catch(e){ if (e && e.name === 'AbortError') return; } }
+  await copyText(`${text} ${url}`);
+}
 function useHere(){
   if (S.here) { goHere(); return; }
   if (S.geoDenied) { toast('Allow location for this site in your browser settings, then try again.', 4500); return; }
@@ -2848,12 +2880,12 @@ async function placeHere(){
   }catch(e){}
 }
 function locate(explicit){
-  if (!('geolocation' in navigator) || S.geoDenied || S.locating || IN_PREVIEW || (!explicit && S.geoSkip)) return;
+  if (!('geolocation' in navigator) || S.geoDenied || S.locating || IN_PREVIEW || (!explicit && S.geoSkip && S.screen === 'welcome')) return;   // the walkthrough asks in its own words; every open after it just asks the phone
   S.locating = true;
   navigator.geolocation.getCurrentPosition(p => {
     S.locating = false; S.here = { latitude: p.coords.latitude, longitude: p.coords.longitude, at: Date.now() };
     if (S.wantHere) { goHere(); return; }
-    if (S.fest === 'here' && S.hereFest && distKm(S.here, S.hereFest) > 2) { S.hereFest = { ...S.hereFest, latitude: S.here.latitude, longitude: S.here.longitude, at: S.here.at, location: '', county: '' }; save(); refresh(fest()); refollowHere(); placeHere(); }
+    if (S.fest === 'here' && S.hereFest && !S.hereFest.shared && distKm(S.here, S.hereFest) > 2) { S.hereFest = { ...S.hereFest, latitude: S.here.latitude, longitude: S.here.longitude, at: S.here.at, location: '', county: '' }; save(); refresh(fest()); refollowHere(); placeHere(); }
     // The home page: the festival you are standing at, else the weather where you stand. Every other festival waits behind the Festivals button.
     if (S.screen === 'feed' && !S.autoPicked) {
       S.autoPicked = true;
@@ -3091,7 +3123,11 @@ function pruneFavorites(){
 // ---- links straight to a festival: a push notification, a QR code at the gate ------------------------------
 function applyLink(){
   const l = S.link; if (!l) return false;
-  if (l.here) {
+  if (l.spot) {
+    // Someone shared where they are: that spot is the festival, named in a moment, and never moved to this phone's own position.
+    S.hereFest = { latitude: l.spot.latitude, longitude: l.spot.longitude, at: Date.now(), shared: true, location: '', county: '' };
+    S.fest = 'here'; S.welcomed = true; setTimeout(placeHere, 0);
+  } else if (l.here) {
     S.link = null; S.welcomed = true;
     if (!S.hereFest) { S.wantHere = true; return false; }
     S.fest = 'here';
@@ -3306,7 +3342,9 @@ async function boot(){
   if (qs.get('staff')) { S.staff = true; save(); }
   // The handoff: a staff phone scanned the QR the admin was given. The key is kept and the link is cleaned, since a key in an address is a key on a screen.
   if (qs.get('key')) { S.admin = qs.get('key').trim(); S.staff = true; S.staffScope = null; qs.delete('key'); save(); try{ history.replaceState(null, '', location.pathname + (qs.toString() ? `?${qs}` : '')); }catch(e){} whoAmI(); }
-  if (qs.get('f') || qs.get('here')) {
+  const spot = /^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/.exec(qs.get('spot') || '');
+  if (spot) S.link = { spot: { latitude: Number(spot[1]), longitude: Number(spot[2]) } };
+  else if (qs.get('f') || qs.get('here')) {
     S.link = { fest: qs.get('f'), here: !!qs.get('here'), alert: qs.get('alert') || null };
     qs.delete('f'); qs.delete('here'); qs.delete('alert');
     try{ history.replaceState(null, '', location.pathname + (qs.toString() ? `?${qs}` : '')); }catch(e){}
@@ -3316,7 +3354,7 @@ async function boot(){
   if (S.fest && !(fest() && isLive(fest()))) S.fest = null;
   if (!linked) S.screen = !S.welcomed ? 'welcome' : 'feed';
   render();
-  if (S.screen === 'feed' || S.wantHere) locate();
+  if (S.screen !== 'welcome' || S.wantHere) locate();   // where the phone is, on every open: the festival you are at, or your spot
   if (S.screen === 'feed') loadFeed();
   if (fest()) refresh(fest());
   syncFestivals();
@@ -3326,7 +3364,7 @@ async function boot(){
   setInterval(tickCountdowns, 30000);
   let ticks = 0;   // in battery saver every third check runs: lightning every three minutes, the rest every fifteen
   setInterval(() => { ticks++; if (saving() && ticks % 3) return; if (document.visibilityState === 'visible' && navigator.onLine !== false && fest() && backend()) loadLightning(fest()); }, 60000);
-  setInterval(() => { if (saving() && ticks % 3) return; if (document.visibilityState !== 'visible' || navigator.onLine === false) return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); }, 5 * 60000);
+  setInterval(() => { if (saving() && ticks % 3) return; if (document.visibilityState !== 'visible' || navigator.onLine === false) return; if (fest() && !S.busy) refresh(fest()); if (S.screen === 'feed') loadFeed(); if (S.here && Date.now() - S.here.at > 10 * 60000) locate(); }, 5 * 60000);
   applyPrefs(); watchBattery();
   pushHistory(true); S.stack.forEach(() => pushHistory(false));   // a link that opened deep gets a way back
   // Off the air: the card says so at once and the timers stand down. Back on: everything is asked again, now.

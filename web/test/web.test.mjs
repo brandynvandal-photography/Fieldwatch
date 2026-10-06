@@ -83,6 +83,8 @@ async function newPage(opts = {}) {
 const enter = async page => { await page.goto(`${base}/index.html`); await page.waitForSelector('h1.title'); const start = page.locator('button:has-text("Use my location")'); if (await start.count()) await start.click(); await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")'); };
 /** Back from a long screen after a tap far down it: the top first, a frame to settle, then the button. A click while the page is still re-laying out around the scroll is what the runner's slow Chromium reports as an unstable element. */
 const backToTop = async page => { await page.evaluate(() => window.scrollTo(0, 0)); await page.waitForTimeout(350); await page.click('button[aria-label="Back"]'); };
+/** A chip far down a long screen: into view, a frame to settle, then the tap itself (the runner's slow Chromium reports the chip unstable while the page settles around the scroll). */
+const tapChip = async (page, text) => { const chip = page.locator(`button.chip:has-text("${text}")`); await chip.scrollIntoViewIfNeeded(); await page.waitForTimeout(350); await chip.click({ force: true }); };
 const pickHulaween = async page => { await enter(page); await page.click('button:has-text("Suwannee Hulaween")'); await page.waitForSelector('.sky.warn'); };
 /** Icons that grew past their box: an SVG outside a chart or the radar wider than 70 px is a button swallowed by its icon (Safari does this to an unsized SVG in a flex row). */
 const oversizedIcons = page => page.$$eval('svg', els => els.filter(e => !e.closest('.chart, .rmap, #crew, .scene, .illus') && e.getBoundingClientRect().width > 70).map(e => `${e.parentElement.className || e.parentElement.tagName} ${Math.round(e.getBoundingClientRect().width)}px`));
@@ -902,7 +904,7 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.equal(await page.$('.codefold .feedfest .fh .pill'), null, 'the bubble says the code once; the rows inside carry no pill');
     assert.ok(await page.$('details.codefold.glass'), 'the bubble is one glass, its rows inside it');
     assert.equal(await page.$$eval('.codefold .feedfest', els => els.filter(e => e.classList.contains('glass')).length), 0, 'not a bubble per festival inside the bubble');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), ['Ungraded'], 'the bubble is its own header; the rest are headed by code');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent).filter(t => t !== 'Alerts')), ['Ungraded'], 'the bubble is its own header; the rest are headed by code');
     assert.ok((await page.$$eval('p.h, .tile .k', els => els.map(e => e.textContent.trim()))).every(t => !/\s/.test(t) || /^Code (Red|Orange|Yellow|Green)$/.test(t)), 'every section header is one word, a code\'s name aside');
     assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), liveCount - 1, 'the ungraded festivals stay open');
 
@@ -910,7 +912,7 @@ test('the festivals list is every festival that is on, organized by code with th
     for (const x of store.list.filter(f => isLive(f))) store.lightning[x.id] = { ...store.lightning['hulaween-2026'] };
     await page.click('button[aria-label="Refresh"]');
     await page.waitForFunction(n => document.querySelector('.codefold summary .t')?.textContent === `${n} festivals`, liveCount);
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), [], 'one code on the list: no headers');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent).filter(t => t !== 'Alerts')), [], 'one code on the list: no headers');
     assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), 0, 'every festival starts in the bubble, the warning included');
     assert.equal(await page.textContent('.codefold summary .s'), `${greenText} · 1 warning · 1 advisory`, 'the warning and the advisory inside are counted, not lost');
     assert.equal(await page.textContent('.codefold summary .pill'), 'Code Green');
@@ -949,7 +951,7 @@ test('the festivals list is every festival that is on, organized by code with th
     assert.equal(await page.textContent('.codefold.indoor summary .t'), '1 festival');
     assert.equal(await page.textContent('.codefold.indoor summary .s'), 'No lightning codes');
     assert.equal(await page.textContent('.codefold.indoor summary .pill'), 'Indoors');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)), [], 'two bubbles, no headers');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent).filter(t => t !== 'Alerts')), [], 'two bubbles, no headers');
     assert.equal(await page.$$eval('.feedfest', els => els.filter(e => e.checkVisibility()).length), 0, 'both folded');
     await page.click('.codefold.indoor summary');
     await page.waitForFunction(() => document.querySelector('details.codefold.indoor')?.open);
@@ -1265,7 +1267,7 @@ test('favorites: a heart on the festival page follows its warnings on this phone
     assert.equal(await page.$$eval('.feedfest:not(.fav) .fh .t', els => els.map(e => e.textContent)).then(n => n.includes('Suwannee Hulaween')), false, 'and is not listed again below');
     await page.click('button.row:has-text("Search festivals")'); await page.waitForSelector('h1.title:has-text("Which festival?")');
     assert.ok(await page.$('.bubble:has-text("Suwannee Hulaween") .favmark'), 'the list shows it as a bubble under Favorites, with the heart in the corner');
-    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent)).then(h => h[0]), 'Favorites');
+    assert.deepEqual(await page.$$eval('p.h', els => els.map(e => e.textContent).filter(t => t !== 'Alerts')).then(h => h[0]), 'Favorites');
     await page.fill('#q', 'hula');
     assert.ok(await page.$('button.row:has-text("Suwannee Hulaween") .dotfav'), 'in a search the heart stands where the dot would');
     await page.fill('#q', '');
@@ -1403,7 +1405,7 @@ test('a heads-up from the backend opens like any alert, from the home page row a
     await page.waitForSelector('.alerthead');
     assert.equal(await page.textContent('.alerthead .eyebrow'), 'Heads-up');
     assert.match(await page.textContent('.alerthead h2'), /Storms expected around 5:00 PM/);
-    assert.equal(await page.textContent('.donow .t'), 'Secure camp now. Charge phones, fill water and pick your shelter');
+    assert.match(await page.textContent('.donow .t'), /^Secure camp (now\. Charge phones, fill water and pick your shelter|before you turn in\. Charge phones, fill water and know the way to shelter in the dark)$/);   // the evening wording late in the day
     assert.match(await page.textContent('.donow .s'), /^(Drop pop-up canopies and flags|Know where the shelter is and how long the walk takes)\.$/, 'the first task of this festival\'s own list');
     assert.ok(await page.$('.todo'), 'the heads-up\'s own instruction, the camp list by the clock');
     // The link a push carries lands on the same screen, on a phone that has never opened the app.
@@ -1762,7 +1764,7 @@ test('the later tier: storm reports and the warning\'s own area on the radar squ
     await page.evaluate(() => pick('hulaween-2026')); await page.waitForSelector('.sky.warn'); await page.waitForFunction(() => !S.busy);   // the refresh the pick started has landed, so Settings is not redrawn under the tap
     // Spanish: the sky's two lines, the orbs and the alert's words; the rest of the page stays as it was. Kept across a reload.
     await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button.chip:has-text("Español")'); await page.waitForFunction(() => !S.queueBusy);
-    await page.click('button.chip:has-text("Español")');
+    await tapChip(page, 'Español');
     assert.equal(await page.evaluate(() => document.documentElement.lang), 'es');
     await backToTop(page); await page.waitForSelector('.sky.warn');
     assert.equal(await page.textContent('.sky .eyebrow'), 'Ahora mismo');
@@ -1830,6 +1832,56 @@ test('metrics: counts with nobody in them on a screen for everyone, seven or thi
     const [dl] = await Promise.all([second.page.waitForEvent('download'), second.page.click('button.row:has-text("Season report")')]);
     assert.equal(dl.suggestedFilename(), 'hulaween-2026-season-report.csv');
     assert.match(readFileSync(await dl.path(), 'utf8'), /^"Fieldwatch season report"\n/);
+    assert.deepEqual(second.seen.errors, []);
+  } finally { srv2.closeAllConnections(); srv2.close(); await second.context.close(); }
+});
+
+test('the dashboard: tiles a tap opens, every alert in effect, the festivals by code; location on every open; a spot shared as a link that a contact can get warnings for', async () => {
+  const { page, context, seen } = await newPage();
+  await context.grantPermissions(['geolocation']); await context.setGeolocation({ latitude: 30.404, longitude: -82.9395 });   // on the grounds at Hulaween
+  const { server, store, base: api } = await fakeBackend([...FESTS]);
+  await page.route(/nominatim\.openstreetmap\.org\/reverse/, r => r.fulfill(json({ name: 'Live Oak', address: { city: 'Live Oak', county: 'Suwannee County', state: 'Florida' } })));
+  await page.addInitScript(() => { window.__shared = null; navigator.share = async d => { window.__shared = d; }; });
+  try {
+    // A phone that once said "I'll pick a festival" still gets located on the next open: the festival it stands at opens.
+    await page.goto(`${base}/index.html?backend=${encodeURIComponent(api)}`);
+    await page.evaluate(() => { S.welcomed = true; S.geoSkip = true; save(); });   // past the walkthrough, having declined location there
+    await page.reload(); await page.waitForSelector('.sky.warn', { timeout: 10000 });
+    assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'located on open, the festival you stand at');
+    // The dashboard.
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('.tiles.dash'); await page.waitForFunction(() => !S.feedBusy && S.dash);
+    const tiles = await page.$$eval('.tiles.dash .kpi', els => els.map(e => [e.querySelector('.k').textContent, e.querySelector('.n').textContent]));
+    assert.deepEqual(tiles.map(t => t[0]), ['Festivals', 'Warnings', 'Nearest', 'Lightning', 'Following', 'Pushed'], 'six tiles, one word each');
+    assert.equal(tiles[1][1], '1', 'one warning in effect'); assert.equal(tiles[2][1], 'right here', 'the nearest festival is under your feet'); assert.equal(tiles[4][1], '57');
+    assert.ok(store.calls.includes('GET /stats'), 'the counts, with nobody in them');
+    assert.match(await page.textContent('.dash-alerts .alert .s'), /^Suwannee Hulaween · Warning/, 'every alert in effect, with its festival');
+    await page.click('.tiles.dash .kpi:has-text("Nearest")'); await page.waitForSelector('.sky.warn');
+    assert.equal(await page.textContent('h1.title'), 'Suwannee Hulaween', 'a tile opens what it counts');
+    await page.click('button:has-text("Festivals")'); await page.waitForSelector('.tiles.dash');
+    await page.click('.dash-alerts .alert'); await page.waitForSelector('.alerthead');
+    assert.equal(await page.textContent('.alerthead h2'), 'Severe Thunderstorm Warning');
+    // Share my spot: a link with the position, through the phone's own share sheet.
+    await page.evaluate(() => go('feed')); await page.waitForSelector('button.row:has-text("Share my spot")');
+    await page.click('button.row:has-text("Share my spot")');
+    const shared = await page.evaluate(() => window.__shared);
+    assert.match(shared.url, /\?spot=30\.4040,-82\.9395$/, 'the spot, never a name'); assert.match(shared.text, /turn on warnings/);
+    assert.deepEqual(seen.errors, []);
+  } finally { server.closeAllConnections(); server.close(); await context.close(); }
+  // The contact: the link opens on that spot, shared with them, warnings a tap away, and their own position never moves it.
+  const second = await newPage();
+  await second.context.grantPermissions(['geolocation']); await second.context.setGeolocation({ latitude: 39.7392, longitude: -104.9903 });   // in Denver
+  const { server: srv2, store: store2, base: api2 } = await fakeBackend([...FESTS]);
+  await second.page.route(/nominatim\.openstreetmap\.org\/reverse/, r => r.fulfill(json({ name: 'Live Oak', address: { city: 'Live Oak', county: 'Suwannee County', state: 'Florida' } })));
+  try {
+    await second.page.goto(`${base}/index.html?backend=${encodeURIComponent(api2)}&spot=30.4040,-82.9395`);
+    await second.page.waitForSelector('.sky.warn', { timeout: 10000 });
+    assert.equal(await second.page.textContent('h1.title'), 'Shared spot');
+    assert.match(await second.page.textContent('span.eyebrow'), /^Shared with you/);
+    await second.page.waitForFunction(() => /Live Oak, Florida/.test(document.querySelector('.sub')?.textContent || ''));
+    await second.page.waitForFunction(() => S.here && S.here.latitude > 39);
+    assert.deepEqual(await second.page.evaluate(() => [S.hereFest.latitude, S.hereFest.longitude, S.hereFest.shared]), [30.404, -82.9395, true], 'the spot stays where it was shared, not where this phone is');
+    assert.ok(await second.page.$('button.row:has-text("Warnings on this phone")'), 'its warnings one tap away');
+    assert.equal(await second.page.$('button.row:has-text("Share my spot")'), null, 'a shared spot is not yours to share on');
     assert.deepEqual(second.seen.errors, []);
   } finally { srv2.closeAllConnections(); srv2.close(); await second.context.close(); }
 });
