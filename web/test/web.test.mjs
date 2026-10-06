@@ -940,11 +940,18 @@ test('the festivals list is the festivals with a code to show, worst first; Code
     store.feed = quietOnes.map(q => many(q.id, 4));
     await page.click('button[aria-label="Refresh"]');
     await page.waitForFunction(() => !S.feedBusy && document.querySelectorAll('.dash-alerts .alert').length === 12);
-    assert.equal(await page.$$eval('.dash-alerts .alert', els => els.filter(e => e.checkVisibility()).length), 8, 'eight on the page');
+    assert.equal(await page.$$eval('.dash-alerts > .alert', els => els.length), 8, 'eight on the page');
+    assert.equal(await page.$$eval('.dash-alerts details .alert', els => els.length), 4, 'the rest behind the fold');
+    assert.equal(await page.$eval('.dash-alerts details', d => d.open), false, 'folded to start');
+    // Shown or not by the browser's own word (checkVisibility: a closed fold hides its rows), once the screen has settled: a render
+    // landing under the check redraws the rows in place, and the runner's Chromium reports nothing visible for a moment after one.
+    const shown = () => page.$$eval('.dash-alerts .alert', els => els.filter(e => e.checkVisibility()).length);
+    await page.waitForFunction(() => document.querySelectorAll('.dash-alerts .alert').length === 12 && [...document.querySelectorAll('.dash-alerts > .alert')].every(e => e.checkVisibility()));
+    assert.equal(await shown(), 8, 'eight shown, the folded four not');
     assert.equal(await page.textContent('.dash-alerts details summary'), '4 more');
     await page.click('.dash-alerts details summary');
-    await page.waitForFunction(() => document.querySelector('.dash-alerts details')?.open);
-    assert.equal(await page.$$eval('.dash-alerts .alert', els => els.filter(e => e.checkVisibility()).length), 12, 'a tap shows the rest');
+    await page.waitForFunction(() => document.querySelector('.dash-alerts details')?.open && [...document.querySelectorAll('.dash-alerts .alert')].every(e => e.checkVisibility()));
+    assert.equal(await shown(), 12, 'a tap shows the rest');
     await shot(page, '21c-feed-alerts');
 
     // A quiet day: no alerts section, no cards, and the sub line says so.
@@ -1728,7 +1735,8 @@ test('the later tier: storm reports and the warning\'s own area on the radar squ
     assert.ok(store.calls.includes('GET /point/30.4000,-82.9400/ground'), 'asked by where it is');
     assert.equal(await page.textContent('.row:has-text("Ground now") .t'), 'Ground now: Paths are soft and muddy');
     assert.equal(await page.textContent('.row:has-text("Ground now") .s'), '2.6 in of rain in the last two days');
-    await page.evaluate(() => pick('hulaween-2026')); await page.waitForSelector('.sky.warn'); await page.waitForFunction(() => !S.busy);   // the refresh the pick started has landed, so Settings is not redrawn under the tap
+    // pick() moves after a beat (later): wait for the move itself, then for the refresh it started, so Settings is not left under a late navigation.
+    await page.evaluate(() => pick('hulaween-2026')); await page.waitForFunction(() => S.fest === 'hulaween-2026' && S.screen === 'home' && !S.busy); await page.waitForSelector('h1.title:has-text("Suwannee Hulaween")');
     // Spanish: the sky's two lines, the orbs and the alert's words; the rest of the page stays as it was. Kept across a reload.
     await page.click('button[aria-label="Settings"]'); await page.waitForSelector('button.chip:has-text("Español")'); await page.waitForFunction(() => !S.queueBusy);
     await tapChip(page, 'Español');
