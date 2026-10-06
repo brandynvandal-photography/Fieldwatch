@@ -74,7 +74,6 @@ html,body{height:100%}
 body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.4;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;-webkit-appearance:none;appearance:none;text-align:left}
 input{font:inherit;color:inherit;-webkit-appearance:none;appearance:none}
-input::-webkit-search-decoration,input::-webkit-search-cancel-button{-webkit-appearance:none}
 a{color:var(--accent)}
 :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:999px}
 .num{font-variant-numeric:tabular-nums}
@@ -113,7 +112,6 @@ a{color:var(--accent)}
 .tb.spin svg{animation:spin 1s linear infinite}
 .tb.fav.on,.lead.fav,.row .fav,.bubble .favmark{color:var(--accent)}
 .row .fav{flex:none;display:inline-flex;margin-right:2px}.row .fav svg{width:18px;height:18px}
-.row .dotfav{width:12px;justify-content:center;margin-right:0}.row .dotfav svg{width:20px;height:20px}
 .bubble .favmark{position:absolute;top:9px;right:11px;display:inline-flex}.bubble .favmark svg{width:15px;height:15px}
 .ask .btn svg{width:18px;height:18px}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -150,10 +148,6 @@ button.row:active{background:rgba(255,255,255,.35)}
 .btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;padding:12px 22px;border-radius:999px;background:var(--grad);color:#fff;font-weight:700;font-size:17px;box-shadow:0 12px 30px rgba(155,123,255,.38);margin-bottom:12px;text-align:center}
 .btn svg{width:22px;height:22px;flex:none}
 .btn.quiet{background:var(--glass);color:var(--ink);box-shadow:var(--shadow-2);border:1px solid var(--glass-border)}
-.search{display:flex;align-items:center;gap:10px;border-radius:999px;padding:12px 18px;margin-bottom:24px}
-.search svg{width:18px;height:18px;color:var(--muted);flex:none}
-.search input{flex:1;border:0;background:none;outline:none;font-size:17px;min-width:0}
-.search input::placeholder{color:var(--muted)}
 .empty{text-align:center;padding:36px 20px;color:var(--muted)}
 .empty b{display:block;color:var(--ink);font-size:17px;margin-bottom:4px;font-weight:600}
 
@@ -358,7 +352,7 @@ button.row:active{background:rgba(255,255,255,.35)}
 .code.now{background:rgba(26,21,51,.05)}
 .code .you{color:var(--ink-2);margin-top:5px}
 .pill.red{background:var(--warn);color:#fff} .pill.orange{background:#FF7A1A;color:#fff} .pill.yellow{background:var(--watch);color:var(--watch-ink)} .pill.green{background:var(--ok);color:#fff}
-.codefold{margin-bottom:18px;border-radius:var(--radius);overflow:hidden} .codefold summary{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:14px 16px;cursor:pointer;list-style:none} .codefold summary::-webkit-details-marker{display:none} .codefold summary .main{flex:1;min-width:0;text-align:left} .codefold summary .top{display:flex;align-items:center;gap:10px} .codefold summary .t{flex:1;min-width:0;font-weight:600;font-size:17px;line-height:1.25} .codefold summary .s{color:var(--muted);font-size:14px;margin-top:5px;line-height:1.35;text-wrap:pretty} .codefold summary .bar{width:5px;border-radius:3px;flex:none;align-self:stretch} .codefold summary .bar.warn{background:var(--warn)} .codefold summary .fav{color:var(--accent);display:inline-flex;flex:none} .codefold summary .fav svg{width:16px;height:16px} .codefold summary .top>svg:last-child{flex:none;color:var(--muted);transition:transform .2s} .codefold[open] summary .top>svg:last-child{transform:rotate(90deg)} .codefold .inner{border-top:1px solid var(--line)} .codefold .inner .feedfest{position:relative} .codefold .inner .feedfest+.feedfest::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)}
+.dash-alerts details summary{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:12px 16px;cursor:pointer;list-style:none;position:relative;font-weight:600;font-size:15px;color:var(--muted)} .dash-alerts details summary::-webkit-details-marker{display:none} .dash-alerts details summary::before,.dash-alerts details summary+.alert::before{content:"";position:absolute;left:16px;right:16px;top:0;height:1px;background:var(--line)} .dash-alerts details summary span{flex:1;text-align:left} .dash-alerts details summary .chev{flex:none;transition:transform .2s} .dash-alerts details[open] summary .chev{transform:rotate(90deg)}
 .feedfest .fh{display:flex;align-items:center;gap:10px;width:100%} .feedfest .fh .main{flex:1;min-width:0} .feedfest .fh .fav{color:var(--accent);display:inline-flex;flex:none} .feedfest .fh .fav svg{width:16px;height:16px} .feedfest button.fh>svg:last-child{flex:none;color:var(--muted)}
 /* Alerts */
 .alert{display:flex;gap:14px;width:100%;padding:14px 16px 14px 14px;position:relative;align-items:center}
@@ -598,7 +592,7 @@ const IN_PREVIEW = !!(window.claude && typeof window.claude.use === 'function');
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
 const STANDALONE = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
-const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, query: '', welcomed: false, toured: false, geoSkip: false, walkStep: 0, introPlayed: false,
+const S = { screen: 'welcome', param: null, stack: [], fest: null, cache: {}, backend: '', busy: false, welcomed: false, toured: false, geoSkip: false, walkStep: 0, introPlayed: false,
   fests: null, admin: '', push: null, vapid: null, link: null, here: null, geoDenied: false, locating: false, autoPicked: false,
   staffScope: null, hereFest: null, wantHere: false, report: { what: '', where: '', error: null }, reporting: false, reported: null,
   post: { title: '', body: '', severity: 'minor', kind: 'notice', minutes: 60, error: null }, posting: false, queue: null, queueBusy: false, sources: null, sourcesBusy: false,
@@ -915,7 +909,6 @@ function go(name, param, opts){
   pushHistory(Boolean(opts.replace || opts.reset));
   S.screen = name; S.param = param || null;
   if (name === 'ground') startGroundEdit();   // the chips open on what the lookups found now, not on a visit from before they landed
-  if (name === 'picker') S.query = '';        // the list opens whole, not filtered by what was typed last time
   S.setupOpen = false;                        // the setup choice opens on its own link, never on arrival
   if (name === 'record') S.recordEdit = null;   // the form opens on the record as it is
   render(false); window.scrollTo(0, 0);
@@ -1966,13 +1959,12 @@ const feedRefreshBtn = () => `<button class="tb glass icon ${S.feedBusy ? 'spin'
 const feedRank = i => { const l = lightningState(i.lightning, i.alerts); return Math.max(i.alerts[0] ? sevRank(i.alerts[0]) : 0, l && l.code === 'red' ? 3 : l && l.code === 'orange' ? 2 : 0); };
 /** One festival's card on the festivals list: name and place, the lightning code, then each alert as a row. The header opens the festival; a favorite's says Clear, Checking or when gates open when there is nothing louder to say. */
 function feedCard(i, opts){
-  const { fav = false, inFold = false } = opts || {};
+  const { fav = false } = opts || {};
   const f = i.festival, fd = S.feed, on = isLive(f);
   // The code beside the name whenever there is one, green included: the card's own grade, else the feed's for that festival.
   const own = i.lightning && CODE[i.lightning.code] ? i.lightning : null;
   const l = lightningState(own || (fd && fd.codes && fd.codes[f.id]) || i.lightning || null, i.alerts), c = l && CODE[l.code];
-  // Inside a bubble the bubble's own label says the code once; a row repeating it seven times would only squeeze the names.
-  const pill = inFold ? '' : c ? `<span class="pill ${esc(l.code)}">${esc(T(c.label))}</span>` : l && l.code === 'indoor' ? `<span class="pill">${esc(T('Indoors'))}</span>` : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
+  const pill = c ? `<span class="pill ${esc(l.code)}">${esc(T(c.label))}</span>` : l && l.code === 'indoor' ? `<span class="pill">${esc(T('Indoors'))}</span>` : !fav ? '' : !on ? `<span class="pill">${esc(phase(f).text)}</span>` : fd ? (i.alerts.length ? '' : '<span class="pill on">Clear</span>') : '<span class="pill">Checking</span>';
   // Lightning is one row, whatever says it: the live grade, the alert the backend stored, or both. The row carries the nearest
   // flash, the code, the protocol line and the end, and opens the standing alert when there is one, else the lightning screen.
   const bolts = i.alerts.filter(a => a.channel === 'lightning'), others = i.alerts.filter(a => a.channel !== 'lightning');
@@ -1989,99 +1981,81 @@ function feedCard(i, opts){
   const main = `<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div>${side}`;
   const heart = fav ? `<span class="fav">${I.heartFull}</span>` : '';
   const header = `<button class="fh" onclick="openFeedFest('${esc(f.id)}')">${heart}${main}${I.chev}</button>`;
-  return `<div class="${inFold ? 'feedfest inrow' : 'group glass feedfest'}${fav ? ' fav' : ''}">${header}${boltRow}${others.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
+  return `<div class="group glass feedfest${fav ? ' fav' : ''}">${header}${boltRow}${others.map(a => `<button class="alert" onclick="openFeedAlert('${esc(f.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}</div>`;
 }
 const favoriteIds = () => Object.keys(S.favorites || {}).filter(id => id !== 'here');
 /** A card's code, as the card shows it: the feed's grade for the festival or its own, lifted by a standing lightning alert. */
 const feedCode = i => { const fd = S.feed, l = lightningState((fd && fd.codes && fd.codes[i.festival.id]) || i.lightning || null, i.alerts); return l ? l.code : 'none'; };
 const CODE_ORDER = { red: 5, orange: 4, yellow: 3, green: 2, indoor: 1, none: 0 };
-const CODE_GROUP = { red: 'Code Red', orange: 'Code Orange', yellow: 'Code Yellow', green: 'Code Green', indoor: 'Indoors', none: 'Ungraded', later: 'Favorites' };
-// The quiet bulk of the list, folded into one bubble each: the group's pill and why there is nothing to grade.
-const FOLDS = { green: { pill: CODE.green.label, cls: 'green', why: 'No lightning within 20 mi' }, indoor: { pill: 'Indoors', cls: '', why: 'No lightning codes' } };
-/**
- * Code Green and Indoors are the quiet bulk of the list, so each starts folded into one bubble: how many festivals, what is going on
- * at them (warnings and advisories counted, a red bar when a warning is inside), the group's pill, a heart if one is a favorite. The
- * sub line runs the full width under the title row so it reads on a phone. A tap opens the cards, worst first; the next visit folds
- * them again. The bubble is the group's own header. The other codes stay open.
- */
-function codeFold(kind, items, card){
-  const spec = FOLDS[kind], alerts = items.flatMap(i => i.alerts), warnings = alerts.filter(isWarning).length, advisories = alerts.length - warnings;
-  const fav = items.some(i => isFav(i.festival.id)), count = (n, one, many) => n ? ` · ${n} ${n === 1 ? one : many}` : '';
-  const sub = `${spec.why}${count(warnings, 'warning', 'warnings')}${count(advisories, 'advisory', 'advisories')}`;
-  return `<details class="codefold ${kind} glass"><summary>${warnings ? '<span class="bar warn"></span>' : ''}<div class="main"><div class="top">${fav ? `<span class="fav">${I.heartFull}</span>` : ''}<div class="t">${items.length} festival${items.length === 1 ? '' : 's'}</div><span class="pill${spec.cls ? ` ${spec.cls}` : ''}">${esc(T(spec.pill))}</span>${I.chev}</div><div class="s">${esc(sub)}</div></div></summary><div class="inner">${items.map(i => card(i, true)).join('')}</div></details>`;
-}
-/** The festivals list: every festival that is on, organized by lightning code, red at the top; within a code the worst alert, then the nearest. Code Green and Indoors are one bubble each (codeFold); the other codes stay open. A favorite not on yet comes last, with when it opens. */
+const CODE_GROUP = { red: 'Code Red', orange: 'Code Orange', yellow: 'Code Yellow', none: 'Ungraded', later: 'Favorites' };
+// Code Green and Indoors are not listed: a festival missing from the list is a green one. Their alerts are on the page in the Alerts section; a favorite of theirs stays, under Favorites.
+const QUIET = { green: true, indoor: true };
+/** The festivals list: every festival that is on with a code to show (yellow or worse, or no grade yet), organized by lightning code, red at the top; within a code the worst alert, then the nearest. Code Green and Indoors are not listed: a missing festival is a green one, and its alerts are in the Alerts section above. A favorite stays whatever its code; a favorite not on yet comes last, with when it opens. */
 screens.feed = () => {
   const fd = S.feed, f = fest(), items = fd && fd.items || [];
   const cards = live().map(x => items.find(i => i.festival.id === x.id) || { festival: x, alerts: [], lightning: null });
   for (const i of items) if (!cards.some(c => c.festival.id === i.festival.id)) cards.push(i);
   for (const id of favoriteIds()) { const x = FESTS.find(y => y.id === id); if (x && !isLive(x)) cards.push({ festival: x, alerts: [], lightning: null }); }
-  const key = i => isLive(i.festival) ? feedCode(i) : 'later', rank = i => key(i) === 'later' ? -1 : CODE_ORDER[key(i)] || 0;
+  const key = i => { if (!isLive(i.festival)) return 'later'; const c = feedCode(i); return QUIET[c] && isFav(i.festival.id) ? 'later' : c; }, rank = i => key(i) === 'later' ? -1 : CODE_ORDER[key(i)] || 0;
   cards.sort((a, b) => rank(b) - rank(a) || feedRank(b) - feedRank(a) || (S.here ? away(a.festival) - away(b.festival) : 0) || a.festival.name.localeCompare(b.festival.name));
   const on = live().length, warns = items.filter(i => i.alerts[0] && isWarning(i.alerts[0])).length;   // an item is a festival with something going on: an alert, or an orange or red
   const head = !fd ? (S.feedBusy ? 'Checking' : S.feedErr ? staffFail(S.feedErr) : 'No signal') : warns ? `${warns} warning${warns > 1 ? 's' : ''}` : items.length ? `${items.length} advisor${items.length > 1 ? 'ies' : 'y'}` : 'All clear';
   const sub = `${on} festival${on === 1 ? '' : 's'} on now · ${head}${fd && fd.partial ? ' · nearest dozen checked' : ''}`;
-  // Headed by code once there is more than one code on the list; Code Green and Indoors are one bubble each (codeFold), their own headers.
-  const groups = [];
-  for (const i of cards) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
-  const card = (i, inFold) => feedCard(i, { fav: isFav(i.festival.id), inFold: Boolean(inFold) });
-  const list = groups.map(g => FOLDS[g.k] ? codeFold(g.k, g.items, card) : `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'Ungraded'))}</p>` : ''}${g.items.map(i => card(i)).join('')}`).join('');
-  // The dashboard: the numbers that matter as tiles a tap opens, then every alert in effect, then the festivals by code.
+  // Code Green and Indoors drop off the list, a favorite aside; the rest are headed by code once there is more than one code on the list.
+  const shown = cards.filter(i => !QUIET[key(i)]), groups = [];
+  for (const i of shown) { const k = key(i), g = groups[groups.length - 1]; if (g && g.k === k) g.items.push(i); else groups.push({ k, items: [i] }); }
+  const card = i => feedCard(i, { fav: isFav(i.festival.id) });
+  const list = groups.map(g => `${groups.length > 1 ? `<p class="h">${esc(T(CODE_GROUP[g.k] || 'Ungraded'))}</p>` : ''}${g.items.map(card).join('')}`).join('');
+  // The dashboard: the numbers that matter as tiles a tap opens, then every alert in effect (eight on the page, the rest behind one fold), then the festivals by code.
   const allAlerts = items.flatMap(i => i.alerts.filter(isActive).map(a => ({ a, f: i.festival }))).sort((x, y) => (isWarning(y.a) - isWarning(x.a)) || (sevRank(y.a) - sevRank(x.a)));
   const warnings = allAlerts.filter(x => isWarning(x.a)).length;
   const nearest = S.here ? live().map(x => ({ f: x, km: away(x) })).sort((a, b) => a.km - b.km)[0] : null;
   const worst = cards.filter(i => isLive(i.festival)).map(i => ({ i, code: feedCode(i) })).sort((a, b) => (CODE_ORDER[b.code] || 0) - (CODE_ORDER[a.code] || 0))[0];
-  const codeWord = c => (CODE[c] ? CODE[c].label.replace('Code ', '') : c === 'indoor' ? 'Indoors' : 'None');
+  const codeWord = c => (CODE[c] ? CODE[c].label.replace('Code ', '') : 'None');
   const kpi = (label, value, line, onclick) => `<button class="tile glass kpi" onclick="${onclick}"><span class="k">${esc(label)}</span><b class="n num">${esc(value)}</b><span class="s">${esc(line)}</span></button>`;
   const dash = S.dash;
   const kpis = `<div class="tiles three dash">
     ${kpi('Festivals', on, 'on this week', "later(function(){ go('picker') })")}
     ${kpi('Warnings', warnings, warnings ? 'in effect now' : 'none in effect', warnings ? "document.getElementById('dash-alerts').scrollIntoView({ behavior: 'smooth', block: 'start' })" : "later(function(){ go('picker') })")}
     ${nearest ? kpi('Nearest', fmtDist(nearest.km), nearest.f.name, `later(function(){ pick('${esc(nearest.f.id)}') })`) : kpi('Nearest', '–', S.geoDenied ? 'location blocked' : 'turn on location', 'later(function(){ useHere() })')}
-    ${worst && worst.code !== 'none' ? kpi('Lightning', codeWord(worst.code), worst.i.festival.name, worst.code === 'indoor' ? `later(function(){ pick('${esc(worst.i.festival.id)}') })` : `openFeedAlert('${esc(worst.i.festival.id)}','')`) : kpi('Lightning', 'None', backend() ? 'no code anywhere' : 'needs the backend', "later(function(){ go('picker') })")}
+    ${worst && (CODE_ORDER[worst.code] || 0) >= CODE_ORDER.yellow ? kpi('Lightning', codeWord(worst.code), worst.i.festival.name, `openFeedAlert('${esc(worst.i.festival.id)}','')`) : kpi('Lightning', 'None', backend() ? 'none near a festival' : 'needs the backend', "later(function(){ go('picker') })")}
     ${dash ? kpi('Following', Number(dash.following || 0).toLocaleString(), 'phones with warnings on', "later(function(){ go('metrics') })") : ''}
     ${dash ? kpi('Pushed', Number(dash.delivered && dash.delivered.sent || 0).toLocaleString(), 'warnings today', "later(function(){ go('metrics') })") : ''}
   </div>`;
-  const alertsNow = allAlerts.length ? `<p class="h" id="dash-alerts">Alerts</p><div class="group glass dash-alerts">${allAlerts.slice(0, 8).map(({ a, f: x }) => `<button class="alert" onclick="openFeedAlert('${esc(x.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(x.name)} · ${esc(alertSub(a))}</div></div>${I.chev}</button>`).join('')}${allAlerts.length > 8 ? `<div class="row"><div class="main"><div class="s">${allAlerts.length - 8} more below, by festival</div></div></div>` : ''}</div>` : '';
+  const alertRow = ({ a, f: x }) => `<button class="alert" onclick="openFeedAlert('${esc(x.id)}','${esc(a.id)}')"><span class="bar ${isWarning(a) ? 'warn' : 'watch'}"></span><div class="main"><div class="t">${esc(a.event)}</div><div class="s">${esc(x.name)} · ${esc(alertSub(a))}</div></div>${I.chev}</button>`;
+  const rest = allAlerts.slice(8);
+  const alertsNow = allAlerts.length ? `<p class="h" id="dash-alerts">Alerts</p><div class="group glass dash-alerts">${allAlerts.slice(0, 8).map(alertRow).join('')}${rest.length ? `<details><summary><span>${rest.length} more</span>${I.chev}</summary>${rest.map(alertRow).join('')}</details>` : ''}</div>` : '';
   return topbar(S.stack.length ? backBtn() : '', '', feedRefreshBtn() + gearBtn()) + `
     <span class="eyebrow">Right now</span>
     <h1 class="title">Festivals</h1>
     <p class="sub">${esc(sub)}</p>
     ${kpis}
     ${alertsNow}
-    ${cards.length ? list : `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>`}
+    ${shown.length ? list : on ? '' : `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>`}
     <div class="group glass">
       ${f && f.id === 'here' ? '' : `<button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button>`}
       ${S.here ? shareSpotRow() : ''}
-      <button class="row" onclick="later(function(){ go('picker') })"><span class="lead">${I.search}</span><div class="main"><div class="t">Search festivals</div><div class="s">By name or place</div></div>${I.chev}</button>
       ${backend() ? `<button class="row" onclick="later(function(){ go('metrics') })"><span class="lead">${I.chart}</span><div class="main"><div class="t">Metrics</div><div class="s">How the festivals are doing, in counts with nobody in them</div></div>${I.chev}</button>` : ''}
     </div>
     ${fd ? `<p class="note">Checked ${esc(ago(fd.at))}.</p>` : ''}`;
 };
 
-/** The words typed, each of which must appear somewhere in the name, the place or the county, in any order. */
-const queryWords = () => S.query.toLowerCase().split(/\s+/).filter(Boolean);
-const matches = (f, words) => { const hay = `${f.name} ${f.location} ${f.county || ''}`.toLowerCase(); return words.every(w => hay.includes(w)); };
 /** What is on, in the picker's order: the nearest first with location on, then what has started, then by start date. */
 function pickerOn(){
   const now = Date.now(), started = f => now >= Date.parse(f.startDate);
   return live().sort((a, b) => (S.here ? away(a) - away(b) : 0) || (started(b) - started(a)) || (Date.parse(a.startDate) - Date.parse(b.startDate)));
 }
-/** The list under the search box: bubbles and the rest, or the hits for what is typed. Redrawn on its own as the query changes. */
+/** The list: bubbles for the favorites and the nearest six, rows for the rest, your own spot last. What is on is the whole list; there is nothing to search. */
 function pickerBody(){
-  const words = queryWords(), now = Date.now(), started = f => now >= Date.parse(f.startDate), on = pickerOn();
+  const now = Date.now(), started = f => now >= Date.parse(f.startDate), on = pickerOn();
   const favs = on.filter(f => isFav(f.id)), others = on.filter(f => !isFav(f.id));
   const top = others.filter(isFeatured);
   const bubbles = (top.length ? top : others).slice(0, 6), rest = others.filter(f => !bubbles.includes(f));
   const bubble = f => `<button class="bubble" style="--hue:${hue(f)}" onclick="pick('${f.id}')"><i class="glow"></i><span class="glass">${isFav(f.id) ? `<span class="favmark">${I.heartFull}</span>` : ''}<span class="t">${esc(f.name)}</span><span class="d">${esc(fmtRange(f))}</span><span class="ph">${esc(phase(f).text)}${esc(distNote(f))}</span></span></button>`;
-  const row = f => `<button class="row" onclick="pick('${f.id}')">${isFav(f.id) ? `<span class="fav dotfav">${I.heartFull}</span>` : `<span class="dotc" style="--hue:${hue(f)}"></span>`}<div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}${esc(distNote(f))}</div>${I.chev}</button>`;
+  const row = f => `<button class="row" onclick="pick('${f.id}')"><span class="dotc" style="--hue:${hue(f)}"></span><div class="main"><div class="t">${esc(f.name)}</div><div class="s">${esc(f.location)}</div></div><div class="tr num"><b>${esc(fmtRange(f))}</b>${esc(phase(f).text)}${esc(distNote(f))}</div>${I.chev}</button>`;
   const hereRow = `<div class="group glass"><button class="row" onclick="later(function(){ useHere() })"><span class="lead">${I.pin}</span><div class="main"><div class="t">Right where you are</div><div class="s">Alerts, forecast and radar for your spot</div></div>${I.chev}</button></div>`;
   if (!FESTS.length) return `<div class="card glass"><h3>Nothing loaded</h3><p>The festival list did not load.</p></div>`;
   if (!on.length) return `<div class="empty"><b>Nothing on right now</b>Festivals appear here a week before gates.</div>${hereRow}`;
-  if (words.length) {
-    const hits = on.filter(f => matches(f, words));
-    return (hits.length ? `<div class="group glass tight">${hits.map(row).join('')}</div>` : `<div class="empty"><b>Not on right now</b>Only festivals happening this week are listed.</div>`) + hereRow;
-  }
   const favGroup = favs.length ? `<p class="h">Favorites</p><div class="grid">${favs.map(bubble).join('')}</div>` : '';
   const bubbleGroup = bubbles.length ? `<p class="h">${S.here && away(bubbles[0]) <= NEAR_KM ? 'Here' : started(bubbles[0]) ? 'Now' : 'Soon'}</p><div class="grid">${bubbles.map(bubble).join('')}</div>` : '';
   return `${favGroup}${bubbleGroup}${rest.length ? `<p class="h">Others</p><div class="group glass tight">${rest.map(row).join('')}</div>` : ''}${hereRow}`;
@@ -2090,17 +2064,9 @@ screens.picker = () => {
   const on = pickerOn();
   return topbar(backBtn(), '', gearBtn()) + `
     <h1 class="title">Which festival?</h1>
-    ${on.length ? `<label class="search glass">${I.search}<input id="q" type="search" placeholder="Search festivals" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="search" value="${esc(S.query)}" oninput="filterFests(this.value)" onkeydown="searchKey(event)"></label>` : ''}
     <div id="picklist">${pickerBody()}</div>
     <p class="note">Listed from a week before gates to the day after.</p>`;
 };
-// A keystroke redraws the list and leaves the box alone: the caret, the keyboard and its autocorrect state stay where they were.
-function filterFests(v){ S.query = v; const el = document.getElementById('picklist'); if (el) el.innerHTML = pickerBody(); else render(); }
-// Return (the keyboard's Search key) opens the first hit; Escape clears the box.
-function searchKey(e){
-  if (e.key === 'Enter') { const hit = pickerOn().find(f => matches(f, queryWords())); if (hit) { e.target.blur(); pick(hit.id); } e.preventDefault(); }
-  else if (e.key === 'Escape') { e.target.value = ''; filterFests(''); }
-}
 
 screens.home = () => {
   const f = fest(); if (!f) return screens.picker();
@@ -3260,7 +3226,7 @@ async function share(id){
 }
 
 // The entrance animation belongs to a move between screens, once. Everything else that calls render (data landing, a busy flag,
-// a keystroke in the search box, a live change) swaps the same screen's content in place: no rise, no fade, and an opened fold
+// a keystroke, a live change) swaps the same screen's content in place: no rise, no fade, and an opened fold
 // stays open. `entering` keeps the animation on a move's follow-up renders in the same turn, until the browser has started it.
 let shown = '', entering = false, enterTimer = null;
 document.addEventListener('animationstart', e => { if (e.animationName === 'rise') entering = false; }, true);
@@ -3270,7 +3236,7 @@ const TOUR = [
   { sel: '.bolt', t: 'Your lightning code', s: 'We grade it from the satellite every 20 seconds. Tap it to see the four codes and what each one asks of you.' },
   { sel: '.orbrow', t: 'Radar, alerts and forecast', s: 'The radar loop keeps playing when you lose signal. The forecast shows heat, gusts and thunder hour by hour.' },
   { sel: '.tb.fav', t: 'Make this one yours', s: "Tap the heart and this festival's warnings reach your phone even when the app is closed." },
-  { sel: '.topbar .side:first-child .tb', t: "Everything else that's on", s: 'Every festival by lightning code, red at the top. Search is one more tap.' },
+  { sel: '.topbar .side:first-child .tb', t: "Everything else that's on", s: 'Every alert in effect and every festival with a lightning code, red at the top. A festival not listed is Code Green.' },
 ];
 const tour = { on: false, i: 0 };
 const tourSteps = () => TOUR.filter(st => document.querySelector(st.sel));   // a step whose element is not on this page (no tile, no heart for your own spot) is skipped

@@ -20,7 +20,7 @@ A pass over every screen of the web build at phone size, light and dark, from th
 11. **The weather screen says the hours once.** The 24-hour chart and the hour cards carry the same temperatures and the same rain chances; the cards are four to a screen. Make the cards a compact strip (the sky card's strip, scrollable, 24 wide) under the chart, or drop them and give the chart a tap-to-read.
 12. **Prep deadlines.** Four steps "by 5:35, 5:40, 5:40, 5:45" read as fake precision. One deadline for the block ("all of this by 5:35 PM, in this order"), and a time per step only when the steps are fifteen minutes or more apart.
 13. **Lightning screen for the person, then the staff.** Each code row shows the protocol paragraph ("Non-essential personnel should prioritize exit...") before the line for you. Show the "you" line first and fold the protocol under "For staff".
-14. **Search at the top of a long list.** On the festivals list, "Search festivals" and "Right where you are" sit at the bottom, past every bubble. When the list is longer than eight, put the search row first.
+14. **Search at the top of a long list.** (Moot since 2026-10-06: the search is gone; the whole list is behind the Festivals tile.) On the festivals list, "Search festivals" and "Right where you are" sit at the bottom, past every bubble. When the list is longer than eight, put the search row first.
 15. **Pull to refresh.** Phones expect it on the festival page and the list; the refresh button stays for the desktop.
 16. **The topbar is crowded.** Five round buttons at 390 px (Festivals, heart, share, refresh, gear). Move the heart and the share into the page's rows (both already have a row or a screen), leaving Festivals, refresh and the gear, and the title gets its width back.
 
